@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Data directory (contains DB and generated files)
+data/
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+
+# Test files (keep in repo but ignore coverage)
+coverage/
+
+# Debug files
+src/debug_*.ts
+src/scripts/debug*.ts
+src/scripts/inspect*.ts
+src/scripts/verify*.ts
+test_*.js
+
+# Temporary
+/tmp/
+*.tmp
+
+# Progress artifacts
+dl_progress.txt
+progress_stream.txt
+
+# Playwright
+playwright-report/
+test-results/
+e2e/*.js

@@ -1,0 +1,1130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPTV EPG Manager</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f4f9; color: #333; margin: 0; padding: 0; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        header { background: #333; color: #fff; padding: 15px 0; margin-bottom: 20px; }
+        header h1 { margin: 0; padding: 0 20px; font-size: 24px; }
+        
+        .card { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .hidden { display: none !important; }
+        
+        button { background: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        button:hover { background: #0056b3; }
+        button.secondary { background: #6c757d; }
+        button.secondary:hover { background: #5a6268; }
+        
+        select, input { padding: 8px; border: 1px solid #ddd; border-radius: 4px; width: 100%; box-sizing: border-box; }
+        
+        /* Mapping Table */
+        .mapping-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        .mapping-table th, .mapping-table td { text-align: left; padding: 10px; border-bottom: 1px solid #eee; }
+        .mapping-table th { background: #f8f9fa; font-weight: 600; }
+        .mapping-table tr:hover { background: #f1f1f1; cursor: pointer; }
+        
+        .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; color: #fff; }
+        .badge-success { background: #28a745; } /* ID, Strict, Override */
+        .badge-warning { background: #ffc107; color: #333; } /* Fuzzy, IPTV-ORG */
+        .badge-danger { background: #dc3545; } /* Unmatched */
+        
+        /* Expanded Row Interface */
+        .expanded-row { background: #f0f7ff !important; border-left: 4px solid #007bff; }
+        .expanded-row:hover { background: #f0f7ff !important; }
+        .expand-content { padding: 15px 40px; }
+        .search-results-inline { border: 1px solid #cce5ff; border-radius: 4px; background: white; max-height: 300px; overflow-y: auto; margin-top: 10px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); }
+        .search-result-item { padding: 10px 15px; cursor: pointer; border-bottom: 1px solid #f0f0f0; transition: background 0.2s; display: flex; justify-content: space-between; align-items: center; }
+        .search-result-item:hover { background: #e7f3ff; }
+        .search-result-item:last-child { border-bottom: none; }
+        .search-result-item .id { color: #888; font-size: 11px; }
+
+        /* Persistent Bottom Panel */
+        #statusPanel { position: fixed; bottom: 0; left: 0; width: 100%; background: #fff; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); z-index: 2000; border-top: 2px solid #007bff; transition: transform 0.3s ease; transform: translateY(calc(100% - 40px)); }
+        #statusPanel.hidden { display: none !important; }
+        #statusPanel.expanded { transform: translateY(0); }
+        .status-header { background: #007bff; color: white; padding: 10px 20px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-radius: 8px 8px 0 0; }
+        .status-header h3 { margin: 0; font-size: 16px; }
+        .status-content { padding: 15px 20px; max-height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; }
+        
+        #logContainer { height: 180px; overflow-y: auto; background: #1e1e1e; color: #d4d4d4; font-family: 'Consolas', 'Monaco', monospace; padding: 12px; border-radius: 4px; font-size: 12px; line-height: 1.5; }
+        .log-entry { margin-bottom: 2px; }
+        .log-info { color: #9cdcfe; }
+        .log-success { color: #4ec9b0; }
+        .log-error { color: #f44747; }
+        .log-warning { color: #ce9178; }
+        
+        #phaseDisplays { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .phase-card { background: #f8f9fa; border-radius: 6px; padding: 10px; border: 1px solid #e9ecef; }
+        .phase-card label { display: block; font-weight: 600; font-size: 0.85em; color: #495057; margin-bottom: 5px; }
+        .phase-text { font-size: 0.8em; color: #6c757d; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        @keyframes pulse {
+            0% { transform: scale(0.95); opacity: 0.5; }
+            50% { transform: scale(1.05); opacity: 0.8; }
+            100% { transform: scale(0.95); opacity: 0.5; }
+        }
+
+        .progressBarWrapper { height: 10px; background: rgba(255,255,255,0.1); border-radius: 5px; margin: 8px 0; overflow: hidden; }
+        .progressBar { height: 100%; background: linear-gradient(90deg, #007bff, #00b4d8); width: 0%; transition: width 0.3s; }
+
+        /* Modal / Grab History */
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 3000; display: flex; align-items: center; justify-content: center; visibility: hidden; opacity: 0; transition: opacity 0.2s; }
+        .modal.visible { visibility: visible; opacity: 1; }
+        .modal-content { background: white; padding: 25px; border-radius: 12px; width: 90%; max-width: 900px; max-height: 80vh; overflow-y: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+        .history-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; }
+        .history-table th, .history-table td { text-align: left; padding: 12px; border-bottom: 1px solid #eee; }
+        .history-table th { background: #f8f9fa; position: sticky; top: 0; z-index: 10; }
+        .history-table tr:nth-child(even) { background: #fafafa; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container" style="display:flex; justify-content:space-between; align-items: center;">
+            <h1>IPTV EPG Manager</h1>
+            <div id="navButtons" class="hidden">
+                 <button onclick="showPage('config')" class="secondary">Configuration</button>
+                 <button onclick="showPage('mapping')" class="secondary">Channel Mapping</button>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        
+        <!-- PAGE 1: CONFIGURATION -->
+        <div id="page-config" class="card">
+            <h2>Configuration</h2>
+            <div id="currentConfig" class="hidden" style="margin-bottom: 20px; padding: 15px; background: #e9ecef; border-radius: 4px;">
+                <strong>Current Setup:</strong>
+                <ul id="configSummary"></ul>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button onclick="startProcessing()" style="font-size: 1.1em; padding: 12px 24px;">Start Processing / Refresh Data</button>
+                    <button onclick="rebuildFiles()" class="secondary">Rebuild Files</button>
+                    <button onclick="showGrabHistory()" class="secondary">View Grab History</button>
+                    <button onclick="toggleSelectionUI()" class="secondary">Edit Playlist</button>
+                </div>
+                <div style="margin-top: 15px; padding: 10px; background: #d4edda; border-radius: 4px;">
+                    <strong>📋 Generated Files:</strong>
+                    <button onclick="copyUrl('/files/playlist.m3u')" class="secondary" style="margin-left: 10px;">Copy Playlist URL</button>
+                    <button onclick="copyUrl('/files/epg.xml')" class="secondary" style="margin-left: 5px;">Copy EPG URL</button>
+                    <span id="copyStatus" style="margin-left: 10px; color: green;"></span>
+                </div>
+            </div>
+
+            <div id="selectionUI">
+                <h3>1. Select Playlist</h3>
+                <select id="playlistSelect">
+                    <option>Loading...</option>
+                </select>
+                <br>
+<br>
+                <label><strong>Preferred Language (Optional):</strong> 
+                <input type="text" id="prefLangInput" placeholder="e.g. en, fr, de" style="width: 100px; display:inline-block;"></label>
+                <br><br>
+                <label><strong>EPG Data Duration (Days):</strong> 
+                <input type="number" id="epgDaysInput" min="1" max="14" value="2" style="width: 80px; display:inline-block;"></label>
+                <br><br>
+
+                <!-- IMDb Metadata Enrichment Configuration -->
+                <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">
+                    <h3 style="margin-top: 0; color: #495057;">🎬 IMDb Metadata Enrichment</h3>
+                    <p style="font-size: 13px; color: #666; margin-bottom: 15px;">
+                        Enhance your EPG data with show ratings and genres from IMDb's free datasets.
+                        <strong>No API key required!</strong>
+                    </p>
+                    
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" id="metadataEnabled" onchange="toggleMetadataEnrichment()">
+                            <strong>Enable Metadata Enrichment</strong>
+                        </label>
+                    </div>
+                    
+                    <div id="metadataConfigSection" style="display: none;">
+                        <div style="font-size: 12px; color: #666; padding: 10px; background: #e7f3ff; border-radius: 4px; margin-bottom: 10px;">
+                            <strong>ℹ️ How it works:</strong> On first run, the system will download IMDb's free title dataset (~100MB).
+                            This data is refreshed weekly automatically.
+                        </div>
+                        
+                        <div id="imdbDataStatus" style="font-size: 12px; margin-bottom: 10px;"></div>
+                        
+                        <div id="metadataStats" style="padding: 10px; background: white; border-radius: 4px; margin-bottom: 10px;">
+                            <div style="font-weight: bold; margin-bottom: 8px;">📊 Enrichment Statistics</div>
+                            <div style="display: grid; grid-template-columns: auto auto; gap: 5px 15px; font-size: 13px;">
+                                <span>IMDb Data:</span> <span id="statImdbDataAge">Not downloaded</span>
+                                <span>Cached Shows:</span> <span id="statCachedShows">0</span>
+                                <span>Enriched Programs:</span> <span id="statEnrichedPrograms">0</span>
+                                <span>Pending Programs:</span> <span id="statPendingPrograms">0</span>
+                            </div>
+                            <div style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
+                                <button onclick="triggerManualEnrich()" class="secondary" style="font-size: 12px; padding: 5px 10px;">Enrich Now</button>
+                                <button onclick="refreshImdbData()" class="secondary" style="font-size: 12px; padding: 5px 10px;">Refresh IMDb Data</button>
+                                <button onclick="clearMetadataCache()" class="secondary" style="font-size: 12px; padding: 5px 10px; background: #dc3545;">Clear Cache</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <br>
+                <button onclick="saveConfig()">Save Configuration</button>
+            </div>
+            
+            <div id="loadingOverlay" class="hidden" style="position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.8); display:flex; align-items:center; justify-content:center; z-index:10;">
+                <h3 id="loadingText">Saving...</h3>
+            </div>
+            
+            <div id="statusArea" class="hidden">
+                 <!-- Report is still in-page for prominence -->
+                <div id="reportSection" class="hidden" style="background: #d4edda; border-radius: 8px; padding: 20px; margin-top: 15px; border-left: 5px solid #28a745;">
+                    <h4 style="margin-top: 0; color: #155724;">✓ Processing Complete</h4>
+                    <div style="display: grid; grid-template-columns: auto auto; gap: 10px; max-width: 400px;">
+                        <strong>Channels Processed:</strong> <span id="reportChannels">0</span>
+                        <strong>Programs Loaded:</strong> <span id="reportPrograms">0</span>
+                        <strong>Channels Matched:</strong> <span id="reportMatched">0</span>
+                        <strong>Total Channels:</strong> <span id="reportTotal">0</span>
+                        <strong>Files Generated:</strong> <span id="reportFiles">-</span>
+                    </div>
+                    <button onclick="hideReport()" class="secondary" style="margin-top: 15px;">Dismiss Report</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- PAGE 2: CHANNEL MANAGER -->
+        <div id="page-mapping" class="card hidden">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap: wrap; gap: 10px; margin-bottom: 15px;">
+                 <h2 style="margin:0;">Channel Manager</h2>
+                 <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                     <select id="statusFilter" onchange="renderMappingTable()" style="width: 140px;">
+                         <option value="all">Any Status</option>
+                         <option value="enabled">Enabled Only</option>
+                         <option value="disabled">Disabled Only</option>
+                     </select>
+                     <select id="matchFilter" onchange="renderMappingTable()" style="width: 140px;">
+                         <option value="all">Any Match</option>
+                         <option value="matched">Matched Only</option>
+                         <option value="unmatched">Unmatched Only</option>
+                     </select>
+                     <select id="categoryFilter" onchange="renderMappingTable()" style="width: 140px;">
+                         <option value="all">All Categories</option>
+                     </select>
+                     <input type="text" id="filterInput" placeholder="Search name/category..." onkeyup="renderMappingTable()" style="width: 180px;">
+                 </div>
+            </div>
+            
+            <div style="display: flex; gap: 10px; margin-bottom: 20px; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 15px;">
+                <button class="secondary small-btn" onclick="bulkAction(true)">Enable Filtered</button>
+                <button class="secondary small-btn" onclick="bulkAction(false)" style="background:#6c757d;">Disable Filtered</button>
+                <div style="font-size: 0.85em; color: #666; margin-left: 10px;">
+                    Matched: <span id="statMatchedCount">0</span> | Total Visible: <span id="statVisibleCount">0</span>
+                </div>
+            </div>
+            
+            <table class="mapping-table">
+                <thead>
+                    <tr>
+                        <th style="width: 40px;"><input type="checkbox" id="headerCheckbox" onclick="toggleAllVisible(this.checked)"></th>
+                        <th>#</th>
+                        <th>Logo</th>
+                        <th>Channel</th>
+                        <th>Current Program</th>
+                        <th>Grab Status</th>
+                        <th>Match ID</th>
+                        <th>Source/Conf</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="mappingBody">
+                    <tr><td colspan="5">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+
+    <!-- Expanded Row will be injected here via JS -->
+
+    <!-- PERSISTENT STATUS PANEL -->
+    <div id="statusPanel" class="hidden">
+        <div class="status-header" onclick="toggleStatusPanel()">
+            <h3><span id="globalPulse" style="display:inline-block; width:10px; height:10px; background:#fff; border-radius:50%; margin-right:8px; opacity:0.5;"></span> Processing Status</h3>
+            <div>
+                <span id="panelSummary" style="font-size: 13px; opacity: 0.9; margin-right: 15px;">Working...</span>
+                <span id="toggleIcon">▲</span>
+            </div>
+        </div>
+        <div class="status-content">
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 8px;">
+                <button onclick="clearLogs()" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; font-size: 10px; padding: 2px 8px; border-radius: 4px; cursor: pointer; transition: 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.2)'" onmouseout="this.style.background='rgba(255,255,255,0.1)'">Clear Logs</button>
+            </div>
+            <div id="phaseDisplays" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;">
+                <div class="phase-card" id="matchCard">
+                    <label>Channel Matching <span id="matchStatus" style="color: #28a745;"></span></label>
+                    <div class="progressBarWrapper"><div id="matchBar" class="progressBar"></div></div>
+                    <div id="matchText" class="phase-text">Waiting...</div>
+                </div>
+                <div class="phase-card" id="grabCard">
+                    <label>EPG Grabbing <span id="grabStatus" style="color: #28a745;"></span></label>
+                    <div class="progressBarWrapper"><div id="grabBar" class="progressBar" style="background: linear-gradient(90deg, #28a745, #20c997);"></div></div>
+                    <div id="grabText" class="phase-text">Waiting...</div>
+                </div>
+                <div class="phase-card" id="enrichCard">
+                    <label>TVMaze Enrichment <span id="enrichStatus" style="color: #28a745;"></span></label>
+                    <div class="progressBarWrapper"><div id="enrichBar" class="progressBar" style="background: linear-gradient(90deg, #9b59b6, #e74c3c);"></div></div>
+                    <div id="enrichText" class="phase-text">Waiting...</div>
+                </div>
+            </div>
+            <div id="logContainer"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentState = {
+            playlists: [],
+            settings: {},
+            channels: [], // Loaded for mapping
+            currentOverrideChannel: null,
+            metadataConfig: { api_key_configured: false, enabled: false }
+        };
+
+        // --- INIT ---
+        async function init() {
+            await loadPlaylists();
+            await loadConfig();
+            await loadMetadataConfig();
+            await checkJobStatus(); // Check if a job is running and reconnect if needed
+        }
+
+        async function loadConfig() {
+            try { 
+                const config = await (await fetch('/api/config')).json();
+                currentState.settings = config;
+
+                if (config.playlist_url) {
+                    // Pre-fill selection
+                    const plSel = document.getElementById('playlistSelect');
+                    if (plSel) plSel.value = config.playlist_url;
+                    
+                    // Legacy EPGs skipped
+
+                    // Pre-fill Lang
+                    if (config.preferred_lang) {
+                        document.getElementById('prefLangInput').value = config.preferred_lang;
+                    }
+
+                    // Pre-fill Days
+                    if (config.epg_days) {
+                        document.getElementById('epgDaysInput').value = config.epg_days;
+                    }
+
+                    // Show Current Config Summary
+                    showCurrentConfig();
+                    document.getElementById('selectionUI').classList.add('hidden');
+                    
+                    // Enable Nav
+                    document.getElementById('navButtons').classList.remove('hidden');
+                } else {
+                    document.getElementById('selectionUI').classList.remove('hidden');
+                    document.getElementById('currentConfig').classList.add('hidden');
+                }
+            } catch(e) { console.error(e); }
+        }
+
+        async function loadPlaylists() {
+            const data = await (await fetch('/api/playlists')).json();
+            currentState.playlists = data;
+            const sel = document.getElementById('playlistSelect');
+            data.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.url || p.id;
+                opt.text = p.name;
+                sel.appendChild(opt);
+            });
+        }
+
+        // --- UI LOGIC ---
+
+        function showPage(pageId) {
+            document.getElementById('page-config').classList.add('hidden');
+            document.getElementById('page-mapping').classList.add('hidden');
+            document.getElementById('page-'+pageId).classList.remove('hidden');
+            
+            if (pageId === 'mapping') loadMapping();
+        }
+
+        function showCurrentConfig() {
+            const summary = document.getElementById('configSummary');
+            summary.innerHTML = '';
+            
+            // Playlist Name
+            const pl = currentState.playlists.find(p => (p.url || p.id) === currentState.settings.playlist_url);
+            let plName = 'None';
+            if (pl) plName = pl.name;
+            else if (currentState.settings.playlist_url) plName = currentState.settings.playlist_url;
+            
+            summary.innerHTML += `<li><strong>Playlist:</strong> ${plName}</li>`;
+            
+            // Legacy EPGs info removed
+
+            // Lang
+            if (currentState.settings.preferred_lang) {
+                summary.innerHTML += `<li><strong>Preferred Language:</strong> ${currentState.settings.preferred_lang}</li>`;
+            }
+            
+            document.getElementById('currentConfig').classList.remove('hidden');
+        }
+
+        function toggleSelectionUI() {
+            const ui = document.getElementById('selectionUI');
+            const summary = document.getElementById('currentConfig');
+            if (ui.classList.contains('hidden')) {
+                ui.classList.remove('hidden');
+                summary.classList.add('hidden');
+            } else {
+                ui.classList.add('hidden');
+                summary.classList.remove('hidden');
+            }
+        }
+
+        async function saveConfig() {
+            const playlist_url = document.getElementById('playlistSelect').value;
+            const epg_urls = []; // Legacy field, kept for compatibility but empty
+            const preferred_lang = document.getElementById('prefLangInput').value.trim() || null;
+            const epg_days = document.getElementById('epgDaysInput').value;
+            
+            const payload = { playlist_url, epg_urls, preferred_lang, epg_days };
+            
+            if (!playlist_url) { alert("Please select a playlist."); return; }
+
+            document.getElementById('loadingOverlay').classList.remove('hidden');
+            document.getElementById('loadingText').innerText = "Saving & Loading Playlist...";
+
+            try {
+                await fetch('/api/config', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                
+                await loadConfig(); // Reload state
+                
+            } catch(e) {
+                alert("Error saving config: " + e.message);
+            } finally {
+                document.getElementById('loadingOverlay').classList.add('hidden');
+            }
+        }
+
+        // --- PROCESSING ---
+        async function startProcessing() {
+            const urls = currentState.settings.epg_urls || [];
+            document.getElementById('statusArea').classList.remove('hidden');
+            
+            // Reset completed phases for fresh sync
+            window.completedPhases = {};
+            document.getElementById('matchBar').style.width = '0%';
+            document.getElementById('grabBar').style.width = '0%';
+            document.getElementById('enrichBar').style.width = '0%';
+            document.getElementById('matchText').innerText = 'Waiting...';
+            document.getElementById('grabText').innerText = 'Waiting...';
+            document.getElementById('enrichText').innerText = 'Waiting...';
+            document.getElementById('matchStatus').innerText = '';
+            document.getElementById('grabStatus').innerText = '';
+            document.getElementById('enrichStatus').innerText = '';
+            document.getElementById('matchCard').style.borderColor = '';
+            document.getElementById('grabCard').style.borderColor = '';
+            document.getElementById('enrichCard').style.borderColor = '';
+            
+            startSse();
+            
+            try {
+                await fetch('/api/select-epg', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ urls })
+                });
+            } catch(e) { console.error(e); }
+        }
+
+        async function rebuildFiles() {
+            if (!confirm("Rebuild M3U and XML files from current database matching? This does not pull new guide data.")) return;
+            
+            document.getElementById('loadingOverlay').classList.remove('hidden');
+            document.getElementById('loadingText').innerText = "Regenerating Files...";
+            
+            try {
+                const res = await (await fetch('/api/rebuild-files', { method: 'POST' })).json();
+                if (res.success) {
+                    alert(`Files rebuilt successfully!\nPlaylist: ${res.stats.playlistCount} channels\nEPG: ${res.stats.epgChannels} channels, ${res.stats.epgPrograms.toLocaleString()} programs`);
+                    showReport({
+                        channelsProcessed: res.stats.epgChannels,
+                        programsProcessed: res.stats.epgPrograms,
+                        channelsMatched: res.stats.playlistCount,
+                        totalChannels: currentState.channels.length || 0,
+                        filesGenerated: ['playlist.m3u', 'epg.xml']
+                    });
+                }
+            } catch(e) { 
+                alert("Rebuild failed: " + e.message);
+            } finally {
+                document.getElementById('loadingOverlay').classList.add('hidden');
+            }
+        }
+        
+        async function grabMissing() {
+            document.getElementById('statusArea').classList.remove('hidden');
+            startSse();
+            try {
+                const res = await (await fetch('/api/grab', { method: 'POST' })).json();
+                if (res.count === 0) {
+                    alert(res.message);
+                }
+            } catch(e) { console.error(e); }
+        }
+        
+        function copyUrl(path) {
+            const url = window.location.origin + path;
+            navigator.clipboard.writeText(url).then(() => {
+                const status = document.getElementById('copyStatus');
+                status.textContent = '✓ Copied!';
+                setTimeout(() => { status.textContent = ''; }, 2000);
+            }).catch(err => {
+                alert('Failed to copy: ' + err);
+            });
+        }
+        
+        function toggleStatusPanel(show) {
+            const panel = document.getElementById('statusPanel');
+            const icon = document.getElementById('toggleIcon');
+            if (show === true) panel.classList.add('expanded');
+            else if (show === false) panel.classList.remove('expanded');
+            else panel.classList.toggle('expanded');
+            icon.innerText = panel.classList.contains('expanded') ? '▼' : '▲';
+        }
+
+        function startSse() {
+            if (window.evtSource) window.evtSource.close();
+            window.evtSource = new EventSource("/api/progress");
+            
+            const panel = document.getElementById('statusPanel');
+            panel.classList.remove('hidden');
+            toggleStatusPanel(true);
+            
+            const logDiv = document.getElementById('logContainer');
+            const matchBar = document.getElementById('matchBar');
+            const matchText = document.getElementById('matchText');
+            const grabBar = document.getElementById('grabBar');
+            const grabText = document.getElementById('grabText');
+            const enrichBar = document.getElementById('enrichBar');
+            const enrichText = document.getElementById('enrichText');
+            const summary = document.getElementById('panelSummary');
+            const pulse = document.getElementById('globalPulse');
+            
+            // Track completed phases so they stay at 100%
+            window.completedPhases = window.completedPhases || {};
+            
+            pulse.style.animation = "pulse 1.5s infinite";
+            
+            window.evtSource.addEventListener('progress', (e) => {
+                const job = JSON.parse(e.data);
+                const phase = job.phase || 'grab';
+                const pct = job.total > 0 ? (job.current / job.total) * 100 : 0;
+                const isComplete = job.completed || (job.total > 0 && job.current >= job.total);
+                
+                // Once a phase is complete, mark it and keep it at 100%
+                if (isComplete) {
+                    window.completedPhases[phase] = job.message;
+                }
+                
+                if (phase === 'match') {
+                    // Only update if not already completed, or if this is the completion event
+                    if (!window.completedPhases.match || isComplete) {
+                        matchText.innerText = job.message;
+                        matchBar.style.width = (isComplete ? 100 : pct) + '%';
+                        if (isComplete) {
+                            document.getElementById('matchStatus').innerText = ' ✓';
+                            document.getElementById('matchCard').style.borderColor = '#28a745';
+                        }
+                    }
+                } else if (phase === 'enrich') {
+                    if (!window.completedPhases.enrich || isComplete) {
+                        enrichText.innerText = job.message;
+                        enrichBar.style.width = (isComplete ? 100 : pct) + '%';
+                        if (isComplete) {
+                            document.getElementById('enrichStatus').innerText = ' ✓';
+                            document.getElementById('enrichCard').style.borderColor = '#9b59b6';
+                        }
+                    }
+                } else { // grab
+                    if (!window.completedPhases.grab || isComplete) {
+                        grabText.innerText = job.message;
+                        grabBar.style.width = (isComplete ? 100 : pct) + '%';
+                        if (isComplete) {
+                            document.getElementById('grabStatus').innerText = ' ✓';
+                            document.getElementById('grabCard').style.borderColor = '#28a745';
+                        }
+                    }
+                }
+                summary.innerText = job.message;
+            });
+            
+            window.evtSource.addEventListener('log', (e) => {
+                const log = JSON.parse(e.data);
+                const d = document.createElement('div');
+                const type = log.type || 'info';
+                d.className = `log-entry log-${type}`;
+                d.innerText = `[${new Date().toLocaleTimeString()}] ${log.message}`;
+                logDiv.appendChild(d);
+                logDiv.scrollTop = logDiv.scrollHeight;
+                
+                if (type === 'error') {
+                    summary.style.color = '#ff5555';
+                    summary.innerText = "Error: " + log.message;
+                } else if (type === 'success') {
+                    summary.style.color = '#28a745';
+                } else if (type === 'warning') {
+                    summary.style.color = '#ffc107';
+                } else {
+                    summary.style.color = '';
+                }
+            });
+            
+            window.evtSource.addEventListener('report', (e) => {
+                const report = JSON.parse(e.data);
+                showReport(report);
+                pulse.style.animation = "";
+                summary.innerText = "Complete";
+                // setTimeout(() => toggleStatusPanel(false), 5000); // Keep open if they want to see it
+            });
+        }
+        
+        function clearLogs() {
+            document.getElementById('logContainer').innerHTML = '';
+        }
+        
+        function showReport(report) {
+            document.getElementById('statusArea').classList.remove('hidden');
+            document.getElementById('reportSection').classList.remove('hidden');
+            document.getElementById('reportChannels').innerText = report.channelsProcessed.toLocaleString();
+            document.getElementById('reportPrograms').innerText = report.programsProcessed.toLocaleString();
+            document.getElementById('reportMatched').innerText = `${report.channelsMatched} / ${report.totalChannels}`;
+            document.getElementById('reportTotal').innerText = report.totalChannels;
+            document.getElementById('reportFiles').innerText = report.filesGenerated.join(', ');
+        }
+        
+        function hideReport() {
+            document.getElementById('reportSection').classList.add('hidden');
+            document.getElementById('statusArea').classList.add('hidden');
+        }
+        
+        async function checkJobStatus() {
+            try {
+                const status = await (await fetch('/api/job-status')).json();
+                if (status.running) {
+                    document.getElementById('statusArea').classList.remove('hidden');
+                    startSse();
+                } else if (status.stats) {
+                    document.getElementById('statusArea').classList.remove('hidden');
+                    showReport(status.stats);
+                }
+            } catch(e) { console.log('Job status check failed:', e); }
+        }
+        
+        // --- CHANNEL MANAGER ---
+        async function loadMapping() {
+            try {
+                const res = await (await fetch('/api/channels-with-programs')).json();
+                currentState.channels = res;
+                updateCategoryFilter();
+                renderMappingTable();
+            } catch(e) { console.error("Load mapping failed", e); }
+        }
+
+        function updateCategoryFilter() {
+            const categories = [...new Set(currentState.channels.map(c => c.group_title))].filter(Boolean).sort();
+            const select = document.getElementById('categoryFilter');
+            const current = select.value;
+            select.innerHTML = '<option value="all">All Categories</option>';
+            categories.forEach(cat => {
+                const opt = document.createElement('option');
+                opt.value = cat;
+                opt.textContent = cat;
+                select.appendChild(opt);
+            });
+            if (categories.includes(current)) select.value = current;
+        }
+
+        async function toggleChannel(id, enabled) {
+            try {
+                const res = await fetch('/api/channels/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids: [id], enabled })
+                });
+                if (res.ok) {
+                    const chan = currentState.channels.find(c => c.id === id);
+                    if (chan) chan.enabled = enabled ? 1 : 0;
+                    renderMappingTable();
+                }
+            } catch(e) {}
+        }
+
+        async function bulkAction(enable) {
+            const visibleIds = getVisibleChannels().map(c => c.id);
+            if (visibleIds.length === 0) return;
+            
+            try {
+                const res = await fetch('/api/channels/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids: visibleIds, enabled: enable })
+                });
+                if (res.ok) {
+                    currentState.channels.forEach(c => {
+                        if (visibleIds.includes(c.id)) c.enabled = enable ? 1 : 0;
+                    });
+                    renderMappingTable();
+                }
+            } catch(e) {}
+        }
+        
+        function toggleAllVisible(checked) {
+            // This just toggles UI but we might as well trigger bulk
+            bulkAction(checked);
+        }
+
+        function getVisibleChannels() {
+            const filter = document.getElementById('filterInput').value.toLowerCase();
+            const matchFilter = document.getElementById('matchFilter').value;
+            const statusFilter = document.getElementById('statusFilter').value;
+            const catFilter = document.getElementById('categoryFilter').value;
+            
+            return currentState.channels.filter(c => {
+                const nameMatch = (c.name || '').toLowerCase().includes(filter);
+                const catMatch = (c.group_title || '').toLowerCase().includes(filter);
+                const searchMatch = nameMatch || catMatch;
+
+                let matchStatusMatch = true;
+                if (matchFilter === 'matched') matchStatusMatch = !!(c.matched_epg_id || c.override_epg_id);
+                else if (matchFilter === 'unmatched') matchStatusMatch = !(c.matched_epg_id || c.override_epg_id);
+
+                let enabledMatch = true;
+                if (statusFilter === 'enabled') enabledMatch = c.enabled === 1;
+                else if (statusFilter === 'disabled') enabledMatch = c.enabled === 0;
+
+                let specificCatMatch = true;
+                if (catFilter !== 'all') specificCatMatch = c.group_title === catFilter;
+
+                return searchMatch && matchStatusMatch && enabledMatch && specificCatMatch;
+            });
+        }
+
+        function renderMappingTable() {
+            const tbody = document.getElementById('mappingBody');
+            tbody.innerHTML = '';
+            
+            const rows = getVisibleChannels();
+            
+            document.getElementById('statVisibleCount').innerText = rows.length;
+            document.getElementById('statMatchedCount').innerText = rows.filter(c => c.matched_epg_id || c.override_epg_id).length;
+
+            if (rows.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px;">No channels found matching the current filters.</td></tr>';
+                return;
+            }
+
+            rows.slice(0, 500).forEach(c => { // Cap to 500 for performance
+                const tr = document.createElement('tr');
+                tr.id = `row-${c.id}`;
+                if (c.enabled === 0) tr.style.opacity = '0.5';
+                
+                let badgeClass = 'badge-danger';
+                let confText = 'Unmatched';
+                let matchId = c.matched_epg_id;
+
+                if (c.is_overridden) {
+                    badgeClass = 'badge-success';
+                    confText = 'Override';
+                    matchId = c.override_epg_id;
+                } else if (matchId) {
+                     if (c.match_type === 'Exact ID Match' || c.match_type === 'Exact Name Match') {
+                         badgeClass = 'badge-success';
+                         confText = 'Exact';
+                     } else if (c.match_type && c.match_type.includes('Fuzzy')) {
+                         badgeClass = 'badge-warning';
+                         confText = 'Fuzzy';
+                     } else {
+                         badgeClass = 'badge-warning';
+                         confText = 'Match';
+                     }
+                }
+
+                const isEnabled = c.enabled === 1;
+
+                const grab = c.last_grab;
+                let grabHtml = '<span style="color:#888;">No Data</span>';
+                if (grab) {
+                    const color = grab.success ? '#28a745' : '#dc3545';
+                    const icon = grab.success ? '✓' : '✗';
+                    const timeStr = new Date(grab.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    grabHtml = `<div style="color:${color}; font-size:12px;" title="${grab.message || ''}">
+                        <strong>${icon}</strong> ${grab.message || ''}
+                        <br><small style="color:#888;">Last: ${timeStr}</small>
+                    </div>`;
+                }
+
+                tr.innerHTML = `
+                    <td onclick="event.stopPropagation()">
+                        <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="toggleChannel('${c.id}', this.checked)">
+                    </td>
+                    <td><small style="color:#888;">${c.channel_number || '-'}</small></td>
+                    <td>
+                        <img src="${c.tvg_logo || c.epg_icon || ''}" style="width:30px; height:30px; object-fit:contain; border-radius:4px; background:#eee;" onerror="this.style.display='none'">
+                    </td>
+                    <td onclick="toggleExpand('${c.id}')">
+                        <div style="font-weight:bold">${c.name || 'Unknown'}</div>
+                        <div style="font-size:11px; color:#888;">${c.group_title || 'No Category'}</div>
+                    </td>
+                    <td>
+                        ${c.current_program_title ? `
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                ${c.current_program_icon ? `<img src="${c.current_program_icon}" style="width:40px; height:30px; object-fit:cover; border-radius:3px;" onerror="this.style.display='none'">` : ''}
+                                <div>
+                                    <div style="font-size:13px; font-weight:500;">${c.current_program_title}</div>
+                                    ${c.current_program_subtitle ? `<div style="font-size:11px; color:#666;">${c.current_program_subtitle}</div>` : ''}
+                                    ${c.current_program_episode ? `<div style="font-size:10px; color:#888;">${c.current_program_episode}</div>` : ''}
+                                </div>
+                            </div>
+                        ` : '<span style="color:#888; font-size:12px;">No program data</span>'}
+                    </td>
+                    <td>${grabHtml}</td>
+                    <td onclick="toggleExpand('${c.id}')"><small>${matchId || '-'}</small></td>
+                    <td onclick="toggleExpand('${c.id}')"><span class="badge ${badgeClass}">${confText}</span><br><small style="font-size:9px; color:#999;">${c.match_type || ''}</small></td>
+                    <td>
+                        <button class="secondary small-btn" onclick="toggleExpand('${c.id}')">Match</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+
+                // Re-expand if this was the expanded channel
+                if (currentState.expandedChannelId === c.id) {
+                    requestAnimationFrame(() => renderExpandedRow(c.id));
+                }
+            });
+            
+            if (rows.length > 500) {
+                 const more = document.createElement('tr');
+                 more.innerHTML = `<td colspan="9" style="text-align:center; color:#888; padding:10px;">Showing first 500 channels. Filter to see more.</td>`;
+                 tbody.appendChild(more);
+            }
+        }
+
+        // --- EXPANDABLE ROW ---
+        function toggleExpand(channelId) {
+            const existing = document.getElementById('expanded-row-container');
+            const row = document.getElementById(`row-${channelId}`);
+            
+            if (currentState.expandedChannelId === channelId) {
+                if (existing) existing.remove();
+                if (row) row.classList.remove('expanded-row');
+                currentState.expandedChannelId = null;
+                return;
+            }
+
+            if (existing) {
+                existing.remove();
+                const prevRow = document.querySelector('.expanded-row');
+                if (prevRow) prevRow.classList.remove('expanded-row');
+            }
+
+            currentState.expandedChannelId = channelId;
+            renderExpandedRow(channelId);
+        }
+
+        function renderExpandedRow(channelId) {
+            const row = document.getElementById(`row-${channelId}`);
+            if (!row) return;
+            
+            row.classList.add('expanded-row');
+            const channel = currentState.channels.find(c => c.id === channelId);
+            
+            const expandedTr = document.createElement('tr');
+            expandedTr.id = 'expanded-row-container';
+            expandedTr.className = 'expanded-row';
+            expandedTr.innerHTML = `
+                <td colspan="9">
+                    <div class="expand-content">
+                        <div style="display: flex; gap: 30px; align-items: flex-start;">
+                            <div style="flex: 1;">
+                                <strong>🔗 Manual EPG ID:</strong>
+                                <div style="display: flex; gap: 10px; margin-top: 8px;">
+                                    <input type="text" id="manualEpgId" placeholder="Enter EPG ID directly (e.g. CNN.us)" style="flex: 1;">
+                                    <button onclick="applyManualId('${channelId}')">Apply</button>
+                                </div>
+                                <div style="margin-top: 20px;">
+                                    <strong>🔍 Search EPG Database:</strong>
+                                    <input type="text" id="searchInput" placeholder="Search by name or ID..." onkeyup="searchEpg(this.value)" style="width: 100%; margin-top: 5px;">
+                                    <div id="searchResultsInline" class="search-results-inline">
+                                        <div style="padding:15px; color:#777; text-align:center;">Type at least 2 characters to search...</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="width: 250px; padding: 20px; background: white; border-radius: 8px; border: 1px solid #cce5ff; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                                <div style="font-size: 12px; color: #666; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Current Match</div>
+                                <div style="font-weight: bold; overflow-wrap: break-word; color: #007bff; font-size: 1.1em;">${channel.override_epg_id || channel.matched_epg_id || 'None'}</div>
+                                <div style="margin-top: 25px; display: flex; flex-direction: column; gap: 10px;">
+                                    <button class="secondary small-btn" onclick="clearOverride('${channelId}')" style="background:#dc3545; width: 100%; height: 36px;">Clear Match</button>
+                                    <button class="secondary small-btn" onclick="toggleExpand('${channelId}')" style="width: 100%; height: 36px;">Close</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </td>
+            `;
+            row.parentNode.insertBefore(expandedTr, row.nextSibling);
+            document.getElementById('searchInput').focus();
+        }
+
+        let searchTimeout;
+        function searchEpg(query) {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(async () => {
+                const div = document.getElementById('searchResultsInline');
+                if (!div) return;
+                
+                if (query.trim().length < 2) {
+                    div.innerHTML = '<div style="padding:15px; color:#777; text-align:center;">Type at least 2 characters to search...</div>';
+                    return;
+                }
+                
+                div.innerHTML = '<div style="padding:15px; color:#777; text-align:center;">Searching...</div>';
+                
+                try {
+                    const res = await (await fetch(`/api/search-epg?q=${encodeURIComponent(query)}`)).json();
+                    div.innerHTML = '';
+                    
+                    if (res.length === 0) {
+                        div.innerHTML = '<div style="padding:15px; text-align:center; color:#888;">No results found</div>';
+                        return;
+                    }
+                    
+                    res.forEach(r => {
+                        const item = document.createElement('div');
+                        item.className = 'search-result-item';
+                        item.innerHTML = `
+                            <div style="font-weight:bold;">${r.display_name}</div>
+                            <div class="id">${r.id}</div>
+                        `;
+                        item.onclick = () => setOverride(currentState.expandedChannelId, r.id);
+                        div.appendChild(item);
+                    });
+                } catch (e) {
+                    div.innerHTML = '<div style="padding:15px; color:#dc3545; text-align:center;">Search failed</div>';
+                }
+            }, 300);
+        }
+
+        async function setOverride(channelId, epgId) {
+            if (!channelId) return;
+            
+            try {
+                const res = await fetch('/api/override', {
+                    method: 'POST', 
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ channel_id: channelId, epg_id: epgId })
+                });
+                
+                if (res.ok) {
+                    currentState.expandedChannelId = null;
+                    loadMapping();
+                }
+            } catch(e) {}
+        }
+        
+        async function clearOverride(channelId) {
+             if (!channelId) return;
+             await setOverride(channelId, null);
+        }
+        
+        async function applyManualId(channelId) {
+            const manualId = document.getElementById('manualEpgId').value.trim();
+            if (!manualId) { alert('Please enter an EPG ID.'); return; }
+            await setOverride(channelId, manualId);
+        }
+
+        async function showGrabHistory() {
+            const modal = document.getElementById('historyModal');
+            const tbody = document.getElementById('historyBody');
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Loading history...</td></tr>';
+            modal.classList.add('visible');
+
+            try {
+                const logs = await (await fetch('/api/grab-logs')).json();
+                tbody.innerHTML = '';
+                if (logs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No grab history found.</td></tr>';
+                    return;
+                }
+                logs.forEach(log => {
+                    const date = new Date(log.timestamp).toLocaleString();
+                    const statusClass = log.success ? 'log-success' : 'log-error';
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${date}</td>
+                        <td><strong>${log.xmltv_id}</strong></td>
+                        <td>${log.site}</td>
+                        <td class="${statusClass}">${log.success ? 'Success' : 'Failed'}</td>
+                        <td>${log.program_count || 0}</td>
+                        <td>${(log.duration_ms / 1000).toFixed(1)}s</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:red;">Failed to load history.</td></tr>';
+            }
+        }
+
+        function closeHistory() {
+            document.getElementById('historyModal').classList.remove('visible');
+        }
+
+        // --- IMDb METADATA CONFIG ---
+        async function loadMetadataConfig() {
+            try {
+                const config = await (await fetch('/api/metadata/config')).json();
+                currentState.metadataConfig = config;
+                
+                // Update UI
+                const enabledCheckbox = document.getElementById('metadataEnabled');
+                const configSection = document.getElementById('metadataConfigSection');
+                
+                if (enabledCheckbox) {
+                    enabledCheckbox.checked = config.enabled;
+                }
+                
+                if (configSection) {
+                    configSection.style.display = config.enabled ? 'block' : 'none';
+                }
+                
+                if (config.enabled) {
+                    await updateMetadataStats();
+                }
+            } catch (e) {
+                console.error('Failed to load metadata config:', e);
+            }
+        }
+
+        function toggleMetadataEnrichment() {
+            const enabled = document.getElementById('metadataEnabled').checked;
+            const configSection = document.getElementById('metadataConfigSection');
+            configSection.style.display = enabled ? 'block' : 'none';
+            
+            // Save config immediately when toggled
+            saveMetadataConfig();
+        }
+
+        async function saveMetadataConfig() {
+            const enabled = document.getElementById('metadataEnabled')?.checked || false;
+            
+            try {
+                await fetch('/api/metadata/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled })
+                });
+                
+                if (enabled) {
+                    await updateMetadataStats();
+                }
+            } catch (e) {
+                console.error('Failed to save metadata config:', e);
+            }
+        }
+
+        async function updateMetadataStats() {
+            try {
+                const stats = await (await fetch('/api/metadata/stats')).json();
+                
+                document.getElementById('statImdbDataAge').textContent = stats.imdbDataAge || 'Not downloaded';
+                document.getElementById('statCachedShows').textContent = stats.cachedShows.toLocaleString();
+                document.getElementById('statEnrichedPrograms').textContent = stats.enrichedPrograms.toLocaleString();
+                document.getElementById('statPendingPrograms').textContent = stats.pendingPrograms.toLocaleString();
+            } catch (e) {
+                console.error('Failed to load metadata stats:', e);
+            }
+        }
+
+        async function triggerManualEnrich() {
+            if (!confirm('Start metadata enrichment now? On first run, this will download ~100MB of IMDb data.')) return;
+            
+            try {
+                const res = await fetch('/api/metadata/enrich', { method: 'POST' });
+                const data = await res.json();
+                
+                if (data.success) {
+                    alert('Metadata enrichment started! Check the status panel for progress.');
+                    startSse();
+                } else {
+                    alert('Failed to start enrichment: ' + (data.error || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Error: ' + e.message);
+            }
+        }
+
+        async function refreshImdbData() {
+            if (!confirm('Download fresh IMDb data? This will download ~100MB and may take a few minutes.')) return;
+            
+            try {
+                const res = await fetch('/api/metadata/refresh-data', { method: 'POST' });
+                const data = await res.json();
+                
+                if (data.success) {
+                    alert('IMDb data refresh started! Check the status panel for progress.');
+                    startSse();
+                } else {
+                    alert('Failed: ' + (data.error || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Error: ' + e.message);
+            }
+        }
+
+        async function clearMetadataCache() {
+            if (!confirm('Clear all cached metadata? Programs will need to be re-enriched.')) return;
+            
+            try {
+                await fetch('/api/metadata/clear-cache', { method: 'POST' });
+                alert('Metadata cache cleared.');
+                await updateMetadataStats();
+            } catch (e) {
+                alert('Error: ' + e.message);
+            }
+        }
+
+        init();
+    </script>
+
+    <!-- Grab History Modal -->
+    <div id="historyModal" class="modal">
+        <div class="modal-content">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
+                <h2 style="margin:0;">Grab History (Last 1000)</h2>
+                <button onclick="closeHistory()" class="secondary">Close</button>
+            </div>
+            <table class="history-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>ID</th>
+                        <th>Site</th>
+                        <th>Status</th>
+                        <th>Progs</th>
+                        <th>Duration</th>
+                    </tr>
+                </thead>
+                <tbody id="historyBody"></tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>
