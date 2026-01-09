@@ -2,6 +2,12 @@
 
 A self-hosted EPG (Electronic Program Guide) management system that matches IPTV playlists with guide data from multiple sources.
 
+## Demo
+
+![EPG Manager Demo](demo-assets/epg-manager-demo.webp)
+
+_Full workflow: Configure playlist → Start processing → View channel matching progress → Browse channel mapping_
+
 ## Features
 
 - **Multi-Source EPG Processing**: Fetch guide data from IPTV-ORG site scrapers with automatic fallback

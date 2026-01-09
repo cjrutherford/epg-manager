@@ -45,3 +45,4 @@ progress_stream.txt
 playwright-report/
 test-results/
 e2e/*.js
+demo-data/
