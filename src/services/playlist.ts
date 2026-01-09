@@ -37,7 +37,7 @@ export async function getPlaylistCategories(): Promise<PlaylistCategory[]> {
     return result;
 }
 
-function generateId(url: string, name: string): string {
+export function generateId(url: string, name: string): string {
     return createHash('md5').update(url + name).digest('hex');
 }
 
