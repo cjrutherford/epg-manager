@@ -8,15 +8,32 @@
     "url": "git+https://github.com/cjrutherford/epg-manager.git"
   },
   "author": "cjrutherford",
-  "keywords": ["iptv", "epg", "xmltv", "m3u", "tvmaze", "jellyfin", "plex", "playlist"],
+  "keywords": [
+    "iptv",
+    "epg",
+    "xmltv",
+    "m3u",
+    "tvmaze",
+    "jellyfin",
+    "plex",
+    "playlist"
+  ],
   "scripts": {
     "start": "node dist/server.js",
     "build": "tsc",
+    "build:client": "cd client && npx ng build",
+    "build:all": "tsc && cd client && npx ng build",
     "dev": "ts-node src/server.ts",
+    "dev:client": "cd client && npx ng serve --proxy-config proxy.conf.json",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "docker:start": "docker compose up -d --build"
   },
   "license": "MIT",
   "dependencies": {

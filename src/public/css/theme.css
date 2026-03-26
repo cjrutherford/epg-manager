@@ -1,0 +1,253 @@
+/* Shared Design Tokens - Glass & Glow Theme */
+:root {
+    /* Backgrounds */
+    --bg-dark: #050a10;
+    /* Deepest blue/black */
+    --bg-gradient: radial-gradient(circle at top right, #1a2c42, #050a10 80%);
+
+    /* Glass Effects */
+    --bg-glass: rgba(20, 30, 48, 0.6);
+    --bg-glass-strong: rgba(20, 30, 48, 0.85);
+    --bg-glass-light: rgba(255, 255, 255, 0.03);
+
+    /* Colors */
+    --text-primary: #ffffff;
+    --text-secondary: #94a3b8;
+
+    --color-primary: #00d4ff;
+    /* Cyan Glow */
+    --color-primary-dim: rgba(0, 212, 255, 0.1);
+    --color-secondary: #64748b;
+    --color-success: #00ff9d;
+    --color-danger: #ff4d4d;
+    --color-warning: #ffd700;
+
+    /* Fonts */
+    --font-heading: 'Outfit', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    /* Borders & Shadows */
+    --border-glass: 1px solid rgba(255, 255, 255, 0.08);
+    --border-glow: 1px solid rgba(0, 212, 255, 0.4);
+
+    --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.3);
+    --shadow-glow: 0 0 15px rgba(0, 212, 255, 0.2);
+    --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+
+    /* Blur */
+    --backdrop-blur: blur(16px);
+
+    /* Border Radius */
+    --radius-sm: 6px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap');
+
+body {
+    background: var(--bg-dark);
+    background-image: var(--bg-gradient);
+    background-attachment: fixed;
+    color: var(--text-primary);
+    font-family: var(--font-heading);
+    margin: 0;
+    padding: 0;
+    line-height: 1.6;
+    min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    font-family: var(--font-heading);
+    font-weight: 600;
+    margin-top: 0;
+    letter-spacing: -0.02em;
+    color: #fff;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+code,
+pre,
+.mono {
+    font-family: var(--font-mono);
+}
+
+/* Glassmorphism Utilities */
+.glass {
+    background: var(--bg-glass);
+    backdrop-filter: var(--backdrop-blur);
+    -webkit-backdrop-filter: var(--backdrop-blur);
+    border: var(--border-glass);
+    box-shadow: var(--shadow-glass);
+}
+
+.glass-card {
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 24px -1px rgba(0, 0, 0, 0.2);
+    border-radius: var(--radius-md);
+    padding: 24px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.glass-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3), 0 0 20px rgba(0, 212, 255, 0.05);
+    border-color: rgba(0, 212, 255, 0.2);
+}
+
+/* Buttons */
+.btn {
+    padding: 10px 20px;
+    border-radius: var(--radius-sm);
+    border: none;
+    cursor: pointer;
+    font-family: var(--font-heading);
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    letter-spacing: 0.02em;
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--color-primary) 0%, #00a3cc 100%);
+    color: #000;
+    box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3);
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.btn-primary:hover {
+    box-shadow: 0 6px 20px rgba(0, 212, 255, 0.5);
+    transform: translateY(-1px);
+    filter: brightness(1.1);
+}
+
+.btn-primary:active {
+    transform: translateY(0);
+}
+
+.btn-secondary {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.3);
+    color: #fff;
+}
+
+.btn.small-btn {
+    padding: 6px 12px;
+    font-size: 0.8rem;
+}
+
+/* Inputs */
+input,
+select,
+textarea {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    transition: all 0.2s ease;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 1px var(--color-primary), 0 0 15px rgba(0, 212, 255, 0.2);
+    background: rgba(0, 0, 0, 0.5);
+}
+
+input::placeholder {
+    color: rgba(255, 255, 255, 0.3);
+}
+
+/* Utilities */
+.text-primary {
+    color: var(--color-primary);
+}
+
+.text-success {
+    color: var(--color-success);
+}
+
+.text-danger {
+    color: var(--color-danger);
+}
+
+.text-warning {
+    color: var(--color-warning);
+}
+
+.text-secondary {
+    color: var(--text-secondary);
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* Badges */
+.badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 0.72em;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.badge-primary {
+    background: rgba(0, 212, 255, 0.15);
+    color: var(--color-primary);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+}
+
+.badge-success {
+    background: rgba(0, 255, 157, 0.1);
+    color: var(--color-success);
+    border: 1px solid rgba(0, 255, 157, 0.25);
+}
+
+.badge-warning {
+    background: rgba(255, 215, 0, 0.1);
+    color: var(--color-warning);
+    border: 1px solid rgba(255, 215, 0, 0.25);
+}
+
+.badge-danger {
+    background: rgba(255, 77, 77, 0.1);
+    color: var(--color-danger);
+    border: 1px solid rgba(255, 77, 77, 0.25);
+}
+
+/* Stat row utility */
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    font-size: 0.9em;
+    color: var(--text-secondary);
+}
+
+.stat-row:last-child {
+    border-bottom: none;
+}

@@ -11,12 +11,18 @@ coverage
 playwright-report
 test-results
 e2e
+test-data
+demo-data
+demo-assets
 *.log
 *.txt
-*.md
 *.test.ts
 src/debug_*.ts
 src/__tests__
 src/services/__tests__
 jest.config.js
+playwright.config.js
 playwright.config.ts
+scripts
+.kilo
+ AGENTS.md

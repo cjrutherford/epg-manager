@@ -5,7 +5,7 @@ import * as path from 'path';
 // Ensure data dir exists
 export const DB_DIR = process.env.DB_DIR || path.join(process.cwd(), 'data');
 if (!fs.existsSync(DB_DIR)) {
-    fs.mkdirSync(DB_DIR, { recursive: true });
+  fs.mkdirSync(DB_DIR, { recursive: true });
 }
 
 export const db = createClient({
@@ -13,13 +13,17 @@ export const db = createClient({
 });
 
 export async function initDb() {
+  await db.execute('PRAGMA journal_mode = WAL;');
+  await db.execute('PRAGMA synchronous = NORMAL;');
+  await db.execute('PRAGMA busy_timeout = 5000;');
+
   await db.execute(`
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT
     )
   `);
-  
+
   await db.execute(`
     CREATE TABLE IF NOT EXISTS channels (
         id TEXT PRIMARY KEY,
@@ -37,10 +41,11 @@ export async function initDb() {
     )
   `);
 
-  try { await db.execute("ALTER TABLE channels ADD COLUMN lang TEXT"); } catch (e) {}
-  try { await db.execute("ALTER TABLE channels ADD COLUMN match_type TEXT"); } catch (e) {}
-  try { await db.execute("ALTER TABLE channels ADD COLUMN enabled INTEGER DEFAULT 1"); } catch (e) {}
-  try { await db.execute("ALTER TABLE channels ADD COLUMN channel_number INTEGER"); } catch (e) {}
+  try { await db.execute("ALTER TABLE channels ADD COLUMN lang TEXT"); } catch (e) { }
+  try { await db.execute("ALTER TABLE channels ADD COLUMN match_type TEXT"); } catch (e) { }
+  try { await db.execute("ALTER TABLE channels ADD COLUMN enabled INTEGER DEFAULT 1"); } catch (e) { }
+  try { await db.execute("ALTER TABLE channels ADD COLUMN channel_number INTEGER"); } catch (e) { }
+  try { await db.execute("ALTER TABLE channels ADD COLUMN source_url TEXT"); } catch (e) { }
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS epg_channels (
@@ -67,16 +72,17 @@ export async function initDb() {
         icon TEXT
     )
   `);
-  
+
   // Add new columns for existing databases
-  try { await db.execute("ALTER TABLE epg_programs ADD COLUMN sub_title TEXT"); } catch (e) {}
-  try { await db.execute("ALTER TABLE epg_programs ADD COLUMN episode_num TEXT"); } catch (e) {}
-  try { await db.execute("ALTER TABLE epg_programs ADD COLUMN category TEXT"); } catch (e) {}
-  try { await db.execute("ALTER TABLE epg_programs ADD COLUMN rating TEXT"); } catch (e) {}
-  try { await db.execute("ALTER TABLE epg_programs ADD COLUMN icon TEXT"); } catch (e) {}
-  
+  try { await db.execute("ALTER TABLE epg_programs ADD COLUMN sub_title TEXT"); } catch (e) { }
+  try { await db.execute("ALTER TABLE epg_programs ADD COLUMN episode_num TEXT"); } catch (e) { }
+  try { await db.execute("ALTER TABLE epg_programs ADD COLUMN category TEXT"); } catch (e) { }
+  try { await db.execute("ALTER TABLE epg_programs ADD COLUMN rating TEXT"); } catch (e) { }
+  try { await db.execute("ALTER TABLE epg_programs ADD COLUMN icon TEXT"); } catch (e) { }
+
   await db.execute("CREATE INDEX IF NOT EXISTS idx_epg_programs_channel ON epg_programs(channel_id, source)");
   await db.execute("CREATE INDEX IF NOT EXISTS idx_epg_programs_times ON epg_programs(start, stop)");
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_epg_programs_title ON epg_programs(title)");
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS manual_overrides (
@@ -85,10 +91,10 @@ export async function initDb() {
     )
   `);
 
-    // Drops and Recreates for updated schema
-    await db.execute("DROP TABLE IF EXISTS iptv_org_map");
+  // Drops and Recreates for updated schema
+  await db.execute("DROP TABLE IF EXISTS iptv_org_map");
 
-    await db.execute(`
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS iptv_org_map (
         name TEXT,
         xmltv_id TEXT,
@@ -98,7 +104,7 @@ export async function initDb() {
         PRIMARY KEY (name, xmltv_id)
     )
   `);
-  
+
   await db.execute("CREATE INDEX IF NOT EXISTS idx_iptv_map_name ON iptv_org_map(name)");
 
   // Site status tracking for dynamic retry logic
@@ -160,9 +166,9 @@ export async function initDb() {
   `);
 
   // Add enrichment columns to epg_programs if not present
-  try { await db.execute("ALTER TABLE epg_programs ADD COLUMN tmdb_id INTEGER"); } catch (e) {}
-  try { await db.execute("ALTER TABLE epg_programs ADD COLUMN tmdb_poster TEXT"); } catch (e) {}
-  try { await db.execute("ALTER TABLE epg_programs ADD COLUMN enriched INTEGER DEFAULT 0"); } catch (e) {}
+  try { await db.execute("ALTER TABLE epg_programs ADD COLUMN tmdb_id INTEGER"); } catch (e) { }
+  try { await db.execute("ALTER TABLE epg_programs ADD COLUMN tmdb_poster TEXT"); } catch (e) { }
+  try { await db.execute("ALTER TABLE epg_programs ADD COLUMN enriched INTEGER DEFAULT 0"); } catch (e) { }
 
   // Channel grab status tracking for auto-disable functionality
   await db.execute(`
@@ -186,13 +192,60 @@ export async function initDb() {
         cached_at INTEGER
     )
   `);
+
+  // DVR scheduled recordings
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS scheduled_recordings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        channel_id TEXT NOT NULL,
+        channel_name TEXT,
+        program_title TEXT,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        stream_url TEXT NOT NULL,
+        status TEXT DEFAULT 'scheduled',
+        filename TEXT,
+        file_size INTEGER,
+        error_message TEXT,
+        created_at INTEGER DEFAULT (unixepoch())
+    )
+  `);
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_scheduled_recordings_status ON scheduled_recordings(status)");
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_scheduled_recordings_start ON scheduled_recordings(start_time)");
+
+  // Manual metadata overrides – user-corrected TVMaze matches
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS metadata_overrides (
+        title_normalized TEXT PRIMARY KEY,
+        tvmaze_id INTEGER,
+        show_name TEXT,
+        genres TEXT,
+        rating TEXT
+    )
+  `);
+
+  // Channel favorites - user-marked channels for quick access
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS channel_favorites (
+      channel_id TEXT PRIMARY KEY,
+      created_at INTEGER DEFAULT (unixepoch())
+    )
+  `);
+
+  // Hidden channels - user-hidden channels from UI
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS channel_hidden (
+      channel_id TEXT PRIMARY KEY,
+      created_at INTEGER DEFAULT (unixepoch())
+    )
+  `);
 }
 
 export async function getSetting(key: string): Promise<string | null> {
-    const result = await db.execute({ sql: "SELECT value FROM settings WHERE key = ?", args: [key] });
-    return result.rows.length > 0 ? String(result.rows[0].value) : null;
+  const result = await db.execute({ sql: "SELECT value FROM settings WHERE key = ?", args: [key] });
+  return result.rows.length > 0 ? String(result.rows[0].value) : null;
 }
 
 export async function setSetting(key: string, value: string) {
-    await db.execute({ sql: "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", args: [key, value] });
+  await db.execute({ sql: "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", args: [key, value] });
 }

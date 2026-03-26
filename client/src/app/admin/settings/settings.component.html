@@ -1,0 +1,132 @@
+<div class="settings-page">
+    <h1>Settings</h1>
+
+    @if (loading) {
+    <div class="loading-container">
+        <div class="spinner"></div>
+    </div>
+    } @else {
+    <!-- Playlist & EPG Config -->
+    <div class="glass-card settings-card">
+        <h2>📡 Playlist Configuration</h2>
+
+        <!-- Selected Playlists -->
+        @if (selectedPlaylists.length > 0) {
+        <div class="selected-playlists">
+            <span class="current-label">Active Playlists ({{ selectedPlaylists.length }})</span>
+            <div class="playlist-chips">
+                @for (url of selectedPlaylists; track url) {
+                <div class="playlist-chip">
+                    <span class="chip-label" [title]="url">{{ playlistLabel(url) }}</span>
+                    <button class="chip-remove" (click)="removePlaylist(url)" title="Remove playlist">✕</button>
+                </div>
+                }
+            </div>
+        </div>
+        }
+
+        <!-- Custom URL -->
+        <div class="form-group">
+            <label>Custom Playlist URL</label>
+            <div class="custom-url-row">
+                <input type="text" class="themed-input custom-url-input" [(ngModel)]="customPlaylistUrl"
+                    placeholder="Paste any M3U playlist URL..."
+                    (keyup.enter)="addCustomPlaylist()">
+                <button class="btn btn-secondary" (click)="addCustomPlaylist()"
+                    [disabled]="!customPlaylistUrl.trim()">Add</button>
+            </div>
+        </div>
+
+        <!-- iptv-org Browser -->
+        <div class="form-group">
+            <label>Or select from iptv-org</label>
+            <button class="btn btn-secondary" (click)="loadIptvOrgPlaylists()" [disabled]="iptvOrgLoading">
+                {{ iptvOrgLoading ? 'Loading...' : iptvOrgFiles.length ? 'Refresh List' : 'Browse iptv-org Playlists' }}
+            </button>
+        </div>
+
+        @if (iptvOrgFiles.length > 0) {
+        <div class="iptv-org-browser">
+            <input type="text" class="themed-input w-full" [(ngModel)]="iptvOrgSearchQuery"
+                placeholder="Search countries...">
+            <div class="iptv-org-grid">
+                @for (file of filteredIptvOrgFiles; track file.name) {
+                <button class="iptv-org-item" [class.selected]="isPlaylistSelected(file.url)"
+                    (click)="toggleIptvOrgPlaylist(file)">
+                    <span class="iptv-org-name">{{ file.name }}</span>
+                    @if (isPlaylistSelected(file.url)) {
+                    <span class="iptv-org-check">✓</span>
+                    }
+                </button>
+                }
+            </div>
+        </div>
+        }
+
+        <div class="form-group" style="margin-top:16px;">
+            <label>EPG Data Duration (days)</label>
+            <input type="number" class="themed-input" [(ngModel)]="epgDays" min="1" max="14" style="width:100px;">
+        </div>
+
+        <button class="btn btn-primary" (click)="saveConfig()" [disabled]="savingConfig">
+            {{ savingConfig ? 'Saving...' : 'Save Configuration' }}
+        </button>
+    </div>
+
+    <!-- Output Files -->
+    <div class="glass-card settings-card">
+        <h2>📦 Output Files</h2>
+        <div class="file-links">
+            <div class="file-link-row">
+                <span>Playlist (M3U)</span>
+                <code>/files/playlist.m3u</code>
+                <button class="btn btn-secondary small-btn" (click)="copyUrl('/files/playlist.m3u')">Copy URL</button>
+            </div>
+            <div class="file-link-row">
+                <span>EPG Guide (XML)</span>
+                <code>/files/guide.xml</code>
+                <button class="btn btn-secondary small-btn" (click)="copyUrl('/files/guide.xml')">Copy URL</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Metadata Enrichment -->
+    <div class="glass-card settings-card">
+        <h2>🎬 Metadata Enrichment</h2>
+        <div class="form-group checkbox-group">
+            <label>
+                <input type="checkbox" [(ngModel)]="metadataEnabled" (change)="toggleMetadata()">
+                Enable metadata enrichment
+            </label>
+        </div>
+
+        @if (metadataEnabled) {
+        <div class="metadata-section">
+            @if (metadataStats) {
+            <div class="stats-grid" style="grid-template-columns:repeat(3,1fr); margin-bottom:20px;">
+                <div class="stat-item">
+                    <div class="stat-val">{{ metadataStats.cachedShows || 0 }}</div>
+                    <div class="stat-label">Cached Shows</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-val">{{ metadataStats.enrichedPrograms || 0 }}</div>
+                    <div class="stat-label">Enriched Programs</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-val">{{ metadataStats.imdbDataAge || 'None' }}</div>
+                    <div class="stat-label">IMDb Data Age</div>
+                </div>
+            </div>
+            }
+
+            <div class="action-row">
+                <button class="btn btn-secondary" (click)="triggerEnrichment()">Run Enrichment</button>
+                <button class="btn btn-secondary" (click)="refreshImdbData()">Refresh IMDb Data</button>
+                <button class="btn btn-secondary" style="color:var(--color-danger);" (click)="clearCache()">Clear
+                    Cache</button>
+            </div>
+        </div>
+        }
+    </div>
+    }
+</div>

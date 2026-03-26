@@ -1,34 +1,91 @@
-FROM node:20-alpine
+# ── Stage 1: Build Server ────────────────────
+FROM node:20-alpine AS server-builder
 
 WORKDIR /app
 
-# Install git for cloning iptv-org/epg
-RUN apk add --no-cache git curl
-
-# Copy package files and install dependencies
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci
 
-# Copy source and build
 COPY tsconfig.json ./
 COPY src ./src
-RUN npm run build
+RUN npx tsc
 
-# Set data directory
+# ── Stage 2: Build Client ────────────────────
+FROM node:20-alpine AS client-builder
+
+WORKDIR /app/client
+
+COPY client/package*.json ./
+RUN npm ci
+
+COPY client/tsconfig*.json ./
+COPY client/angular.json ./
+COPY client/server.ts ./server.ts
+COPY client/src ./src
+RUN npx ng build
+
+# ── Stage 3: Build iptv-org EPG ──────────────
+FROM node:20-alpine AS epg-builder
+
+WORKDIR /tmp
+
+RUN apk add --no-cache git && \
+    git clone --depth 1 https://github.com/iptv-org/epg.git iptv-org-epg && \
+    cd iptv-org-epg && npm install && \
+    rm -rf .git
+
+# ── Stage 4: Production ─────────────────────
+FROM node:20-alpine
+
+RUN apk add --no-cache \
+    ffmpeg \
+    curl \
+    git \
+    tini
+
+WORKDIR /app
+
+# Create non-root user
+RUN addgroup -S epg && adduser -S epg -G epg
+
+COPY package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+# Compiled server
+COPY --from=server-builder /app/dist ./dist
+
+# Compiled client
+COPY --from=client-builder /app/client/dist ./client/dist
+
+# Client node_modules needed for Angular SSR server runtime (iconv-lite etc.)
+# The SSR server at dist/client/server/ resolves modules up to dist/client/
+COPY --from=client-builder /app/client/node_modules ./client/node_modules
+RUN ln -s /app/client/node_modules /app/client/dist/client/node_modules
+
+# iptv-org EPG data (pre-built)
+COPY --from=epg-builder /tmp/iptv-org-epg ./data/iptv-org-epg
+
+# Static assets (served directly)
+COPY src/public ./src/public
+
+# Startup script
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Data directory with proper permissions
 ENV DB_DIR=/app/data
 ENV PORT=3000
+ENV ADMIN_PASSWORD=admin
 
-# Create data directory
-RUN mkdir -p $DB_DIR
-
-# Clone iptv-org/epg repo for grabber functionality
-RUN git clone --depth 1 https://github.com/iptv-org/epg.git $DB_DIR/iptv-org-epg && \
-    cd $DB_DIR/iptv-org-epg && npm install
+RUN mkdir -p /app/data/recordings && \
+    chown -R epg:epg /app/data
 
 EXPOSE 3000
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:3000/api/health || exit 1
 
-CMD ["npm", "start"]
+USER epg
+
+ENTRYPOINT ["tini", "--", "entrypoint.sh"]
+CMD ["node", "dist/server.js"]

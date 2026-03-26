@@ -28,8 +28,8 @@ export async function getEpgFiles(): Promise<EpgFileOption[]> {
 
 export function normalizeId(id: string): string {
     return id
-        .replace(/@.*/, '') 
-        .replace(/\.us[0-9]*$/i, '') 
+        .replace(/@.*/, '')
+        .replace(/\.us[0-9]*$/i, '')
         .replace(/\(.*\)/g, '')
         .replace(/\[.*\]/g, '')
         .replace(/[^a-zA-Z0-9]/g, '')
@@ -40,10 +40,12 @@ export function cleanName(name: string): string {
     return name
         .replace(/\(.*\)/g, '')
         .replace(/\[.*\]/g, '')
-        .replace(/\b\d{3,4}p\b/g, '') 
-        .replace(/\b(HD|FHD|SD|4K|HEVC|UHD)\b/gi, '') 
-        .replace(/\b(US|UK|CA|AU|ES|MX|FR|DE|IT|FRANCE|USA):/gi, '') 
-        .replace(/[^a-zA-Z0-9\s]/g, '') 
+        // Replace separators with spaces FIRST to avoid merging words
+        .replace(/[-_.]/g, ' ')
+        .replace(/\b\d{3,4}p\b/g, '')
+        .replace(/\b(HD|FHD|SD|4K|HEVC|UHD)\b/gi, '')
+        .replace(/\b(US|UK|CA|AU|ES|MX|FR|DE|IT|FRANCE|USA):/gi, '')
+        .replace(/[^a-zA-Z0-9\s]/g, '')
         .replace(/\s+/g, ' ')
         .trim();
 }
@@ -60,21 +62,21 @@ export function getText(val: any): string {
 
 export async function processEpg(epgUrls: string[], options: { skipIptvUpdate?: boolean, skipMatching?: boolean } = {}): Promise<Record<string, number>> {
     if (typeof epgUrls === 'string') epgUrls = [epgUrls];
-    
+
     startJob();
     let totalChannelsProcessed = 0;
     let totalProgramsProcessed = 0;
-    
+
     if (!options.skipIptvUpdate) {
         await updateIptvOrgData();
     }
-    
+
     const programCounts: Record<string, number> = {};
     for (let i = 0; i < epgUrls.length; i++) {
         const url = epgUrls[i];
         const isLocal = !url.startsWith('http');
-        
-        emitLog(`Processing source ${i+1}/${epgUrls.length}: ${url}`, "info", true);
+
+        emitLog(`Processing source ${i + 1}/${epgUrls.length}: ${url}`, "info", true);
 
         await db.execute({ sql: "DELETE FROM epg_programs WHERE source = ?", args: [url] });
         await db.execute({ sql: "DELETE FROM epg_channels WHERE source = ?", args: [url] });
@@ -93,26 +95,22 @@ export async function processEpg(epgUrls: string[], options: { skipIptvUpdate?: 
                 inputStream = fs.createReadStream(url);
                 finalStream = inputStream;
                 emitLog(`Loading local EPG: ${url.split('/').pop()}`, "info", true);
-                emitProgress(`Loading local file...`, 0, totalBytes, 'match');
             } else {
                 emitLog(`Downloading EPG: ${url}`, "info", true);
-                emitProgress(`Connecting to ${url.split('/').pop()}...`, 0, 100, 'match');
                 try {
                     const response = await axios({ url, method: 'GET', responseType: 'stream' });
                     totalBytes = parseInt(response.headers['content-length'] || '0', 10);
                     inputStream = response.data;
-                    
+
                     let lastProgressEmit = 0;
                     inputStream.on('data', (chunk: Buffer) => {
                         downloadedBytes += chunk.length;
                         const now = Date.now();
-                        if (totalBytes > 0 && now - lastProgressEmit > 500) { // Throttle to 500ms
-                            const pct = Math.round((downloadedBytes / totalBytes) * 100);
-                            emitProgress(`Downloading: ${pct}%`, downloadedBytes, totalBytes, 'match');
+                        if (totalBytes > 0 && now - lastProgressEmit > 500) {
                             lastProgressEmit = now;
                         }
                     });
-                    
+
                     if (url.endsWith('.gz')) {
                         finalStream = inputStream.pipe(zlib.createGunzip());
                     } else {
@@ -136,10 +134,10 @@ export async function processEpg(epgUrls: string[], options: { skipIptvUpdate?: 
             let totalPrograms = 0;
             let lastProgressUpdate = 0;
 
-            const commitBatch = async (table: 'channels'|'programs', batch: any[]) => {
+            const commitBatch = async (table: 'channels' | 'programs', batch: any[]) => {
                 if (batch.length === 0) return;
                 const placeholders = batch.map(() => table === 'channels' ? "(?, ?, ?, ?)" : "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(",");
-                const sql = table === 'channels' 
+                const sql = table === 'channels'
                     ? `INSERT OR IGNORE INTO epg_channels (id, source, display_name, icon) VALUES ${placeholders}`
                     : `INSERT INTO epg_programs (channel_id, source, start, stop, title, desc, sub_title, episode_num, category, rating, icon) VALUES ${placeholders}`;
                 await db.execute("BEGIN TRANSACTION");
@@ -152,12 +150,12 @@ export async function processEpg(epgUrls: string[], options: { skipIptvUpdate?: 
                 if (node.name === "channel") {
                     currentChannel = { id: node.attributes.id, source: url, displayName: "", icon: "" };
                 } else if (node.name === "programme") {
-                    currentProgram = { 
-                        channel: node.attributes.channel, 
-                        start: node.attributes.start, 
-                        stop: node.attributes.stop, 
-                        source: url, 
-                        title: "", 
+                    currentProgram = {
+                        channel: node.attributes.channel,
+                        start: node.attributes.start,
+                        stop: node.attributes.stop,
+                        source: url,
+                        title: "",
                         desc: "",
                         subTitle: "",
                         episodeNum: "",
@@ -184,8 +182,8 @@ export async function processEpg(epgUrls: string[], options: { skipIptvUpdate?: 
                     else if (currentTag === "episode-num") currentProgram.episodeNum = text;
                     else if (currentTag === "category") {
                         // Accumulate multiple categories
-                        currentProgram.category = currentProgram.category 
-                            ? currentProgram.category + ", " + text 
+                        currentProgram.category = currentProgram.category
+                            ? currentProgram.category + ", " + text
                             : text;
                     }
                     else if (currentTag === "value" && currentProgram.rating === "") {
@@ -203,11 +201,11 @@ export async function processEpg(epgUrls: string[], options: { skipIptvUpdate?: 
                 } else if (tagName === "programme" && currentProgram) {
                     const chId = currentProgram.channel;
                     programBatch.push([
-                        chId, 
-                        currentProgram.source, 
-                        currentProgram.start, 
-                        currentProgram.stop, 
-                        currentProgram.title, 
+                        chId,
+                        currentProgram.source,
+                        currentProgram.start,
+                        currentProgram.stop,
+                        currentProgram.title,
                         currentProgram.desc,
                         currentProgram.subTitle,
                         currentProgram.episodeNum,
@@ -215,9 +213,9 @@ export async function processEpg(epgUrls: string[], options: { skipIptvUpdate?: 
                         currentProgram.rating,
                         currentProgram.icon
                     ]);
-                    
+
                     programCounts[chId] = (programCounts[chId] || 0) + 1;
-                    
+
                     currentProgram = null;
                     totalPrograms++;
                 }
@@ -228,39 +226,34 @@ export async function processEpg(epgUrls: string[], options: { skipIptvUpdate?: 
             for await (const chunk of finalStream) {
                 const text = typeof chunk === 'string' ? chunk : decoder.write(chunk);
                 parser.write(text);
-                
+
                 // Flush batches after each chunk to maximize memory efficiency
                 if (channelBatch.length > 0) {
                     const b = [...channelBatch]; channelBatch = [];
                     await commitBatch('channels', b);
-                    
-                    if (totalChannels - lastProgressUpdate >= 50) {
-                        emitProgress(`${url.split('/').pop()}: ${totalChannels} channels...`, totalChannels, 0, 'match');
-                        lastProgressUpdate = totalChannels;
-                    }
+
+                    lastProgressUpdate = totalChannels;
                 }
-                
+
                 if (programBatch.length >= 200) {
                     const b = [...programBatch]; programBatch = [];
                     await commitBatch('programs', b);
-                    
-                    if (totalPrograms % 1000 === 0 || totalPrograms % 500 === 0) {
-                        emitProgress(`${url.split('/').pop()}: ${totalChannels} ch, ${totalPrograms} progs...`, totalPrograms, 0, 'match');
-                    }
+
+
                 }
-                
+
                 // Yield to event loop to allow SSE/Network to breathe
                 await new Promise(r => setImmediate(r));
             }
-            
+
             // Final flush
             const finalText = decoder.end();
             if (finalText) parser.write(finalText);
-            
+
             await commitBatch('channels', channelBatch);
             await commitBatch('programs', programBatch);
             parser.close();
-            
+
             totalChannelsProcessed += totalChannels;
             totalProgramsProcessed += totalPrograms;
             emitLog(`Source ${url}: ${totalChannels} channels, ${totalPrograms} progs.`, "info", true);
@@ -272,14 +265,37 @@ export async function processEpg(epgUrls: string[], options: { skipIptvUpdate?: 
     if (options.skipMatching) return programCounts;
 
     // Matching Logic...
+    // Matching Logic...
     const epgChannelsResult = await db.execute("SELECT id as _id, display_name as \"display-name\" FROM epg_channels");
     const allEpgChannels = epgChannelsResult.rows;
     const dbChannelsResult = await db.execute("SELECT * FROM channels");
     const dbChannels = dbChannelsResult.rows;
 
-    const fuse = new Fuse(allEpgChannels, { keys: ['display-name'], threshold: 0.25, includeScore: true });
     const overridesRes = await db.execute("SELECT * FROM manual_overrides");
     const overrides = new Map(overridesRes.rows.map(r => [r.channel_id, r.epg_id]));
+
+    // --- Optimization: Pre-compute Maps for O(1) lookups ---
+    const epgIdMap = new Map<string, any>();
+    const epgNameMap = new Map<string, any>();
+
+    // Fuse options: tuned for better accuracy
+    const fuse = new Fuse(allEpgChannels, {
+        keys: ['display-name'],
+        threshold: 0.3, // Slightly looser than 0.25 to allow for minor variations
+        includeScore: true
+    });
+
+    for (const c of allEpgChannels) {
+        epgIdMap.set(String(c._id).toLowerCase(), c);
+
+        const cleanDisplayName = cleanName(getText(c['display-name'])).toLowerCase();
+        if (cleanDisplayName) {
+            // Store by clean name for strict matching
+            if (!epgNameMap.has(cleanDisplayName)) {
+                epgNameMap.set(cleanDisplayName, c);
+            }
+        }
+    }
 
     let matchCount = 0;
     const updates: Promise<any>[] = [];
@@ -289,56 +305,62 @@ export async function processEpg(epgUrls: string[], options: { skipIptvUpdate?: 
         let match: any = null;
         let matchType = "";
 
-        // NEW: Check for existing match first (Confirm match)
+        // 1. Confirm Existing Match
         if (row.matched_epg_id) {
-            const existing = allEpgChannels.find((c: any) => String(c._id) === String(row.matched_epg_id));
-            if (existing) {
-                match = existing;
+            match = epgIdMap.get(String(row.matched_epg_id).toLowerCase());
+            if (match) {
                 matchType = row.match_type ? String(row.match_type) : "Confirmed Match";
                 if (!matchType.includes("(Confirmed)")) matchType += " (Confirmed)";
             }
         }
 
+        // 2. Manual Override (Highest priority for new matches)
         if (!match && overrides.has(row.id)) {
-            const oid = overrides.get(row.id);
-            match = allEpgChannels.find((c: any) => c._id === oid);
+            const oid = String(overrides.get(row.id)).toLowerCase();
+            match = epgIdMap.get(oid);
             if (match) matchType = "Manual Override";
         }
 
+        // 3. IPTV-ORG Map (Verified)
         if (!match && row.match_type && String(row.match_type).includes("IPTV-ORG Map")) {
-             match = allEpgChannels.find((c: any) => c._id === row.matched_epg_id);
-             if (match) matchType = "IPTV-ORG Map (Verified)";
-             else {
-                 match = { _id: row.matched_epg_id, 'display-name': row.name };
-                 matchType = row.match_type as string; 
-             }
+            // In this specific case, the matched_epg_id might NOT be in our epg_channels table 
+            // if we haven't grabbed that channel yet. 
+            // But if it IS there, we confirm it.
+            const mappedId = String(row.matched_epg_id).toLowerCase();
+            match = epgIdMap.get(mappedId);
+            if (match) {
+                matchType = "IPTV-ORG Map (Verified)";
+            } else {
+                // Keep the mapping even if we don't have EPG data for it yet
+                // But we can't "match" it against an epg_channel record that doesn't exist
+                // logic remains: epg_programs will be empty, but channel has a reference ID.
+                match = { _id: row.matched_epg_id, 'display-name': row.name };
+                matchType = row.match_type as string;
+            }
         }
 
+        // 4. Exact ID Match (O(1))
         if (!match && row.tvg_id) {
-            // Exact ID match
-            match = allEpgChannels.find((c: any) => c._id === row.tvg_id);
+            match = epgIdMap.get(String(row.tvg_id).toLowerCase());
             if (match) matchType = "ID (Exact)";
         }
-        
-        // Try partial ID match (e.g., tvg_id contains the EPG channel ID or vice versa)
-        if (!match && row.tvg_id) {
-            const tid = String(row.tvg_id).toLowerCase();
-            match = allEpgChannels.find((c: any) => {
-                const eid = String(c._id).toLowerCase();
-                return tid.includes(eid) || eid.includes(tid);
-            });
-            if (match) matchType = "ID (Partial)";
-        }
 
-        if (!match && row.name) {
-            const cn = cleanName(row.name as string).toLowerCase();
-            match = allEpgChannels.find((c: any) => cleanName(getText(c['display-name'])).toLowerCase() === cn);
+        // 5. Partial ID Match removed — O(N²) loop with unreliable results.
+        // IPTV-ORG fuzzy matching (in matchChannelsToIptvOrg) covers this better.
+
+        const cleanDbName = row.name ? cleanName(row.name as string).toLowerCase() : "";
+
+        // 6. Strict Clean Name Match (O(1))
+        if (!match && cleanDbName) {
+            match = epgNameMap.get(cleanDbName);
             if (match) matchType = "Strict Clean";
         }
 
-        if (!match && row.name) {
+        // 7. Fuzzy Name Match (Fuse.js)
+        if (!match && cleanDbName) {
+            // Search using the CLEAN name for better accuracy
             const results = fuse.search(cleanName(row.name as string));
-            if (results.length > 0 && (results[0].score as number) <= 0.25) {
+            if (results.length > 0 && (results[0].score as number) <= 0.3) {
                 match = results[0].item;
                 matchType = `Fuzzy (${results[0].score?.toFixed(2)})`;
             }
@@ -351,7 +373,7 @@ export async function processEpg(epgUrls: string[], options: { skipIptvUpdate?: 
                 args: [(match as any)._id, matchType, row.id]
             }));
         } else {
-             updates.push(db.execute({
+            updates.push(db.execute({
                 sql: "UPDATE channels SET matched_epg_id = NULL, match_type = NULL WHERE id = ?",
                 args: [row.id]
             }));
@@ -363,7 +385,7 @@ export async function processEpg(epgUrls: string[], options: { skipIptvUpdate?: 
     await db.execute("COMMIT");
 
     emitLog(`EPG processing complete. Matched ${matchCount}/${dbChannels.length} channels against EPG sources.`, "success");
-    
+
     return programCounts;
 }
 
@@ -373,10 +395,17 @@ export async function processEpg(epgUrls: string[], options: { skipIptvUpdate?: 
  * 1. Exact match on tvg-id vs xmltv-id
  * 2. Exact match on clean name vs iptv name
  * 3. Fuzzy match on name
+ * 
+ * @param onMatch - Optional callback fired with batches of newly matched xmltv_ids.
+ *                  Fires every GRAB_BATCH_SIZE matches so the caller can start
+ *                  EPG grabs immediately rather than waiting for all matching to finish.
  */
-export async function matchChannelsToIptvOrg(): Promise<number> {
+export async function matchChannelsToIptvOrg(
+    onMatch?: (newlyMatchedIds: string[]) => void
+): Promise<number> {
     emitLog("Starting full channel matching against IPTV-ORG metadata...", "info");
-    
+    const GRAB_BATCH_SIZE = 50; // Fire onMatch callback every N new matches
+
     // 1. Get all channels from our playlist
     const dbChannels = (await db.execute("SELECT * FROM channels")).rows;
     if (dbChannels.length === 0) {
@@ -389,28 +418,42 @@ export async function matchChannelsToIptvOrg(): Promise<number> {
         SELECT xmltv_id, name, site, site_id FROM iptv_org_map 
         WHERE site IS NOT NULL AND site_id IS NOT NULL
     `)).rows;
-    
+
     // Create maps for fast lookups
-    const idMap = new Map();
-    const nameMap = new Map();
+    const idMap = new Map();          // xmltv_id (lowercase) → row
+    const normalizedIdMap = new Map(); // normalizeId(xmltv_id) → row  (strips @SD etc.)
+    const nameMap = new Map();        // cleanName(name) → row
+    const nameWordMap = new Map();    // sorted words of name → row (for word-order agnostic matching)
+
     for (const row of iptvOrgChannels) {
-        idMap.set(String(row.xmltv_id).toLowerCase(), row);
+        const xmltvId = String(row.xmltv_id);
+        idMap.set(xmltvId.toLowerCase(), row);
+
+        // Strip @quality suffix for normalized matching  
+        const baseId = xmltvId.replace(/@.*$/, '').toLowerCase();
+        if (!normalizedIdMap.has(baseId)) normalizedIdMap.set(baseId, row);
+
         const cName = cleanName(String(row.name));
-        if (cName) nameMap.set(cName, row);
+        if (cName) {
+            const lc = cName.toLowerCase();
+            if (!nameMap.has(lc)) nameMap.set(lc, row);
+            // Word-sorted key for order-agnostic matching
+            const wordKey = lc.split(/\s+/).sort().join(' ');
+            if (!nameWordMap.has(wordKey)) nameWordMap.set(wordKey, row);
+        }
     }
 
     // Fuzzy Search Index
-    const iptvFuse = new Fuse(iptvOrgChannels, { 
-        keys: ['name', 'xmltv_id'], 
-        threshold: 0.3, 
-        includeScore: true 
+    const iptvFuse = new Fuse(iptvOrgChannels, {
+        keys: ['name', 'xmltv_id'],
+        threshold: 0.35, // Slightly more permissive for better recall
+        includeScore: true
     });
-    
+
     let matchedCount = 0;
     let prevMatchCount = 0;
-    const updates: Promise<any>[] = [];
+    const pendingGrabIds: string[] = []; // IDs accumulating for the next onMatch callback
     const total = dbChannels.length;
-    // Removed redundant emitLog here
 
     const STARTING_CHANNEL_NUMBER = 700;
     let nextNumber = STARTING_CHANNEL_NUMBER;
@@ -433,43 +476,74 @@ export async function matchChannelsToIptvOrg(): Promise<number> {
         let matchReason = "";
         let matchedEpgId = "";
 
-        const iterationBaseMessage = `${getBaseMessage(matchedCount)} (${ch.name}-${ch.tvg_id}-${ch.xmltv_id})`;
+        const iterationBaseMessage = `${getBaseMessage(matchedCount)} [${String(ch.name || '').substring(0, 30)}]`;
 
-        // a. Exact tvg-id match
+        // a. Exact tvg-id match (case-insensitive)
         const tvgId = String(ch.tvg_id || '').toLowerCase();
         if (tvgId && idMap.has(tvgId)) {
             const match = idMap.get(tvgId);
             matchedEpgId = match.xmltv_id;
             matchReason = "Exact ID Match";
             matched = true;
-            if ((i + 1) % 10 === 0) emitProgress(`${iterationBaseMessage} - ${matchReason}`, i, total, 'match');
         }
 
+        // b. Normalized tvg-id match (strip @quality suffix from both sides)
+        if (!matched && tvgId) {
+            const baseId = tvgId.replace(/@.*$/, '');
+            if (normalizedIdMap.has(baseId)) {
+                const match = normalizedIdMap.get(baseId);
+                matchedEpgId = match.xmltv_id;
+                matchReason = "Normalized ID Match";
+                matched = true;
+            }
+        }
 
+        // c. tvg_name match against iptv-org names
+        if (!matched && ch.tvg_name) {
+            const cTvgName = cleanName(String(ch.tvg_name)).toLowerCase();
+            if (cTvgName && nameMap.has(cTvgName)) {
+                const match = nameMap.get(cTvgName);
+                matchedEpgId = match.xmltv_id;
+                matchReason = "TVG Name Match";
+                matched = true;
+            }
+        }
 
-        // b. Exact Name match
+        // d. Exact Name match
         if (!matched) {
-            const cName = cleanName(String(ch.name || ''));
+            const cName = cleanName(String(ch.name || '')).toLowerCase();
             if (cName && nameMap.has(cName)) {
                 const match = nameMap.get(cName);
                 matchedEpgId = match.xmltv_id;
                 matchReason = "Exact Name Match";
                 matched = true;
-                if ((i + 1) % 10 === 0) emitProgress(`${iterationBaseMessage} - ${matchReason}`, i, total, 'match');
             }
         }
 
-        // c. Fuzzy Name match
+        // e. Word-order agnostic name match
+        if (!matched) {
+            const cName = cleanName(String(ch.name || '')).toLowerCase();
+            if (cName) {
+                const wordKey = cName.split(/\s+/).sort().join(' ');
+                if (nameWordMap.has(wordKey)) {
+                    const match = nameWordMap.get(wordKey);
+                    matchedEpgId = match.xmltv_id;
+                    matchReason = "Word-Order Name Match";
+                    matched = true;
+                }
+            }
+        }
+
+        // f. Fuzzy Name match
         if (!matched) {
             const cName = cleanName(String(ch.name || ''));
             if (cName) {
                 const results = iptvFuse.search(cName);
-                if (results.length > 0 && (results[0].score as number) <= 0.3) {
+                if (results.length > 0 && (results[0].score as number) <= 0.35) {
                     const match = results[0].item as any;
                     matchedEpgId = match.xmltv_id;
                     matchReason = `Fuzzy Name Match (${results[0].score?.toFixed(2)})`;
                     matched = true;
-                    if ((i + 1) % 10 === 0) emitProgress(`${iterationBaseMessage} - ${matchReason}`, i, total, 'match');
                 }
             }
         }
@@ -481,34 +555,51 @@ export async function matchChannelsToIptvOrg(): Promise<number> {
         }
 
         if (matched || !ch.channel_number) {
-            if (matched) matchedCount++;
-            updates.push(db.execute({
-                sql: "UPDATE channels SET matched_epg_id = ?, match_type = ?, channel_number = ? WHERE id = ?",
-                args: [matchedEpgId || ch.matched_epg_id, matched ? matchReason : ch.match_type, channelNumber, ch.id]
-            }));
-            // Only update bar if something changed and it's been a few channels
-            if ((i + 1) % 10 === 0 || i === total - 1) {
-                emitProgress(`${iterationBaseMessage} - channel number assigned`, i, total, 'match');
+            if (matched) {
+                matchedCount++;
+                // Queue this ID for the streaming grab batch (only if channel is enabled)
+                if (onMatch && matchedEpgId && matchedEpgId !== ch.matched_epg_id && ch.enabled === 1) {
+                    pendingGrabIds.push(matchedEpgId);
+                    if (pendingGrabIds.length >= GRAB_BATCH_SIZE) {
+                        onMatch([...pendingGrabIds]);
+                        pendingGrabIds.length = 0;
+                    }
+                }
+
+                // Save to database immediately
+                try {
+                    await db.execute({
+                        sql: "UPDATE channels SET matched_epg_id = ?, match_type = ?, channel_number = ? WHERE id = ?",
+                        args: [matchedEpgId, matchReason, channelNumber, ch.id]
+                    });
+                } catch (err: any) {
+                    emitLog(`Match update failed for ${ch.name}: ${err.message}`, "error");
+                }
+            } else if (!ch.channel_number) {
+                // No match but needs channel number
+                await db.execute({
+                    sql: "UPDATE channels SET channel_number = ? WHERE id = ?",
+                    args: [channelNumber, ch.id]
+                });
             }
         }
 
-        // Progress logging - more frequent updates
-        if ((i + 1) % 5 === 0 || i === total - 1) {
-            const msg = `Matching... (${matchedCount}/${total} matched) - ${String(ch.name || '').substring(0, 30)}`;
-            emitProgress(msg, i + 1, total, 'match');
-            
-            // YIELD to prevent HTTP starvation
-            await new Promise(resolve => setTimeout(resolve, 10));
+        // Progress — emit every 20 channels, but YIELD to event loop every 5 to prevent HTTP starvation
+        if ((i + 1) % 20 === 0 || i === total - 1) {
+            emitProgress(`${iterationBaseMessage} - ${matchReason || 'no match'}`, i + 1, total, 'match');
+        }
+        if ((i + 1) % 5 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 0));
         }
     }
 
-    if (updates.length > 0) {
-        await db.execute("BEGIN TRANSACTION");
-        await Promise.all(updates);
-        await db.execute("COMMIT");
-}
-    
-    emitLog(`Matching complete. ${matchedCount} channels matched to IPTV-ORG sites.`, "success");
+    // Flush any remaining grab IDs
+    if (onMatch && pendingGrabIds.length > 0) {
+        onMatch([...pendingGrabIds]);
+        pendingGrabIds.length = 0;
+    }
+
+    emitLog(`Matching complete. ${matchedCount}/${total} channels matched to IPTV-ORG sites.`, "success");
     emitProgress(`Complete: ${matchedCount}/${total} channels matched ✓`, total, total, 'match');
     return matchedCount;
 }
@@ -517,19 +608,19 @@ export async function matchChannelsToIptvOrg(): Promise<number> {
 /**
  * Cleanup EPG data - remove expired programs and orphaned entries
  */
-export async function cleanupEpgData(): Promise<{expiredRemoved: number, orphanedRemoved: number}> {
+export async function cleanupEpgData(): Promise<{ expiredRemoved: number, orphanedRemoved: number }> {
     emitLog("Cleaning up EPG data...", "info");
-    
+
     // Get current time in XMLTV format (YYYYMMDDHHmmss +0000)
     const now = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14) + ' +0000';
-    
+
     // 1. Remove expired programs (stop time is in the past)
     const expiredResult = await db.execute({
         sql: `DELETE FROM epg_programs WHERE stop < ?`,
         args: [now]
     });
     const expiredRemoved = expiredResult.rowsAffected || 0;
-    
+
     // 2. Get the list of valid EPG IDs (enabled + matched channels)
     const validIdsResult = await db.execute(`
         SELECT DISTINCT COALESCE(mo.epg_id, c.matched_epg_id) as epg_id
@@ -539,7 +630,7 @@ export async function cleanupEpgData(): Promise<{expiredRemoved: number, orphane
         AND (mo.epg_id IS NOT NULL OR c.matched_epg_id IS NOT NULL)
     `);
     const validIds = validIdsResult.rows.map(r => String(r.epg_id));
-    
+
     // 3. Remove orphaned programs (channels that don't exist or are disabled/unmatched)
     let orphanedRemoved = 0;
     if (validIds.length > 0) {
@@ -554,7 +645,7 @@ export async function cleanupEpgData(): Promise<{expiredRemoved: number, orphane
         const orphanedResult = await db.execute(`DELETE FROM epg_programs`);
         orphanedRemoved = orphanedResult.rowsAffected || 0;
     }
-    
+
     // 4. Remove orphaned EPG channels
     if (validIds.length > 0) {
         const placeholders = validIds.map(() => '?').join(',');
@@ -565,13 +656,13 @@ export async function cleanupEpgData(): Promise<{expiredRemoved: number, orphane
     } else {
         await db.execute(`DELETE FROM epg_channels`);
     }
-    
+
     if (expiredRemoved > 0 || orphanedRemoved > 0) {
         emitLog(`Cleanup complete: ${expiredRemoved} expired programs, ${orphanedRemoved} orphaned entries removed.`, "success");
     } else {
         emitLog("Cleanup complete: No stale data found.", "info");
     }
-    
+
     return { expiredRemoved, orphanedRemoved };
 }
 
@@ -580,9 +671,9 @@ export async function cleanupEpgData(): Promise<{expiredRemoved: number, orphane
  * Generate playlist.m3u and epg.xml from current database state
  * Called after custom grabbing is complete
  */
-export async function generatePlaylistAndEpg(): Promise<{playlistCount: number, epgChannels: number, epgPrograms: number}> {
+export async function generatePlaylistAndEpg(): Promise<{ playlistCount: number, epgChannels: number, epgPrograms: number }> {
     emitLog("Generating final playlist and EPG files...", "info");
-    
+
     // Get ALL enabled channels (for EPG XML)
     const enabledChannels = (await db.execute(`
         SELECT DISTINCT 
@@ -592,12 +683,12 @@ export async function generatePlaylistAndEpg(): Promise<{playlistCount: number, 
         LEFT JOIN manual_overrides mo ON c.id = mo.channel_id
         WHERE c.enabled = 1
     `)).rows;
-    
+
     // Only matched channels go into M3U (for player compatibility)
     const matchedChannels = enabledChannels.filter(c => c.effective_epg_id);
-    
+
     emitLog(`Generating files: ${enabledChannels.length} enabled, ${matchedChannels.length} matched to EPG`, "info");
-    
+
     // Generate M3U (only matched channels)
     let m3u = "#EXTM3U\n";
     for (const r of matchedChannels) {
@@ -610,7 +701,7 @@ export async function generatePlaylistAndEpg(): Promise<{playlistCount: number, 
     fs.writeFileSync(path.join(DB_DIR, 'playlist.m3u'), m3u);
     const m3uSize = (m3u.length / 1024).toFixed(1);
     emitLog(`Generated playlist.m3u: ${matchedChannels.length} channels, ${m3uSize} KB`, "success");
-    
+
     // Generate EPG XML - include ALL enabled channels with available guide data
     // Use effective_epg_id if available, otherwise fall back to tvg_id or channel id
     const epgChannelList = enabledChannels.map(c => ({
@@ -618,21 +709,34 @@ export async function generatePlaylistAndEpg(): Promise<{playlistCount: number, 
         name: c.name,
         logo: c.tvg_logo
     }));
-    
+
     // Get unique EPG IDs for querying program data
     const allEpgIds = [...new Set(epgChannelList.map(c => String(c.id)))];
+
+    // Debug: Check what's in the database
+    emitLog(`[DEBUG] Checking epg_programs table...`, "info");
+    const debugProgCount = await db.execute(`SELECT COUNT(*) as c FROM epg_programs`);
+    emitLog(`[DEBUG] Total programs in epg_programs: ${debugProgCount.rows[0].c}`, "info");
+
+    // Debug: Check a sample of channel_ids in epg_programs
+    const debugSample = await db.execute(`SELECT DISTINCT channel_id FROM epg_programs LIMIT 10`);
+    emitLog(`[DEBUG] Sample channel_ids in epg_programs: ${JSON.stringify(debugSample.rows.map(r => r.channel_id))}`, "info");
+
+    // Debug: Show what IDs we're querying with
+    emitLog(`[DEBUG] Querying with IDs: ${allEpgIds.slice(0, 5).join(', ')}...`, "info");
+
     let epgProgramCount = 0;
-    
+
     if (allEpgIds.length > 0) {
         emitLog(`Generating epg.xml for ${allEpgIds.length} channels (all enabled)...`, "info");
         const idList = allEpgIds.map(id => `'${String(id).replace(/'/g, "''")}'`).join(",");
         const fileStream = fs.createWriteStream(path.join(DB_DIR, 'epg.xml'));
         fileStream.write('<?xml version="1.0" encoding="UTF-8"?>\n<tv>\n');
-        
+
         // First, write channel info from epg_channels table (if available)
         const epgChannelsData = await db.execute(`SELECT * FROM epg_channels WHERE id IN (${idList})`);
         const epgChannelMap = new Map(epgChannelsData.rows.map(c => [String(c.id), c]));
-        
+
         // Write all channel entries - use epg_channels data if available, otherwise use playlist data
         for (const ch of epgChannelList) {
             const epgData = epgChannelMap.get(String(ch.id));
@@ -643,12 +747,12 @@ export async function generatePlaylistAndEpg(): Promise<{playlistCount: number, 
             channelXml += `</channel>\n`;
             fileStream.write(channelXml);
         }
-        
+
         // Get total program count for progress
         const countRes = await db.execute(`SELECT COUNT(*) as c FROM epg_programs WHERE channel_id IN (${idList})`);
         epgProgramCount = Number(countRes.rows[0].c);
         emitLog(`Writing ${epgProgramCount.toLocaleString()} programs to epg.xml...`, "info");
-        
+
         // Write programs in batches - join with TVMaze cache for enriched metadata
         for (let offset = 0; offset < epgProgramCount; offset += 5000) {
             const progs = await db.execute(`
@@ -666,7 +770,7 @@ export async function generatePlaylistAndEpg(): Promise<{playlistCount: number, 
                 if (p.sub_title) xml += `<sub-title>${getText(p.sub_title)}</sub-title>`;
                 if (p.desc) xml += `<desc>${getText(p.desc)}</desc>`;
                 if (p.episode_num) xml += `<episode-num system="onscreen">${getText(p.episode_num)}</episode-num>`;
-                
+
                 // Use TVMaze genres if available, fallback to original category
                 const categories = p.tvmaze_genres || p.category;
                 if (categories) {
@@ -675,7 +779,7 @@ export async function generatePlaylistAndEpg(): Promise<{playlistCount: number, 
                         xml += `<category>${getText(cat)}</category>`;
                     }
                 }
-                
+
                 // Use TVMaze rating if available, fallback to original
                 const rating = p.tvmaze_rating || p.rating;
                 if (rating) xml += `<rating><value>${getText(rating)}</value></rating>`;
@@ -690,12 +794,12 @@ export async function generatePlaylistAndEpg(): Promise<{playlistCount: number, 
             fileStream.on('error', reject);
         });
     }
-    
+
     const epgPath = path.join(DB_DIR, 'epg.xml');
     const epgStats = fs.existsSync(epgPath) ? fs.statSync(epgPath) : null;
     const epgSize = epgStats ? (epgStats.size / 1024 / 1024).toFixed(1) : '0';
     emitLog(`Generated epg.xml: ${allEpgIds.length} channels, ${epgProgramCount.toLocaleString()} programs, ${epgSize} MB`, "success");
-    
+
     return {
         playlistCount: matchedChannels.length,
         epgChannels: allEpgIds.length,

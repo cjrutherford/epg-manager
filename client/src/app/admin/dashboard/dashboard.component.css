@@ -1,0 +1,94 @@
+.dashboard h1 {
+    margin-bottom: 28px;
+    font-size: 1.6rem;
+}
+
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-bottom: 32px;
+}
+
+.stat-card {
+    text-align: center;
+}
+
+.stat-card .stat-val {
+    font-size: 2.2rem;
+    font-weight: 800;
+    margin-bottom: 4px;
+}
+
+.stat-card .stat-label {
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+}
+
+.stat-card .stat-detail {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.loading-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+}
+
+.actions-section h2 {
+    font-size: 1.1rem;
+    margin-bottom: 16px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.action-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 32px;
+}
+
+.action-card {
+    cursor: pointer;
+    text-align: center;
+}
+
+.action-card:hover {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.1);
+}
+
+.action-icon {
+    font-size: 2rem;
+    margin-bottom: 12px;
+}
+
+.action-title {
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.action-desc {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.schedule-card h3 {
+    margin-bottom: 16px;
+    font-size: 1rem;
+}
+
+@media (max-width: 768px) {
+
+    .dashboard-grid,
+    .action-grid {
+        grid-template-columns: 1fr;
+    }
+}

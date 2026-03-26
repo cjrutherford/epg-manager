@@ -1,0 +1,163 @@
+<!-- Login Overlay -->
+@if (!isAuthenticated) {
+<div class="login-overlay">
+    <div class="login-card glass-card">
+        <div class="login-logo">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="2" y="7" width="20" height="15" rx="2" ry="2" />
+                <polyline points="17 2 12 7 7 2" />
+            </svg>
+            <h2>EPG Manager</h2>
+            <p>Admin Console</p>
+        </div>
+        <form (ngSubmit)="login()" class="login-form">
+            <input type="password" [(ngModel)]="password" name="password" placeholder="Enter password"
+                class="themed-input w-full" required autofocus>
+            @if (loginError) {
+            <div class="login-error">{{ loginError }}</div>
+            }
+            <button type="submit" class="btn btn-primary w-full">Sign In</button>
+        </form>
+    </div>
+</div>
+} @else {
+<div class="admin-shell" [class.sidebar-collapsed]="!sidebarOpen">
+    <!-- Sidebar -->
+    <aside class="sidebar" [class.open]="sidebarOpen">
+        <div class="sidebar-header">
+            <div class="brand-logo">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="7" width="20" height="15" rx="2" ry="2" />
+                    <polyline points="17 2 12 7 7 2" />
+                </svg>
+                <span>EPG Manager</span>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <a routerLink="dashboard" routerLinkActive="active" class="nav-item">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7" />
+                    <rect x="14" y="3" width="7" height="7" />
+                    <rect x="14" y="14" width="7" height="7" />
+                    <rect x="3" y="14" width="7" height="7" />
+                </svg>
+                <span>Dashboard</span>
+            </a>
+            <a routerLink="channels" routerLinkActive="active" class="nav-item">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="7" width="20" height="15" rx="2" ry="2" />
+                    <polyline points="17 2 12 7 7 2" />
+                </svg>
+                <span>Channels</span>
+            </a>
+            <a routerLink="dvr" routerLinkActive="active" class="nav-item">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <circle cx="12" cy="12" r="3" />
+                </svg>
+                <span>DVR</span>
+            </a>
+            <a routerLink="settings" routerLinkActive="active" class="nav-item">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3" />
+                    <path
+                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+                <span>Settings</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <a routerLink="/watch" class="nav-item nav-item-watch">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="5 3 19 12 5 21 5 3" />
+                </svg>
+                <span>Watch TV</span>
+            </a>
+            <button class="nav-item danger" (click)="logout()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+                <span>Logout</span>
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Mobile Header -->
+        <div class="mobile-header">
+            <button class="hamburger" (click)="toggleSidebar()">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="3" y1="12" x2="21" y2="12" />
+                    <line x1="3" y1="6" x2="21" y2="6" />
+                    <line x1="3" y1="18" x2="21" y2="18" />
+                </svg>
+            </button>
+            <span class="mobile-title">EPG Manager</span>
+        </div>
+
+        <div class="content-scroll">
+            <router-outlet></router-outlet>
+        </div>
+
+        <!-- Status Panel -->
+        @if (statusPanelOpen) {
+        <div class="status-panel glass" [style.height.px]="statusPanelHeight">
+            <!-- Drag Handle -->
+            <div class="status-drag-handle" (mousedown)="onDragStart($event)" (touchstart)="onDragStart($event)">
+                <div class="drag-indicator"></div>
+            </div>
+
+            <div class="status-header">
+                <span class="status-title">📊 Status</span>
+                <div class="status-actions">
+                    <button class="small-btn" (click)="clearCompletedProgress()">Clear Done</button>
+                    <button class="small-btn" (click)="clearLogs()">Clear Logs</button>
+                    <button class="small-btn" (click)="toggleStatusPanel()">✕</button>
+                </div>
+            </div>
+
+            <!-- Progress Bars (dynamic phases) -->
+            @for (phase of activePhases; track phase) {
+            <div class="status-progress-row" [class.completed]="progressBars[phase].completed">
+                <div class="progress-label">
+                    <span>{{ getPhaseLabel(phase) }}</span>
+                    <span>{{ progressBars[phase].current }} / {{ progressBars[phase].total }} ({{ getProgress(phase)
+                        }}%)</span>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-bar" [class.progress-done]="progressBars[phase].completed"
+                        [style.width.%]="getProgress(phase)"></div>
+                </div>
+                @if (progressBars[phase].message) {
+                <div class="progress-message">{{ progressBars[phase].message }}</div>
+                }
+            </div>
+            }
+
+            <!-- Scrollable Logs -->
+            <div class="status-logs" #logContainer>
+                @for (log of logs; track $index) {
+                <div class="log-entry" [class]="'log-' + log.level">
+                    <span class="log-time">{{ log.time | date:'HH:mm:ss' }}</span>
+                    <span class="log-msg">{{ log.message }}</span>
+                </div>
+                }
+                @if (logs.length === 0) {
+                <div class="log-empty">No logs yet</div>
+                }
+            </div>
+        </div>
+        }
+    </div>
+
+    <!-- Mobile sidebar overlay -->
+    @if (sidebarOpen && isMobile) {
+    <div class="sidebar-overlay" (click)="sidebarOpen = false"></div>
+    }
+</div>
+}

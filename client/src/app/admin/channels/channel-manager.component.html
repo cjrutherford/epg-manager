@@ -1,0 +1,163 @@
+<div class="channel-manager">
+    <h1>Channel Manager</h1>
+
+    @if (loading) {
+    <div class="loading-container">
+        <div class="spinner"></div>
+    </div>
+    } @else {
+    <!-- Toolbar -->
+    <div class="toolbar glass-card">
+        <div class="toolbar-row">
+            <input type="text" class="themed-input" placeholder="Filter channels..." [(ngModel)]="filterInput"
+                (input)="applyFilters()">
+            <select class="themed-select" [(ngModel)]="matchFilter" (change)="applyFilters()">
+                <option value="all">All Match Status</option>
+                <option value="matched">Matched</option>
+                <option value="unmatched">Unmatched</option>
+            </select>
+            <select class="themed-select" [(ngModel)]="statusFilter" (change)="applyFilters()">
+                <option value="all">All Status</option>
+                <option value="enabled">Enabled</option>
+                <option value="disabled">Disabled</option>
+            </select>
+            <select class="themed-select" [(ngModel)]="categoryFilter" (change)="applyFilters()">
+                <option value="all">All Categories</option>
+                @for (cat of categories; track cat) {
+                <option [value]="cat">{{ cat }}</option>
+                }
+            </select>
+        </div>
+        <div class="toolbar-row">
+            <span class="toolbar-stat">{{ filteredChannels.length }} channels • {{ matchedCount }} matched</span>
+            <div class="toolbar-actions">
+                @if (selectedChannelIds.size > 0) {
+                <span class="toolbar-stat" style="margin-right: 15px;">{{ selectedChannelIds.size }} selected</span>
+                <button class="btn btn-secondary small-btn" (click)="applyBulkAction('enable')">Enable Selected</button>
+                <button class="btn btn-secondary small-btn" (click)="applyBulkAction('disable')">Disable
+                    Selected</button>
+                <button class="btn btn-primary small-btn" (click)="applyBulkAction('auto-assign')">Auto-assign
+                    Numbers</button>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Table -->
+    <div class="glass-card table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:50px">
+                        <input type="checkbox" [ngModel]="isAllSelected" (ngModelChange)="selectAll($event)">
+                    </th>
+                    <th>Channel</th>
+                    <th>Now Playing</th>
+                    <th>Match</th>
+                    <th style="width:60px"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (ch of filteredChannels.slice(0, 500); track ch.id) {
+                <tr [style.opacity]="ch.enabled === 0 ? '0.5' : '1'" [class.selected]="selectedChannelIds.has(ch.id)">
+                    <td>
+                        <input type="checkbox" [ngModel]="selectedChannelIds.has(ch.id)"
+                            (ngModelChange)="toggleSelection(ch.id, $event)">
+                    </td>
+                    <td>
+                        <div class="channel-cell">
+                            @if (ch.tvg_logo) {
+                            <img [src]="ch.tvg_logo" class="channel-logo" alt="">
+                            }
+                            <div>
+                                <div class="channel-name">{{ ch.name }}</div>
+                                <div class="channel-group">{{ ch.group_title || 'Uncategorized' }}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        @if (ch.current_program_title) {
+                        <div class="program-now">{{ ch.current_program_title }}</div>
+                        @if (ch.current_program_subtitle) {
+                        <div class="program-sub">{{ ch.current_program_subtitle }}</div>
+                        }
+                        } @else {
+                        <span class="text-secondary">No Info</span>
+                        }
+                    </td>
+                    <td (click)="toggleExpand(ch.id)" style="cursor:pointer;">
+                        <span class="badge" [class]="getMatchBadge(ch).cls">{{ getMatchBadge(ch).text }}</span>
+                        <div class="epg-id-display">{{ getEffectiveEpgId(ch) }}</div>
+                    </td>
+                    <td>
+                        <button class="btn btn-secondary small-btn" (click)="toggleExpand(ch.id)">Edit</button>
+                    </td>
+                </tr>
+
+                @if (expandedChannelId === ch.id) {
+                <tr class="expanded-row">
+                    <td colspan="5">
+                        <div class="expanded-content">
+                            <div class="expanded-main">
+
+                                <div style="display: flex; gap: 20px; margin-bottom: 20px;">
+                                    <div style="flex: 1;">
+                                        <h4>Virtual Channel Number</h4>
+                                        <input type="number" class="themed-input w-full" [(ngModel)]="ch.channel_number"
+                                            placeholder="e.g. 101">
+                                    </div>
+                                    <div style="flex: 1;">
+                                        <h4>Status</h4>
+                                        <select class="themed-select w-full" [(ngModel)]="ch.enabled">
+                                            <option [ngValue]="1">Enabled</option>
+                                            <option [ngValue]="0">Disabled</option>
+                                        </select>
+                                    </div>
+                                    <div style="display: flex; align-items: flex-end;">
+                                        <button class="btn btn-primary" (click)="saveChannel(ch)">Save Channel</button>
+                                    </div>
+                                </div>
+
+                                <hr style="border-color: var(--color-border); margin: 20px 0;">
+
+                                <h4>EPG Mapping</h4>
+                                <input type="text" class="themed-input w-full" placeholder="Search EPG channels..."
+                                    (input)="searchEpg($any($event.target).value)">
+                                <div class="epg-search-results">
+                                    @if (epgSearchLoading) {
+                                    <div class="search-status">Searching...</div>
+                                    }
+                                    @for (result of epgSearchResults; track result.id) {
+                                    <div class="epg-result" (click)="setOverride(ch.id, result.id)">
+                                        <div>{{ result.display_name }}</div>
+                                        <div class="text-secondary" style="font-size:0.8em;">{{ result.id }}</div>
+                                    </div>
+                                    }
+                                </div>
+                            </div>
+                            <div class="expanded-sidebar">
+                                <div class="sidebar-label">Current EPG Match</div>
+                                <div class="sidebar-value text-primary">{{ getEffectiveEpgId(ch) }}</div>
+                                <button class="btn btn-secondary w-full" style="color:var(--color-danger);"
+                                    (click)="setOverride(ch.id, null)">Clear EPG Match</button>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                }
+                }
+
+                @if (filteredChannels.length === 0) {
+                <tr>
+                    <td colspan="5" style="text-align:center; padding:40px;">No channels found.</td>
+                </tr>
+                }
+            </tbody>
+        </table>
+
+        @if (filteredChannels.length > 500) {
+        <div class="table-overflow-notice">Showing first 500 channels. Use filters to narrow results.</div>
+        }
+    </div>
+    }
+</div>

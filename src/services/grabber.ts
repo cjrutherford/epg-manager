@@ -20,27 +20,27 @@ async function shouldSkipSite(site: string): Promise<boolean> {
         sql: "SELECT last_attempt, last_success, failure_count FROM site_status WHERE site = ?",
         args: [site]
     });
-    
+
     if (result.rows.length === 0) return false;
-    
+
     const row = result.rows[0];
     const failureCount = Number(row.failure_count) || 0;
     const lastAttempt = Number(row.last_attempt) || 0;
     const now = Date.now();
-    
+
     if (failureCount >= MAX_FAILURES_BEFORE_SKIP) {
         const timeSinceLastAttempt = now - lastAttempt;
         if (timeSinceLastAttempt < RETRY_INTERVAL_MS) {
             return true;
         }
     }
-    
+
     return false;
 }
 
 async function recordSiteAttempt(site: string, success: boolean) {
     const now = Date.now();
-    
+
     if (success) {
         await db.execute({
             sql: `INSERT INTO site_status (site, last_attempt, last_success, failure_count) 
@@ -66,7 +66,7 @@ async function recordSiteAttempt(site: string, success: boolean) {
  */
 async function recordChannelGrabResult(xmltvId: string, success: boolean): Promise<boolean> {
     const now = Date.now();
-    
+
     if (success) {
         // Reset failure count on success
         await db.execute({
@@ -78,7 +78,7 @@ async function recordChannelGrabResult(xmltvId: string, success: boolean): Promi
         });
         return false;
     }
-    
+
     // Record failure and get updated count
     await db.execute({
         sql: `INSERT INTO channel_grab_status (xmltv_id, consecutive_failures, last_failure) 
@@ -87,15 +87,15 @@ async function recordChannelGrabResult(xmltvId: string, success: boolean): Promi
               consecutive_failures = consecutive_failures + 1, last_failure = ?`,
         args: [xmltvId, now, now]
     });
-    
+
     // Check if threshold exceeded
     const result = await db.execute({
         sql: `SELECT consecutive_failures FROM channel_grab_status WHERE xmltv_id = ?`,
         args: [xmltvId]
     });
-    
+
     const failures = Number(result.rows[0]?.consecutive_failures || 0);
-    
+
     if (failures >= MAX_CHANNEL_FAILURES_BEFORE_DISABLE) {
         // Auto-disable in channels table and mark in status
         await db.execute({
@@ -111,7 +111,7 @@ async function recordChannelGrabResult(xmltvId: string, success: boolean): Promi
         emitLog(`Channel ${xmltvId} auto-disabled after ${failures} consecutive failures`, 'warning');
         return true;
     }
-    
+
     return false;
 }
 
@@ -153,157 +153,138 @@ export async function grabMissingChannels(xmltvIds: string[]) {
     const epgDays = daysResult.rows.length > 0 ? String(daysResult.rows[0].value) : '2';
 
     emitLog(`Starting EPG grab for ${xmltvIds.length} channels (${epgDays} days)...`, "info");
-
-    // Get ALL site options for each channel (we'll try them in order)
-    const placeholders = xmltvIds.map(() => "?").join(",");
-    const res = await db.execute({
-        sql: `
-            SELECT m.xmltv_id, m.site, m.site_id, m.lang 
-            FROM iptv_org_map m
-            WHERE m.xmltv_id IN (${placeholders}) AND m.site IS NOT NULL
-            ORDER BY m.xmltv_id, m.site
-        `,
-        args: xmltvIds
-    });
-
-    if (res.rows.length === 0) {
-        emitLog("No site metadata found for requested channels.", "warning");
-        return;
-    }
-
-    // Group sites by channel - each channel can have multiple fallback sites
-    const channelSites: Map<string, ChannelSiteInfo> = new Map();
-    for (const row of res.rows) {
-        const xmltv_id = String(row.xmltv_id);
-        if (!channelSites.has(xmltv_id)) {
-            channelSites.set(xmltv_id, { xmltv_id, sites: [] });
-        }
-        channelSites.get(xmltv_id)!.sites.push({
-            site: String(row.site),
-            site_id: String(row.site_id),
-            lang: String(row.lang || 'en')
-        });
-    }
-
-    const channels = Array.from(channelSites.values());
-    emitLog(`Processing ${channels.length} unique channels...`, "info");
-    emitProgress(`Grabbing EPG for ${channels.length} channels...`, 0, channels.length, 'grab');
+    emitProgress(`Grabbing EPG for ${xmltvIds.length} channels...`, 0, xmltvIds.length, 'grab');
 
     let completed = 0;
     let successful = 0;
     let failed = 0;
     const CONCURRENCY_LIMIT = 10;
     const activePromises = new Set<Promise<void>>();
-    let channelIndex = 0;
+    let index = 0;
 
-    const processChannel = async (channel: ChannelSiteInfo) => {
-        const startTime = Date.now();
-        let lastError = '';
-        
-        // Try each site in order until one succeeds
-        for (const siteInfo of channel.sites) {
-            const { site, site_id, lang } = siteInfo;
-            
-            // Check if we should skip this site due to failures
-            if (await shouldSkipSite(site)) {
-                continue; // Try next site
-            }
-            
-            const tempId = Math.random().toString(36).substring(7);
-            const tempXmlPath = path.join('/tmp', `grab_${tempId}.channels.xml`);
-            const tempOutputPath = path.join('/tmp', `grab_${tempId}.xml`);
-            
-            try {
-                // Create channel XML for this specific site
-                const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<channels>
-  <channel site="${site}" site_id="${site_id}" xmltv_id="${channel.xmltv_id}" lang="${lang}">${channel.xmltv_id}</channel>
-</channels>`;
-                fs.writeFileSync(tempXmlPath, xml);
-                
-                await runGrabCommand(tempXmlPath, tempOutputPath, epgDays);
-                
-                if (fs.existsSync(tempOutputPath)) {
-                    const duration = Date.now() - startTime;
-                    
-                    // Delete old iptv-org data for this channel BEFORE inserting new
-                    await db.execute({
-                        sql: `DELETE FROM epg_programs WHERE channel_id = ? AND source LIKE '%iptv-org%'`,
-                        args: [channel.xmltv_id]
-                    });
-                    
-                    // Process the new EPG data
-                    const counts = await processEpg([tempOutputPath], { skipIptvUpdate: true, skipMatching: true });
-                    const count = counts[channel.xmltv_id] || 0;
-                    
-                    // Cleanup temp files
-                    if (fs.existsSync(tempOutputPath)) fs.unlinkSync(tempOutputPath);
-                    if (fs.existsSync(tempXmlPath)) fs.unlinkSync(tempXmlPath);
-                    
-                    // If we got 0 programs, try the next site instead!
-                    if (count === 0) {
-                        await recordGrabLog(channel.xmltv_id, site, false, `Site returned 0 programs, trying next`, 0, duration);
-                        await recordSiteAttempt(site, false);
-                        lastError = `${site} returned 0 programs`;
-                        continue; // Try next site
-                    }
-                    
-                    await recordGrabLog(channel.xmltv_id, site, true, `Loaded ${count} programs`, count, duration);
-                    await recordSiteAttempt(site, true);
-                    await recordChannelGrabResult(channel.xmltv_id, true); // Track channel success
-                    
-                    successful++;
-                    return; // Success! Don't try other sites
-                }
-            } catch (e: any) {
-                lastError = e.message;
-                await recordSiteAttempt(site, false);
-                
-                // Cleanup
-                if (fs.existsSync(tempOutputPath)) fs.unlinkSync(tempOutputPath);
-                if (fs.existsSync(tempXmlPath)) fs.unlinkSync(tempXmlPath);
-                
-                // Continue to next site
-            }
-        }
-        
-        // All sites failed for this channel
-        const duration = Date.now() - startTime;
-        await recordGrabLog(channel.xmltv_id, 'all', false, lastError || 'All sites failed or returned 0 programs', 0, duration);
-        const wasDisabled = await recordChannelGrabResult(channel.xmltv_id, false); // Track channel failure
-        if (wasDisabled) {
-            emitLog(`Channel ${channel.xmltv_id} has been auto-disabled due to repeated failures`, 'warning');
-        }
-        failed++;
-    };
-
-    // Process channels with concurrency limit
-    while (channelIndex < channels.length || activePromises.size > 0) {
-        // Start new jobs up to concurrency limit
-        while (activePromises.size < CONCURRENCY_LIMIT && channelIndex < channels.length) {
-            const channel = channels[channelIndex++];
-            
-            const p = processChannel(channel).finally(() => {
+    while (index < xmltvIds.length || activePromises.size > 0) {
+        while (activePromises.size < CONCURRENCY_LIMIT && index < xmltvIds.length) {
+            const id = xmltvIds[index++];
+            const p = grabChannel(id, epgDays).then(success => {
+                if (success) successful++;
+                else failed++;
+            }).finally(() => {
                 activePromises.delete(p);
                 completed++;
-                emitProgress(
-                    `Grabbing: ${completed}/${channels.length} (${successful} ok, ${failed} failed)`,
-                    completed,
-                    channels.length,
-                    'grab'
-                );
+                emitProgress(`Grabbing: ${completed}/${xmltvIds.length} (${successful} ok, ${failed} failed)`, completed, xmltvIds.length, 'grab');
             });
-            
             activePromises.add(p);
         }
-        
         if (activePromises.size > 0) {
             await Promise.race(activePromises);
         }
     }
 
-    emitLog(`EPG grab complete: ${successful} succeeded, ${failed} failed out of ${channels.length} channels`, "success");
-    emitProgress(`Complete: ${successful}/${channels.length} channels grabbed ✓`, channels.length, channels.length, 'grab');
+    emitLog(`EPG grab complete: ${successful} ok, ${failed} failed.`, "success");
+}
+
+/**
+ * Grab EPG data for a single channel. Used by the streaming pipeline queue.
+ * Does not emit overarching progress events.
+ * Returns true if successful, false if all sites failed.
+ */
+export async function grabChannel(xmltvId: string, epgDays: string): Promise<boolean> {
+    const res = await db.execute({
+        sql: `
+            SELECT m.xmltv_id, m.site, m.site_id, m.lang 
+            FROM iptv_org_map m
+            WHERE m.xmltv_id = ? AND m.site IS NOT NULL
+            ORDER BY m.site
+        `,
+        args: [xmltvId]
+    });
+
+    if (res.rows.length === 0) {
+        return false;
+    }
+
+    const sites: { site: string; site_id: string; lang: string }[] = [];
+    for (const row of res.rows) {
+        sites.push({
+            site: String(row.site),
+            site_id: String(row.site_id),
+            lang: String(row.lang || 'en')
+        });
+    }
+
+    const startTime = Date.now();
+    let lastError = '';
+
+    for (const siteInfo of sites) {
+        const { site, site_id, lang } = siteInfo;
+
+        if (await shouldSkipSite(site)) {
+            continue;
+        }
+
+        const tempId = Math.random().toString(36).substring(7);
+        const tempXmlPath = path.join('/tmp', `grab_${tempId}_${xmltvId.replace(/[^a-z0-9]/gi, '_')}.channels.xml`);
+        const tempOutputPath = path.join('/tmp', `grab_${tempId}_${xmltvId.replace(/[^a-z0-9]/gi, '_')}.xml`);
+
+        try {
+            const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<channels>
+  <channel site="${site}" site_id="${site_id}" xmltv_id="${xmltvId}" lang="${lang}">${xmltvId}</channel>
+</channels>`;
+            fs.writeFileSync(tempXmlPath, xml);
+
+            await runGrabCommand(tempXmlPath, tempOutputPath, epgDays);
+
+            if (fs.existsSync(tempOutputPath)) {
+                const duration = Date.now() - startTime;
+
+                await db.execute({
+                    sql: `DELETE FROM epg_programs WHERE channel_id = ? AND source LIKE '%iptv-org%'`,
+                    args: [xmltvId]
+                });
+
+                const counts = await processEpg([tempOutputPath], { skipIptvUpdate: true, skipMatching: true });
+                const count = counts[xmltvId] || 0;
+
+                // Debug: verify programs were saved
+                const verifyProg = await db.execute({
+                    sql: `SELECT COUNT(*) as c FROM epg_programs WHERE channel_id = ?`,
+                    args: [xmltvId]
+                });
+                emitLog(`[DEBUG] Grab ${xmltvId}: processEpg reported ${count} programs, DB has ${verifyProg.rows[0].c}`, "info");
+
+                if (fs.existsSync(tempOutputPath)) fs.unlinkSync(tempOutputPath);
+                if (fs.existsSync(tempXmlPath)) fs.unlinkSync(tempXmlPath);
+
+                if (count === 0) {
+                    await recordGrabLog(xmltvId, site, false, `Site returned 0 programs, trying next`, 0, duration);
+                    await recordSiteAttempt(site, false);
+                    lastError = `${site} returned 0 programs`;
+                    continue;
+                }
+
+                await recordGrabLog(xmltvId, site, true, `Loaded ${count} programs`, count, duration);
+                await recordSiteAttempt(site, true);
+                await recordChannelGrabResult(xmltvId, true);
+
+                return true;
+            }
+        } catch (e: any) {
+            lastError = e.message;
+            await recordSiteAttempt(site, false);
+
+            if (fs.existsSync(tempOutputPath)) fs.unlinkSync(tempOutputPath);
+            if (fs.existsSync(tempXmlPath)) fs.unlinkSync(tempXmlPath);
+        }
+    }
+
+    const duration = Date.now() - startTime;
+    await recordGrabLog(xmltvId, 'all', false, lastError || 'All sites failed or returned 0 programs', 0, duration);
+    const wasDisabled = await recordChannelGrabResult(xmltvId, false);
+    if (wasDisabled) {
+        emitLog(`Channel ${xmltvId} auto-disabled after failures`, 'warning');
+    }
+    return false;
 }
 
 async function recordGrabLog(xmltvId: string, site: string, success: boolean, message: string, programCount: number, durationMs: number) {
@@ -316,26 +297,25 @@ async function recordGrabLog(xmltvId: string, site: string, success: boolean, me
 
 async function runGrabCommand(channelsPath: string, outputPath: string, days: string = '2'): Promise<void> {
     return new Promise((resolve, reject) => {
-        const proc = spawn('npm', [
-            'run',
-            'grab',
-            '--',
+        const proc = spawn('npx', [
+            'tsx',
+            'scripts/commands/epg/grab.ts',
             '--channels', channelsPath,
             '--output', outputPath,
             '--days', days
         ], {
             cwd: REPO_DIR,
-            env: { ...process.env, NODE_OPTIONS: '--max-old-space-size=8192' },
+            env: { ...process.env, NODE_OPTIONS: '--max-old-space-size=512' },
             stdio: ['ignore', 'pipe', 'pipe']
         });
 
         let stdout = '';
         let stderr = '';
-        
+
         proc.stdout?.on('data', (data) => {
             stdout += data.toString();
         });
-        
+
         proc.stderr?.on('data', (data) => {
             stderr += data.toString();
         });

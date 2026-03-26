@@ -1,0 +1,71 @@
+<div class="dashboard">
+    <h1>Dashboard</h1>
+
+    @if (loading) {
+    <div class="loading-container">
+        <div class="spinner"></div>
+    </div>
+    } @else {
+    <!-- Stats -->
+    <div class="dashboard-grid">
+        <div class="glass-card stat-card">
+            <div class="stat-val text-primary">{{ stats?.channels?.enabled || 0 }}</div>
+            <div class="stat-label">Enabled Channels</div>
+            <div class="stat-detail">{{ stats?.channels?.total || 0 }} total • {{ stats?.channels?.matched || 0 }}
+                matched</div>
+        </div>
+        <div class="glass-card stat-card">
+            <div class="stat-val text-success">{{ stats?.programs?.total || 0 }}</div>
+            <div class="stat-label">EPG Programs</div>
+            <div class="stat-detail">{{ stats?.programs?.channels || 0 }} channels • {{ stats?.programs?.enriched || 0
+                }} enriched</div>
+        </div>
+        <div class="glass-card stat-card">
+            <div class="stat-val text-warning">{{ health?.status || 'unknown' }}</div>
+            <div class="stat-label">System Status</div>
+            <div class="stat-detail">Uptime: {{ formatUptime(health?.uptime || 0) }}</div>
+        </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="actions-section">
+        <h2>Actions</h2>
+        <div class="action-grid">
+            <div class="glass-card action-card" (click)="runFullSync()">
+                <div class="action-icon">🔄</div>
+                <div class="action-title">Run Full Sync</div>
+                <div class="action-desc">Playlist → Match → Grab → Enrich → Rebuild</div>
+            </div>
+            <div class="glass-card action-card" (click)="grabMissing()">
+                <div class="action-icon">📡</div>
+                <div class="action-title">Grab EPG Data</div>
+                <div class="action-desc">Fetch EPG data for matched channels</div>
+            </div>
+            <div class="glass-card action-card" (click)="rebuildFiles()">
+                <div class="action-icon">📦</div>
+                <div class="action-title">Rebuild Files</div>
+                <div class="action-desc">Regenerate M3U and XMLTV files</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Schedule Info -->
+    @if (jobStatus) {
+    <div class="glass-card schedule-card">
+        <h3>Scheduled Jobs</h3>
+        @if (jobStatus.daily) {
+        <div class="stat-row">
+            <span>Daily EPG Update</span>
+            <span class="text-secondary">{{ jobStatus.daily }}</span>
+        </div>
+        }
+        @if (jobStatus.weekly) {
+        <div class="stat-row">
+            <span>Weekly Playlist Sync</span>
+            <span class="text-secondary">{{ jobStatus.weekly }}</span>
+        </div>
+        }
+    </div>
+    }
+    }
+</div>

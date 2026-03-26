@@ -1,0 +1,91 @@
+<div class="dvr-page">
+    <div class="page-header">
+        <h1>DVR Manager</h1>
+        <button class="btn btn-primary" (click)="openScheduleModal()">+ Schedule Recording</button>
+    </div>
+
+    @if (loading) {
+    <div class="loading-container">
+        <div class="spinner"></div>
+    </div>
+    } @else {
+    @if (recordings.length === 0) {
+    <div class="glass-card empty-state">
+        <div class="empty-icon">📹</div>
+        <h3>No Recordings</h3>
+        <p>Schedule a recording to get started.</p>
+    </div>
+    } @else {
+    <div class="glass-card table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Status</th>
+                    <th>Program</th>
+                    <th>Channel</th>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (rec of recordings; track rec.id) {
+                <tr>
+                    <td><span class="badge" [class]="getStatusClass(rec.status)">{{ rec.status }}</span></td>
+                    <td><strong>{{ rec.program_title }}</strong></td>
+                    <td>{{ rec.channel_name || rec.channel_id }}</td>
+                    <td>{{ rec.start_time | date:'short' }}</td>
+                    <td>{{ rec.end_time | date:'short' }}</td>
+                    <td>
+                        @if (rec.status === 'recording') {
+                        <button class="btn btn-secondary small-btn" (click)="stopRecording(rec.id)">Stop</button>
+                        }
+                        <button class="btn btn-secondary small-btn" style="color:var(--color-danger);"
+                            (click)="deleteRecording(rec.id)">Delete</button>
+                    </td>
+                </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    }
+    }
+
+    <!-- Schedule Modal -->
+    @if (showScheduleModal) {
+    <div class="modal-backdrop" (click)="showScheduleModal = false">
+        <div class="modal-content" (click)="$event.stopPropagation()">
+            <h2>Schedule Recording</h2>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Channel</label>
+                    <select class="themed-select w-full" [(ngModel)]="newRec.channelId">
+                        <option value="">Select Channel...</option>
+                        @for (ch of channels; track ch.id) {
+                        <option [value]="ch.id">{{ ch.channel_number ? ch.channel_number + '. ' : '' }}{{ ch.name }}
+                        </option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Program Title</label>
+                    <input type="text" class="themed-input w-full" [(ngModel)]="newRec.title"
+                        placeholder="Recording name...">
+                </div>
+                <div class="form-group">
+                    <label>Start Time</label>
+                    <input type="datetime-local" class="themed-input w-full" [(ngModel)]="newRec.startTime">
+                </div>
+                <div class="form-group">
+                    <label>End Time</label>
+                    <input type="datetime-local" class="themed-input w-full" [(ngModel)]="newRec.endTime">
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" (click)="showScheduleModal = false">Cancel</button>
+                <button class="btn btn-primary" (click)="submitSchedule()">Schedule</button>
+            </div>
+        </div>
+    </div>
+    }
+</div>

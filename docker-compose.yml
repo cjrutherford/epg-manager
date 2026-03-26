@@ -1,0 +1,23 @@
+services:
+  epg-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: epg-manager
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - PORT=3000
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+      - DB_DIR=/app/data
+    volumes:
+      - epg-data:/app/data
+      # Uncomment to sync recordings to host:
+      # - ./recordings:/app/data/recordings
+    # Optional: expose generated M3U/EPG files
+    # volumes:
+    #   - ./exports:/app/data
+
+volumes:
+  epg-data:

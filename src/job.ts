@@ -1,3 +1,5 @@
+import { eventBus } from './events';
+
 export interface JobStatus {
     running: boolean;
     startTime: number | null;
@@ -10,14 +12,30 @@ export interface JobStatus {
         filesGenerated: string[];
         customGrabCount: number;
     } | null;
+    progress: Record<string, {
+        phase: string;
+        message: string;
+        current: number;
+        total: number;
+        completed?: boolean;
+    }> | null;
 }
 
 export const currentJob: JobStatus = {
     running: false,
     startTime: null,
     endTime: null,
-    stats: null
+    stats: null,
+    progress: null
 };
+
+// Listen for progress events to cache state
+eventBus.on('progress', (data) => {
+    if (currentJob.running) {
+        if (!currentJob.progress) currentJob.progress = {};
+        currentJob.progress[data.phase] = data;
+    }
+});
 
 export function startJob() {
     currentJob.running = true;
