@@ -31,31 +31,34 @@ export class SseService {
     connect(): void {
         if (this.eventSource) return;
 
-        this.eventSource = new EventSource('/api/progress');
+        this.zone.runOutsideAngular(() => {
+            this.eventSource = new EventSource('/api/progress');
 
-        this.eventSource.addEventListener('log', (event: any) => {
-            this.zone.run(() => {
-                try { this.logs$.next(JSON.parse(event.data)); } catch { }
+            this.eventSource.addEventListener('log', (event: any) => {
+                this.zone.run(() => {
+                    try { this.logs$.next(JSON.parse(event.data)); } catch { }
+                });
             });
-        });
 
-        this.eventSource.addEventListener('progress', (event: any) => {
-            this.zone.run(() => {
-                try { this.progress$.next(JSON.parse(event.data)); } catch { }
+            this.eventSource.addEventListener('progress', (event: any) => {
+                this.zone.run(() => {
+                    try { this.progress$.next(JSON.parse(event.data)); } catch { }
+                });
             });
-        });
 
-        this.eventSource.addEventListener('report', (event: any) => {
-            this.zone.run(() => {
-                try { this.report$.next(JSON.parse(event.data)); } catch { }
+            this.eventSource.addEventListener('report', (event: any) => {
+                this.zone.run(() => {
+                    try { this.report$.next(JSON.parse(event.data)); } catch { }
+                });
             });
-        });
 
-        this.eventSource.onerror = () => {
-            // Reconnect after a brief delay
-            this.disconnect();
-            setTimeout(() => this.connect(), 5000);
-        };
+            this.eventSource.onerror = () => {
+                this.zone.run(() => {
+                    this.disconnect();
+                    setTimeout(() => this.connect(), 5000);
+                });
+            };
+        });
     }
 
     disconnect(): void {
