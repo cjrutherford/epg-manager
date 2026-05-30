@@ -1,7 +1,16 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild, ElementRef, AfterViewChecked, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ApiService } from '../../services/api.service';
 import { SseService } from '../../services/sse.service';
+import { ToastService } from '../../services/toast.service';
+import { Subscription } from 'rxjs';
+
+interface SyncStage {
+    id: string;
+    label: string;
+    icon: string;
+    status: 'idle' | 'active' | 'done' | 'error';
+}
 
 @Component({
     selector: 'app-dashboard',
@@ -10,57 +19,293 @@ import { SseService } from '../../services/sse.service';
     templateUrl: './dashboard.component.html',
     styleUrl: './dashboard.component.css'
 })
-export class DashboardComponent implements OnInit {
+export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
+    @ViewChild('logContainer') logContainerRef!: ElementRef<HTMLDivElement>;
+
     stats: any = null;
     health: any = null;
     jobStatus: any = null;
+    dataState: { hasChannels: boolean; hasPrograms: boolean; hasPlaylist: boolean; isEmpty: boolean } | null = null;
     loading = true;
+    syncStarted = false;
+    progressCollapsed = true;
 
-    constructor(private api: ApiService, private sse: SseService) { }
+    logs: { message: string; level: string; time: Date }[] = [];
+    progressBars: Record<string, { current: number; total: number; message: string; completed: boolean }> = {};
+    shouldScrollLogs = false;
+
+    stages: SyncStage[] = [
+        { id: 'playlist', label: 'Playlist', icon: '📋', status: 'idle' },
+        { id: 'match', label: 'Match', icon: '🔗', status: 'idle' },
+        { id: 'grab', label: 'EPG Grab', icon: '📡', status: 'idle' },
+        { id: 'enrich', label: 'Enrich', icon: '🎬', status: 'idle' },
+        { id: 'rebuild', label: 'Rebuild', icon: '📦', status: 'idle' },
+    ];
+
+    private subs: Subscription[] = [];
+
+    constructor(
+        private api: ApiService,
+        private sse: SseService,
+        private toast: ToastService,
+        private cdr: ChangeDetectorRef
+    ) { }
 
     ngOnInit(): void {
         this.loadData();
+        this.setupSseListeners();
+
+        // Check if sync is already running in background
+        this.api.getJobStatus().subscribe(status => {
+            if (status && status.running) {
+                this.syncStarted = true;
+                this.progressCollapsed = false;
+                if (status.progress) {
+                    for (const [phase, data] of Object.entries(status.progress)) {
+                        const progData = data as any;
+                        this.progressBars[phase] = {
+                            current: progData.current,
+                            total: progData.total,
+                            message: progData.message || progData.label || '',
+                            completed: progData.completed || false
+                        };
+                        this.setStageActive(phase);
+                        if (progData.completed) {
+                            this.setStageDone(phase);
+                        }
+                    }
+                }
+                this.cdr.markForCheck();
+            }
+        });
+    }
+
+    ngOnDestroy(): void {
+        this.subs.forEach(s => s.unsubscribe());
+    }
+
+    ngAfterViewChecked(): void {
+        if (this.shouldScrollLogs && this.logContainerRef) {
+            const el = this.logContainerRef.nativeElement;
+            el.scrollTop = el.scrollHeight;
+            this.shouldScrollLogs = false;
+        }
+    }
+
+    toggleProgressCollapse(): void {
+        this.progressCollapsed = !this.progressCollapsed;
     }
 
     async loadData(): Promise<void> {
         this.loading = true;
         try {
-            const [stats, health, job] = await Promise.all([
+            const [stats, health, job, dataState] = await Promise.all([
                 this.api.getStats().toPromise(),
                 this.api.getHealth().toPromise(),
-                this.api.getJobStatus().toPromise().catch(() => null)
+                this.api.getJobStatus().toPromise().catch(() => null),
+                this.api.getHasData().toPromise().catch(() => null)
             ]);
             this.stats = stats;
             this.health = health;
             this.jobStatus = job;
+            this.dataState = dataState ?? null;
         } catch (e) {
             console.error('Failed to load dashboard', e);
         } finally {
             this.loading = false;
+            this.cdr.markForCheck();
         }
     }
 
-    runFullSync(): void {
+    get isEmpty(): boolean {
+        return this.dataState?.isEmpty === true && !this.syncStarted;
+    }
+
+    setupSseListeners(): void {
+        this.subs.push(
+            this.sse.logEvents.subscribe(evt => {
+                this.logs.push({ ...evt, time: new Date() });
+                if (this.logs.length > 500) this.logs.splice(0, this.logs.length - 500);
+                this.shouldScrollLogs = true;
+                this.cdr.markForCheck();
+            }),
+            this.sse.progressEvents.subscribe(evt => {
+                const phase = evt.phase;
+                const existing = this.progressBars[phase];
+                if (existing?.completed && !evt.completed) return;
+
+                this.progressBars[phase] = {
+                    current: evt.current,
+                    total: evt.total,
+                    message: evt.message || evt.label || '',
+                    completed: evt.completed || false
+                };
+
+                this.syncStarted = true;
+                this.progressCollapsed = false;
+
+                if (phase === 'match') {
+                    this.setStageActive('playlist');
+                    this.setStageActive('match');
+                } else if (phase === 'grab') {
+                    this.setStageDone('playlist');
+                    this.setStageDone('match');
+                    this.setStageActive('grab');
+                } else if (phase === 'enrich') {
+                    this.setStageDone('grab');
+                    this.setStageActive('enrich');
+                }
+
+                if (evt.completed) {
+                    this.setStageDone(phase);
+                }
+
+                // Detect sync completion
+                if (evt.phase === 'enrich' && evt.completed) {
+                    this.setStageDone('enrich');
+                    this.setStageActive('rebuild');
+                    setTimeout(() => this.setStageDone('rebuild'), 2000);
+                    setTimeout(() => {
+                        this.syncStarted = false;
+                        this.cdr.markForCheck();
+                    }, 3000);
+                }
+                this.cdr.markForCheck();
+            })
+        );
+    }
+
+    getProgress(phase: string): number {
+        const p = this.progressBars[phase];
+        if (!p || p.total === 0) return 0;
+        return Math.round((p.current / p.total) * 100);
+    }
+
+    get activePhases(): string[] {
+        const order = ['match', 'grab', 'enrich'];
+        const keys = Object.keys(this.progressBars);
+        return order.filter(p => keys.includes(p)).concat(keys.filter(p => !order.includes(p)));
+    }
+
+    getPhaseLabel(phase: string): string {
+        const labels: Record<string, string> = {
+            match: '🔗 Matching',
+            grab: '📡 Grabbing EPG',
+            enrich: '🎬 Enriching'
+        };
+        return labels[phase] || phase;
+    }
+
+    clearLogs(): void {
+        this.logs = [];
+    }
+
+    clearCompletedProgress(): void {
+        for (const phase of Object.keys(this.progressBars)) {
+            if (this.progressBars[phase].completed) {
+                delete this.progressBars[phase];
+            }
+        }
+    }
+
+    /** Called from the empty-state banner to kick off the very first sync. */
+    triggerInitialSync(): void {
+        this.syncStarted = true;
+        this.progressCollapsed = false;
+        this.resetStages();
         this.sse.connect();
         this.api.runFullSync().subscribe({
-            next: (res) => { if (!res.success) alert(res.message || 'Sync failed'); },
-            error: (e) => alert('Sync failed: ' + e.message)
+            next: () => { },
+            error: (e) => {
+                this.toast.show('Sync failed to start: ' + e.message, 'error');
+                this.syncStarted = false;
+                this.cdr.markForCheck();
+            }
         });
+    }
+
+    runFullSync(): void {
+        this.syncStarted = true;
+        this.progressCollapsed = false;
+        this.resetStages();
+        this.sse.connect();
+        this.api.runFullSync().subscribe({
+            next: (res) => { if (!res.success) this.toast.show(res.message || 'Sync failed', 'error'); },
+            error: (e) => this.toast.show('Sync failed: ' + e.message, 'error')
+        });
+    }
+
+    cancelSync(): void {
+        if (!confirm('Are you sure you want to cancel the running sync process?')) return;
+        this.api.cancelSync().subscribe({
+            next: (res) => {
+                if (res.success) {
+                    this.toast.show('Cancellation request sent.', 'success');
+                } else {
+                    this.toast.show('Cancellation failed: ' + res.message, 'error');
+                }
+            },
+            error: (e) => this.toast.show('Cancellation failed: ' + e.message, 'error')
+        });
+    }
+
+    grabMissing(): void {
+        this.syncStarted = true;
+        this.progressCollapsed = false;
+        this.resetStages();
+        this.sse.connect();
+        this.api.grabMissing().subscribe({
+            next: (res) => { },
+            error: (e) => this.toast.show('Grab failed: ' + e.message, 'error')
+        });
+    }
+
+    private resetStages(): void {
+        this.stages.forEach(s => s.status = 'idle');
+    }
+
+    private setStageActive(id: string): void {
+        const s = this.stages.find(s => s.id === id);
+        if (s && s.status !== 'done') s.status = 'active';
+    }
+
+    private setStageDone(id: string): void {
+        const s = this.stages.find(s => s.id === id);
+        if (s) s.status = 'done';
+    }
+
+    getStageClass(stage: SyncStage): string {
+        return `stage-${stage.status}`;
     }
 
     rebuildFiles(): void {
         if (!confirm('Rebuild M3U/XML from database?')) return;
         this.api.rebuildFiles().subscribe({
-            next: (res) => { if (res.success) alert('Files rebuilt!'); },
-            error: (e) => alert('Rebuild failed: ' + e.message)
+            next: (res) => { if (res.success) this.toast.show('Files rebuilt!', 'success'); },
+            error: (e) => this.toast.show('Rebuild failed: ' + e.message, 'error')
         });
     }
 
-    grabMissing(): void {
-        this.sse.connect();
-        this.api.grabMissing().subscribe({
-            next: (res) => { },
-            error: (e) => alert('Grab failed: ' + e.message)
+    resetSystem(): void {
+        if (!confirm('WARNING: Are you sure you want to reset the system? This will delete all channels, matched guides, manual overrides, cache, and settings. This action cannot be undone!')) {
+            return;
+        }
+        this.loading = true;
+        this.api.resetSystem().subscribe({
+            next: (res) => {
+                if (res.success) {
+                    this.toast.show('System reset successfully!', 'success');
+                    this.syncStarted = false;
+                    this.loadData();
+                } else {
+                    this.toast.show('Reset failed: ' + (res.message || 'Unknown error'), 'error');
+                    this.loading = false;
+                }
+            },
+            error: (e) => {
+                this.toast.show('Reset failed: ' + e.message, 'error');
+                this.loading = false;
+            }
         });
     }
 

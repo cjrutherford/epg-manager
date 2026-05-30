@@ -1,5 +1,24 @@
+.dvr-page.dvr-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--bg-deep);
+    z-index: 200;
+    padding: 32px;
+    overflow-y: auto;
+}
+
 .dvr-page h1 {
     font-size: 1.6rem;
+    margin: 0;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
 }
 
 .page-header {
@@ -71,4 +90,53 @@
     .form-grid {
         grid-template-columns: 1fr;
     }
+}
+
+/* ── Storage Gauge ───────────────────────────── */
+.storage-card {
+    margin-bottom: 20px;
+    padding: 20px 24px;
+}
+.storage-gauge {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+.storage-ring {
+    width: 64px;
+    height: 64px;
+    flex-shrink: 0;
+}
+.ring-bg {
+    fill: none;
+    stroke: rgba(255,255,255,0.06);
+    stroke-width: 3.8;
+}
+.ring-fill {
+    fill: none;
+    stroke: var(--color-primary);
+    stroke-width: 3.8;
+    stroke-linecap: round;
+    transition: stroke-dasharray 0.5s ease;
+}
+.ring-text {
+    fill: var(--text-primary);
+    font-size: 0.45rem;
+    font-weight: 700;
+    text-anchor: middle;
+    font-family: var(--font-mono);
+}
+.storage-labels {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.storage-used {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.storage-total {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
 }

@@ -15,6 +15,49 @@
     padding: 16px 20px;
 }
 
+.channel-num {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+/* ── Sortable headers ────────────────────────── */
+.sortable {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+.sortable:hover { color: var(--color-primary); }
+.sort-arrow { font-size: 0.65rem; margin-left: 4px; color: var(--color-primary); }
+
+/* ── Filter pills ────────────────────────────── */
+.filter-pills {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.pill {
+    padding: 4px 14px;
+    border-radius: 20px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+.pill:hover { border-color: rgba(255,255,255,0.25); color: var(--text-primary); }
+.pill-active {
+    border-color: var(--color-primary) !important;
+    color: var(--color-primary) !important;
+    background: rgba(var(--color-primary-rgb),0.12) !important;
+}
+.pill-success.pill-active { border-color: #4ade80 !important; color: #4ade80 !important; background: rgba(74,222,128,0.12) !important; }
+.pill-warning.pill-active { border-color: #fbbf24 !important; color: #fbbf24 !important; background: rgba(251,191,36,0.12) !important; }
+.pill-primary.pill-active { border-color: #60a5fa !important; color: #60a5fa !important; background: rgba(96,165,250,0.12) !important; }
+.pill-danger.pill-active { border-color: #f87171 !important; color: #f87171 !important; background: rgba(248,113,113,0.12) !important; }
+
 .toolbar-row {
     display: flex;
     gap: 12px;
@@ -141,7 +184,7 @@
 }
 
 .epg-result:hover {
-    background: rgba(0, 212, 255, 0.1);
+    background: rgba(var(--color-primary-rgb), 0.1);
 }
 
 .search-status {

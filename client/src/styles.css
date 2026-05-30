@@ -13,8 +13,11 @@
 
     /* Warm Amber Accent - Cinematic Glow */
     --color-primary: #e8a854;
-    --color-primary-dim: rgba(232, 168, 84, 0.15);
-    --color-primary-glow: rgba(232, 168, 84, 0.4);
+    --color-primary-rgb: 232, 168, 84;
+    --color-primary-dark: #c98a3a;
+    --color-primary-text: #1a1408;
+    --color-primary-dim: rgba(var(--color-primary-rgb), 0.15);
+    --color-primary-glow: rgba(var(--color-primary-rgb), 0.4);
     --color-secondary: #8b7355;
     
     /* Supporting Colors */
@@ -39,11 +42,11 @@
     --font-mono: 'JetBrains Mono', monospace;
     
     /* Borders & Shadows */
-    --border-glass: 1px solid rgba(232, 168, 84, 0.12);
-    --border-glow: 1px solid rgba(232, 168, 84, 0.5);
+    --border-glass: 1px solid rgba(var(--color-primary-rgb), 0.12);
+    --border-glow: 1px solid rgba(var(--color-primary-rgb), 0.5);
     
     --shadow-glass: 0 8px 40px rgba(0, 0, 0, 0.6);
-    --shadow-glow: 0 0 30px rgba(232, 168, 84, 0.15);
+    --shadow-glow: 0 0 30px rgba(var(--color-primary-rgb), 0.15);
     --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.4);
     
     /* Blur */
@@ -62,6 +65,109 @@
     /* Transitions */
     --ease-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
     --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ===========================================
+   Theme Custom Overrides
+   =========================================== */
+
+/* 1. Neon Cyberpunk */
+body.theme-neon-cyberpunk {
+    --bg-deep: #0c0614;
+    --bg-void: #05020a;
+    --bg-gradient: radial-gradient(ellipse at 30% 0%, rgba(255, 0, 127, 0.22) 0%, var(--bg-deep) 60%),
+                   radial-gradient(ellipse at 70% 100%, rgba(0, 240, 255, 0.18) 0%, var(--bg-deep) 50%),
+                   linear-gradient(180deg, #0d0615 0%, var(--bg-deep) 100%);
+    --color-primary: #00f0ff;
+    --color-primary-rgb: 0, 240, 255;
+    --color-primary-dark: #00a2ff;
+    --color-primary-text: #0c0614;
+    --color-primary-dim: rgba(0, 240, 255, 0.15);
+    --color-primary-glow: rgba(0, 240, 255, 0.4);
+    --color-secondary: #ff007f;
+    --text-primary: #f3e8ff;
+    --text-secondary: #a78bfa;
+    --text-muted: #6d44b8;
+    --bg-glass: rgba(13, 6, 21, 0.85);
+    --bg-glass-strong: rgba(18, 9, 29, 0.95);
+    --border-glass: 1px solid rgba(0, 240, 255, 0.15);
+    --border-glow: 1px solid rgba(0, 240, 255, 0.5);
+    --shadow-glow: 0 0 30px rgba(0, 240, 255, 0.2);
+}
+
+/* 2. Midnight Forest */
+body.theme-midnight-forest {
+    --bg-deep: #08100c;
+    --bg-void: #040806;
+    --bg-gradient: radial-gradient(ellipse at 30% 0%, rgba(60, 208, 112, 0.15) 0%, var(--bg-deep) 60%),
+                   radial-gradient(ellipse at 70% 100%, rgba(20, 40, 30, 0.3) 0%, var(--bg-deep) 50%),
+                   linear-gradient(180deg, #060c09 0%, var(--bg-deep) 100%);
+    --color-primary: #3cd070;
+    --color-primary-rgb: 60, 208, 112;
+    --color-primary-dark: #1b9a4c;
+    --color-primary-text: #08100c;
+    --color-primary-dim: rgba(60, 208, 112, 0.15);
+    --color-primary-glow: rgba(60, 208, 112, 0.4);
+    --color-secondary: #9da86c;
+    --text-primary: #ecfdf5;
+    --text-secondary: #a7f3d0;
+    --text-muted: #1e5e43;
+    --bg-glass: rgba(8, 16, 12, 0.85);
+    --bg-glass-strong: rgba(12, 24, 18, 0.95);
+    --border-glass: 1px solid rgba(60, 208, 112, 0.15);
+    --border-glow: 1px solid rgba(60, 208, 112, 0.5);
+    --shadow-glow: 0 0 30px rgba(60, 208, 112, 0.2);
+}
+
+/* 3. Cosmic Purple */
+body.theme-cosmic-purple {
+    --bg-deep: #090514;
+    --bg-void: #04020a;
+    --bg-gradient: radial-gradient(ellipse at 30% 0%, rgba(168, 85, 247, 0.2) 0%, var(--bg-deep) 60%),
+                   radial-gradient(ellipse at 70% 100%, rgba(236, 72, 153, 0.15) 0%, var(--bg-deep) 50%),
+                   linear-gradient(180deg, #07040f 0%, var(--bg-deep) 100%);
+    --color-primary: #a855f7;
+    --color-primary-rgb: 168, 85, 247;
+    --color-primary-dark: #7e22ce;
+    --color-primary-text: #faf5ff;
+    --color-primary-dim: rgba(168, 85, 247, 0.15);
+    --color-primary-glow: rgba(168, 85, 247, 0.4);
+    --color-secondary: #ec4899;
+    --text-primary: #faf5ff;
+    --text-secondary: #d8b4fe;
+    --text-muted: #7e3eb8;
+    --bg-glass: rgba(9, 5, 20, 0.85);
+    --bg-glass-strong: rgba(14, 8, 30, 0.95);
+    --border-glass: 1px solid rgba(168, 85, 247, 0.15);
+    --border-glow: 1px solid rgba(168, 85, 247, 0.5);
+    --shadow-glow: 0 0 30px rgba(168, 85, 247, 0.2);
+}
+
+/* 4. Arctic Ice (Light Mode) */
+body.theme-arctic-ice {
+    --bg-deep: #f1f5f9;
+    --bg-void: #e2e8f0;
+    --bg-gradient: radial-gradient(ellipse at 30% 0%, rgba(37, 99, 235, 0.08) 0%, var(--bg-deep) 60%),
+                   radial-gradient(ellipse at 70% 100%, rgba(203, 213, 225, 0.3) 0%, var(--bg-deep) 50%),
+                   linear-gradient(180deg, #f8fafc 0%, var(--bg-deep) 100%);
+    --color-primary: #2563eb;
+    --color-primary-rgb: 37, 99, 235;
+    --color-primary-dark: #1d4ed8;
+    --color-primary-text: #ffffff;
+    --color-primary-dim: rgba(37, 99, 235, 0.08);
+    --color-primary-glow: rgba(37, 99, 235, 0.25);
+    --color-secondary: #64748b;
+    --text-primary: #0f172a;
+    --text-secondary: #334155;
+    --text-muted: #64748b;
+    --bg-glass: rgba(255, 255, 255, 0.8);
+    --bg-glass-strong: rgba(255, 255, 255, 0.95);
+    --bg-glass-light: rgba(15, 23, 42, 0.03);
+    --border-glass: 1px solid rgba(37, 99, 235, 0.15);
+    --border-glow: 1px solid rgba(37, 99, 235, 0.4);
+    --shadow-glass: 0 8px 30px rgba(15, 23, 42, 0.08);
+    --shadow-glow: 0 0 20px rgba(37, 99, 235, 0.08);
+    --shadow-card: 0 4px 15px rgba(15, 23, 42, 0.05);
 }
 
 * {
@@ -84,6 +190,7 @@ body {
     line-height: 1.6;
     min-height: 100vh;
     position: relative;
+    transition: background-color 0.4s var(--ease-smooth), color 0.4s var(--ease-smooth), border-color 0.4s var(--ease-smooth), box-shadow 0.4s var(--ease-smooth);
 }
 
 /* Subtle film grain overlay */
@@ -125,9 +232,9 @@ code, pre, .mono {
 }
 
 .glass-card {
-    background: linear-gradient(145deg, rgba(232, 168, 84, 0.04) 0%, rgba(10, 8, 6, 0.6) 100%);
+    background: linear-gradient(145deg, rgba(var(--color-primary-rgb), 0.04) 0%, rgba(10, 8, 6, 0.6) 100%);
     backdrop-filter: blur(16px);
-    border: 1px solid rgba(232, 168, 84, 0.08);
+    border: 1px solid rgba(var(--color-primary-rgb), 0.08);
     box-shadow: var(--shadow-card);
     border-radius: var(--radius-md);
     padding: 28px;
@@ -136,8 +243,8 @@ code, pre, .mono {
 
 .glass-card:hover {
     transform: translateY(-4px);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 40px rgba(232, 168, 84, 0.08);
-    border-color: rgba(232, 168, 84, 0.2);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 40px rgba(var(--color-primary-rgb), 0.08);
+    border-color: rgba(var(--color-primary-rgb), 0.2);
 }
 
 /* ─── Buttons ──────────────────────────────── */
@@ -169,32 +276,32 @@ code, pre, .mono {
 }
 
 .btn-primary {
-    background: linear-gradient(135deg, #e8a854 0%, #c98a3a 100%);
-    color: #1a1408;
-    box-shadow: 0 4px 20px rgba(232, 168, 84, 0.25), inset 0 1px 0 rgba(255,255,255,0.2);
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
+    color: var(--color-primary-text);
+    box-shadow: 0 4px 20px rgba(var(--color-primary-rgb), 0.25), inset 0 1px 0 rgba(255,255,255,0.2);
     font-weight: 700;
 }
 
 .btn-primary:hover {
-    box-shadow: 0 8px 30px rgba(232, 168, 84, 0.4), inset 0 1px 0 rgba(255,255,255,0.25);
+    box-shadow: 0 8px 30px rgba(var(--color-primary-rgb), 0.4), inset 0 1px 0 rgba(255,255,255,0.25);
     transform: translateY(-2px);
     filter: brightness(1.1);
 }
 
 .btn-primary:active {
     transform: translateY(0);
-    box-shadow: 0 2px 10px rgba(232, 168, 84, 0.2);
+    box-shadow: 0 2px 10px rgba(var(--color-primary-rgb), 0.2);
 }
 
 .btn-secondary {
-    background: rgba(232, 168, 84, 0.08);
+    background: rgba(var(--color-primary-rgb), 0.08);
     color: var(--text-primary);
-    border: 1px solid rgba(232, 168, 84, 0.2);
+    border: 1px solid rgba(var(--color-primary-rgb), 0.2);
 }
 
 .btn-secondary:hover {
-    background: rgba(232, 168, 84, 0.15);
-    border-color: rgba(232, 168, 84, 0.4);
+    background: rgba(var(--color-primary-rgb), 0.15);
+    border-color: rgba(var(--color-primary-rgb), 0.4);
     color: #fff;
 }
 
@@ -206,7 +313,7 @@ code, pre, .mono {
 /* ─── Inputs ───────────────────────────────── */
 input, select, textarea {
     background: rgba(8, 6, 4, 0.6);
-    border: 1px solid rgba(232, 168, 84, 0.15);
+    border: 1px solid rgba(var(--color-primary-rgb), 0.15);
     color: var(--text-primary);
     padding: 12px 16px;
     border-radius: var(--radius-sm);
@@ -218,7 +325,7 @@ input, select, textarea {
 input:focus, select:focus, textarea:focus {
     outline: none;
     border-color: var(--color-primary);
-    box-shadow: 0 0 0 2px rgba(232, 168, 84, 0.15), 0 0 25px rgba(232, 168, 84, 0.1);
+    box-shadow: 0 0 0 2px rgba(var(--color-primary-rgb), 0.15), 0 0 25px rgba(var(--color-primary-rgb), 0.1);
     background: rgba(10, 8, 6, 0.8);
 }
 
@@ -228,7 +335,7 @@ input::placeholder {
 
 .themed-select, .themed-input {
     background: rgba(8, 6, 4, 0.6);
-    border: 1px solid rgba(232, 168, 84, 0.15);
+    border: 1px solid rgba(var(--color-primary-rgb), 0.15);
     color: var(--text-primary);
     padding: 10px 14px;
     border-radius: var(--radius-sm);
@@ -255,11 +362,11 @@ input::placeholder {
 
 .themed-select:focus {
     border-color: var(--color-primary);
-    box-shadow: 0 0 0 3px rgba(232, 168, 84, 0.12);
+    box-shadow: 0 0 0 3px rgba(var(--color-primary-rgb), 0.12);
 }
 
 .themed-select:hover {
-    border-color: rgba(232, 168, 84, 0.3);
+    border-color: rgba(var(--color-primary-rgb), 0.3);
 }
 
 /* ─── Badges ───────────────────────────────── */
@@ -294,9 +401,9 @@ input::placeholder {
 }
 
 .badge-primary {
-    background: rgba(232, 168, 84, 0.12);
+    background: rgba(var(--color-primary-rgb), 0.12);
     color: var(--color-primary);
-    border: 1px solid rgba(232, 168, 84, 0.25);
+    border: 1px solid rgba(var(--color-primary-rgb), 0.25);
 }
 
 /* ─── Text Utilities ───────────────────────── */
@@ -316,10 +423,10 @@ input::placeholder {
 }
 
 .stat-item {
-    background: linear-gradient(135deg, rgba(232, 168, 84, 0.03) 0%, rgba(10, 8, 6, 0.4) 100%);
+    background: linear-gradient(135deg, rgba(var(--color-primary-rgb), 0.03) 0%, rgba(10, 8, 6, 0.4) 100%);
     padding: 24px;
     border-radius: var(--radius-md);
-    border: 1px solid rgba(232, 168, 84, 0.06);
+    border: 1px solid rgba(var(--color-primary-rgb), 0.06);
     transition: all 0.3s var(--ease-smooth);
     position: relative;
     overflow: hidden;
@@ -338,9 +445,9 @@ input::placeholder {
 }
 
 .stat-item:hover {
-    background: linear-gradient(135deg, rgba(232, 168, 84, 0.06) 0%, rgba(10, 8, 6, 0.5) 100%);
+    background: linear-gradient(135deg, rgba(var(--color-primary-rgb), 0.06) 0%, rgba(10, 8, 6, 0.5) 100%);
     transform: translateY(-3px);
-    border-color: rgba(232, 168, 84, 0.15);
+    border-color: rgba(var(--color-primary-rgb), 0.15);
 }
 
 .stat-item:hover::before {
@@ -365,7 +472,7 @@ input::placeholder {
 
 /* ─── Progress Bars ────────────────────────── */
 .progress-container {
-    background: rgba(232, 168, 84, 0.08);
+    background: rgba(var(--color-primary-rgb), 0.08);
     height: 6px;
     border-radius: 3px;
     overflow: hidden;
@@ -403,7 +510,7 @@ table {
 th, td {
     padding: 16px 20px;
     text-align: left;
-    border-bottom: 1px solid rgba(232, 168, 84, 0.05);
+    border-bottom: 1px solid rgba(var(--color-primary-rgb), 0.05);
 }
 
 th {
@@ -425,7 +532,7 @@ tbody tr {
 }
 
 tbody tr:hover {
-    background: rgba(232, 168, 84, 0.04);
+    background: rgba(var(--color-primary-rgb), 0.04);
 }
 
 /* ─── Modals ───────────────────────────────── */
@@ -443,9 +550,9 @@ tbody tr:hover {
 
 .modal-content {
     background: linear-gradient(145deg, rgba(20, 16, 12, 0.98) 0%, rgba(8, 6, 4, 0.99) 100%);
-    border: 1px solid rgba(232, 168, 84, 0.15);
+    border: 1px solid rgba(var(--color-primary-rgb), 0.15);
     border-radius: var(--radius-lg);
-    box-shadow: 0 32px 80px rgba(0, 0, 0, 0.7), 0 0 60px rgba(232, 168, 84, 0.05);
+    box-shadow: 0 32px 80px rgba(0, 0, 0, 0.7), 0 0 60px rgba(var(--color-primary-rgb), 0.05);
     padding: 36px;
     width: 90%;
     max-width: 900px;
@@ -470,19 +577,19 @@ tbody tr:hover {
 }
 
 ::-webkit-scrollbar-thumb {
-    background: rgba(232, 168, 84, 0.2);
+    background: rgba(var(--color-primary-rgb), 0.2);
     border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: rgba(232, 168, 84, 0.4);
+    background: rgba(var(--color-primary-rgb), 0.4);
 }
 
 /* ─── Spinner ──────────────────────────────── */
 .spinner {
     width: 44px;
     height: 44px;
-    border: 2px solid rgba(232, 168, 84, 0.15);
+    border: 2px solid rgba(var(--color-primary-rgb), 0.15);
     border-top-color: var(--color-primary);
     border-radius: 50%;
     animation: spin 0.9s linear infinite;
@@ -503,8 +610,8 @@ tbody tr:hover {
     width: 44px;
     height: 44px;
     border-radius: var(--radius-md);
-    border: 1px solid rgba(232, 168, 84, 0.15);
-    background: rgba(232, 168, 84, 0.05);
+    border: 1px solid rgba(var(--color-primary-rgb), 0.15);
+    background: rgba(var(--color-primary-rgb), 0.05);
     color: var(--text-secondary);
     cursor: pointer;
     display: flex;
@@ -514,17 +621,17 @@ tbody tr:hover {
 }
 
 .icon-btn:hover {
-    background: rgba(232, 168, 84, 0.12);
+    background: rgba(var(--color-primary-rgb), 0.12);
     color: var(--text-primary);
-    border-color: rgba(232, 168, 84, 0.3);
+    border-color: rgba(var(--color-primary-rgb), 0.3);
     transform: translateY(-2px);
 }
 
 .icon-btn.active {
-    background: rgba(232, 168, 84, 0.15);
+    background: rgba(var(--color-primary-rgb), 0.15);
     border-color: var(--color-primary);
     color: var(--color-primary);
-    box-shadow: 0 0 20px rgba(232, 168, 84, 0.15);
+    box-shadow: 0 0 20px rgba(var(--color-primary-rgb), 0.15);
 }
 
 .icon-btn svg {

@@ -10,7 +10,7 @@ const TVMAZE_SEARCH_URL = 'https://api.tvmaze.com/singlesearch/shows';
 const CACHE_TTL_DAYS = 7;
 
 // Rate limiting - TVMaze allows ~20 req/sec, we'll be conservative
-const REQUEST_DELAY_MS = 100;
+const REQUEST_DELAY_MS = 500;
 
 interface TVMazeShow {
     id: number;
@@ -173,6 +173,31 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
+ * Simple helper to run a set of asynchronous tasks with a maximum concurrency limit.
+ */
+async function runWithConcurrency<T>(
+    tasks: (() => Promise<T>)[],
+    concurrency: number
+): Promise<T[]> {
+    const results: T[] = [];
+    let currentIndex = 0;
+
+    async function worker() {
+        while (currentIndex < tasks.length) {
+            const index = currentIndex++;
+            results[index] = await tasks[index]();
+        }
+    }
+
+    const workers = Array(Math.min(concurrency, tasks.length))
+        .fill(null)
+        .map(() => worker());
+
+    await Promise.all(workers);
+    return results;
+}
+
+/**
  * Enrich EPG programs with TVMaze metadata.
  * If channelId is provided, only enriches programs for that specific channel (used by pipeline queue).
  */
@@ -234,157 +259,159 @@ export async function enrichProgramsWithMetadata(channelId?: string): Promise<{
             emitLog(`Processing ${titles.length} unique show titles via TVMaze API...`, 'info');
         }
 
-        const BATCH_SIZE = 25; // Log batch stats every 25 titles
-        let batchApiCalls = 0;
-        let batchHits = 0;
-        let batchMisses = 0;
-        let batchCached = 0;
-
-        for (let i = 0; i < titles.length; i++) {
-            const title = titles[i];
+        // Create mapping of original title to normalized title
+        const titleMap = new Map<string, string>();
+        const uniqueNormalized = new Set<string>();
+        for (const title of titles) {
             const normalized = normalizeTitle(title);
-
-            // Skip very short normalized titles
-            if (!normalized || normalized.length < 2) {
+            if (normalized && normalized.length >= 2) {
+                titleMap.set(title, normalized);
+                uniqueNormalized.add(normalized);
+            } else {
                 stats.skipped++;
-                console.log(`[Enrich] Skipped: "${title}" (normalized too short)`);
                 await db.execute({
                     sql: `UPDATE epg_programs SET enriched = 1 WHERE title = ?`,
                     args: [title]
                 });
-                continue;
             }
+        }
 
-            try {
-                // 0. Check for manual override first
-                const overrideRes = await db.execute({
-                    sql: "SELECT * FROM metadata_overrides WHERE title_normalized = ?",
-                    args: [normalized]
-                });
+        if (titleMap.size === 0) {
+            return stats;
+        }
 
-                if (overrideRes.rows.length > 0) {
-                    const override = overrideRes.rows[0];
-                    await db.execute({
-                        sql: `UPDATE epg_programs SET 
-                              tmdb_id = ?,
-                              category = COALESCE(NULLIF(category, ''), ?),
-                              rating = COALESCE(NULLIF(rating, ''), ?),
-                              enriched = 1
-                              WHERE title = ?`,
-                        args: [
-                            override.tvmaze_id,
-                            override.genres,
-                            override.rating,
-                            title
-                        ]
-                    });
-                    stats.enriched++;
-                    // stats.fromOverride++; // could track this
-                    continue;
-                }
+        const normalizedList = Array.from(uniqueNormalized);
 
-                // Check cache first
-                const cached = await getCachedMetadata(normalized);
-                if (cached) {
-                    // Use cached data
-                    if (cached.tvmaze_id) {
-                        await db.execute({
-                            sql: `UPDATE epg_programs SET 
-                                  tmdb_id = ?,
-                                  category = COALESCE(NULLIF(category, ''), ?),
-                                  rating = COALESCE(NULLIF(rating, ''), ?),
-                                  enriched = 1
-                                  WHERE title = ?`,
-                            args: [cached.tvmaze_id, cached.genres, cached.rating, title]
-                        });
-                        stats.enriched++;
-                        batchHits++;
-                    } else {
-                        await db.execute({
-                            sql: `UPDATE epg_programs SET enriched = 1 WHERE title = ?`,
-                            args: [title]
-                        });
-                        stats.notFound++;
-                        batchMisses++;
-                    }
-                    stats.fromCache++;
-                    batchCached++;
-                    continue;
-                }
-
-                // Rate limiting delay
-                await delay(REQUEST_DELAY_MS);
-
-                // Search TVMaze
-                apiCalls++;
-                batchApiCalls++;
-                const show = await searchTVMaze(normalized);
-
-                // Cache the result (even if null)
-                await cacheMetadata(normalized, show);
-
-                if (show) {
-                    console.log(`[Enrich] API Hit: "${title}" -> ${show.name} (ID: ${show.id})`);
-                    await db.execute({
-                        sql: `UPDATE epg_programs SET 
-                              tmdb_id = ?,
-                              category = COALESCE(NULLIF(category, ''), ?),
-                              rating = COALESCE(NULLIF(rating, ''), ?),
-                              enriched = 1
-                              WHERE title = ?`,
-                        args: [
-                            show.id,
-                            show.genres?.join(', ') || '',
-                            show.rating?.average ? String(show.rating.average) : null,
-                            title
-                        ]
-                    });
-                    stats.enriched++;
-                    batchHits++;
-                } else {
-                    console.log(`[Enrich] API Miss: "${title}" (not found)`);
-                    await db.execute({
-                        sql: `UPDATE epg_programs SET enriched = 1 WHERE title = ?`,
-                        args: [title]
-                    });
-                    stats.notFound++;
-                    batchMisses++;
-                }
-
-            } catch (error: any) {
-                apiFailed++;
-                console.error(`[Enrich] API Error: "${title}" - ${error.message}`);
-                // Mark as processed to avoid retrying on transient errors
-                await db.execute({
-                    sql: `UPDATE epg_programs SET enriched = 1 WHERE title = ?`,
-                    args: [title]
-                });
-                stats.notFound++;
-                batchMisses++;
+        // Fetch overrides for all unique normalized titles
+        const overridesMap = new Map<string, any>();
+        const chunkSize = 200;
+        for (let i = 0; i < normalizedList.length; i += chunkSize) {
+            const chunk = normalizedList.slice(i, i + chunkSize);
+            const placeholders = chunk.map(() => '?').join(',');
+            const res = await db.execute({
+                sql: `SELECT * FROM metadata_overrides WHERE title_normalized IN (${placeholders})`,
+                args: chunk
+            });
+            for (const row of res.rows) {
+                overridesMap.set(String(row.title_normalized), row);
             }
+        }
 
-            // Progress and batch logging every BATCH_SIZE titles
-            if ((i + 1) % BATCH_SIZE === 0 || i === titles.length - 1) {
-                const pct = Math.round(((i + 1) / titles.length) * 100);
-                const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-                const totalBatches = Math.ceil(titles.length / BATCH_SIZE);
-
-                // Batch stats log
-                console.log(`[Enrich] Batch ${batchNum}/${totalBatches}: API calls=${batchApiCalls}, hits=${batchHits}, misses=${batchMisses}, cached=${batchCached}`);
-
-                // Reset batch counters
-                batchApiCalls = 0;
-                batchHits = 0;
-                // Progress logging every BATCH_SIZE titles, or if processing a single channel
-                if (!channelId || i % BATCH_SIZE === 0 || i === titles.length - 1) {
-                    const prefix = channelId ? `[Channel ${channelId}] ` : '';
-                    const msg = `${prefix}Enriching: ${i + 1}/${titles.length} (${stats.enriched} matched, ${stats.fromCache} cached, ${pct}%)`;
-                    emitProgress(msg, i + 1, titles.length, 'enrich');
+        // Fetch TVMaze cache for all unique normalized titles
+        const cacheMap = new Map<string, CachedMetadata>();
+        for (let i = 0; i < normalizedList.length; i += chunkSize) {
+            const chunk = normalizedList.slice(i, i + chunkSize);
+            const placeholders = chunk.map(() => '?').join(',');
+            const res = await db.execute({
+                sql: `SELECT * FROM tvmaze_cache WHERE title_normalized IN (${placeholders})`,
+                args: chunk
+            });
+            for (const row of res.rows) {
+                const cachedAt = Number(row.cached_at);
+                const ageMs = Date.now() - cachedAt;
+                const ageDays = ageMs / (1000 * 60 * 60 * 24);
+                if (ageDays <= CACHE_TTL_DAYS) {
+                    cacheMap.set(String(row.title_normalized), {
+                        title: String(row.title_normalized),
+                        tvmaze_id: row.tvmaze_id ? Number(row.tvmaze_id) : null,
+                        genres: String(row.genres || ''),
+                        rating: row.rating ? String(row.rating) : null,
+                        cached_at: cachedAt
+                    });
                 }
             }
         }
 
-        // Final summary
+        const updates: { sql: string; args: any[] }[] = [];
+        const cacheMisses: string[] = [];
+
+        // Determine updates and cache misses
+        for (const [title, normalized] of titleMap.entries()) {
+            if (overridesMap.has(normalized)) {
+                const override = overridesMap.get(normalized);
+                updates.push({
+                    sql: `UPDATE epg_programs SET tmdb_id = ?, category = COALESCE(NULLIF(category, ''), ?), rating = COALESCE(NULLIF(rating, ''), ?), enriched = 1 WHERE title = ?`,
+                    args: [override.tvmaze_id, override.genres, override.rating, title]
+                });
+                stats.enriched++;
+            } else if (cacheMap.has(normalized)) {
+                const cached = cacheMap.get(normalized)!;
+                if (cached.tvmaze_id) {
+                    updates.push({
+                        sql: `UPDATE epg_programs SET tmdb_id = ?, category = COALESCE(NULLIF(category, ''), ?), rating = COALESCE(NULLIF(rating, ''), ?), enriched = 1 WHERE title = ?`,
+                        args: [cached.tvmaze_id, cached.genres, cached.rating, title]
+                    });
+                    stats.enriched++;
+                } else {
+                    updates.push({
+                        sql: `UPDATE epg_programs SET enriched = 1 WHERE title = ?`,
+                        args: [title]
+                    });
+                    stats.notFound++;
+                }
+                stats.fromCache++;
+            } else {
+                if (!cacheMisses.includes(normalized)) {
+                    cacheMisses.push(normalized);
+                }
+            }
+        }
+
+        // Process cache misses sequentially with delay
+        let processedCount = stats.fromCache + stats.skipped;
+        for (const normalized of cacheMisses) {
+            try {
+                await delay(REQUEST_DELAY_MS);
+                apiCalls++;
+                const show = await searchTVMaze(normalized);
+                await cacheMetadata(normalized, show);
+
+                for (const [title, norm] of titleMap.entries()) {
+                    if (norm === normalized) {
+                        if (show) {
+                            updates.push({
+                                sql: `UPDATE epg_programs SET tmdb_id = ?, category = COALESCE(NULLIF(category, ''), ?), rating = COALESCE(NULLIF(rating, ''), ?), enriched = 1 WHERE title = ?`,
+                                args: [show.id, show.genres?.join(', ') || '', show.rating?.average ? String(show.rating.average) : null, title]
+                            });
+                            stats.enriched++;
+                        } else {
+                            updates.push({
+                                sql: `UPDATE epg_programs SET enriched = 1 WHERE title = ?`,
+                                args: [title]
+                            });
+                            stats.notFound++;
+                        }
+                    }
+                }
+            } catch (err) {
+                apiFailed++;
+                for (const [title, norm] of titleMap.entries()) {
+                    if (norm === normalized) {
+                        updates.push({
+                            sql: `UPDATE epg_programs SET enriched = 1 WHERE title = ?`,
+                            args: [title]
+                        });
+                        stats.notFound++;
+                    }
+                }
+            }
+            
+            processedCount++;
+            if (processedCount % 10 === 0 || processedCount === titles.length) {
+                const prefix = channelId ? `[Channel ${channelId}] ` : '';
+                emitProgress(`${prefix}Enriching: ${processedCount}/${titles.length} programs`, processedCount, titles.length, 'enrich');
+            }
+        }
+
+        // Execute all updates inside a single database transaction!
+        if (updates.length > 0) {
+            await db.execute("BEGIN TRANSACTION");
+            for (const update of updates) {
+                await db.execute({ sql: update.sql, args: update.args });
+            }
+            await db.execute("COMMIT");
+        }
+
         const endTime = new Date();
         const durationMs = endTime.getTime() - startTime.getTime();
         const durationSec = (durationMs / 1000).toFixed(1);

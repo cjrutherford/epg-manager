@@ -2,9 +2,13 @@ import { Component, OnInit, OnDestroy, ViewChild, ElementRef, HostListener, CUST
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { StorageService } from '../services/storage.service';
 import { CastService } from '../services/cast.service';
+import { ThemeService, Theme } from '../services/theme.service';
+import { DvrComponent } from '../admin/dvr/dvr.component';
+import { LucideAngularModule } from 'lucide-angular';
 
 interface Channel {
     id: string;
@@ -22,7 +26,7 @@ interface Channel {
 @Component({
     selector: 'app-watch',
     standalone: true,
-    imports: [CommonModule, FormsModule, RouterLink],
+    imports: [CommonModule, FormsModule, RouterLink, DvrComponent, LucideAngularModule],
     schemas: [CUSTOM_ELEMENTS_SCHEMA],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './watch.component.html',
@@ -43,7 +47,14 @@ export class WatchComponent implements OnInit, OnDestroy {
     virtualPaddingTop = 0;
     virtualPaddingBottom = 0;
     currentScrollTop = 0;
-    rowHeight = 50;
+    rowHeight = 44;
+
+    // Server settings state
+    serverSettingsOpen = false;
+    serverUrl = '';
+    discovering = false;
+    discoveryMessage = '';
+    discoveryError = false;
 
     categories: any[] = [];
     currentChannelIndex = -1;
@@ -53,12 +64,14 @@ export class WatchComponent implements OnInit, OnDestroy {
     hiddenChannels = new Set<string>();
 
     guideOpen = false;
+    dvrOpen = false;
     guideStart: Date | null = null;
     guideHours = 3;
     guideTimeLabel = '';
     guideStartMs = 0;
     guideEndMs = 0;
-    guideHeight = 340;
+    guideHeight = 280;
+    guideLayout: 'overlay' | 'side' | 'guide-only' = 'overlay';
 
     // Drag resize state
     private isDraggingGuide = false;
@@ -75,6 +88,36 @@ export class WatchComponent implements OnInit, OnDestroy {
     showInfoOverlay = false;
     showOsd = false;
     osdChannel: Channel | null = null;
+    dataState: { hasChannels: boolean; hasPrograms: boolean; hasPlaylist: boolean; isEmpty: boolean } | null = null;
+
+    toggleDiagnostics(): void {
+        this.diagnosticsOpen = !this.diagnosticsOpen;
+    }
+
+    toggleThemePicker(event: MouseEvent): void {
+        event.stopPropagation();
+        this.themePickerOpen = !this.themePickerOpen;
+    }
+
+    selectTheme(key: string): void {
+        this.themeService.setTheme(key);
+        this.currentThemeKey = key;
+        this.themePickerOpen = false;
+    }
+
+    get guideLayoutIcon(): string {
+        return this.guideLayout === 'overlay' ? 'columns-2' : this.guideLayout === 'side' ? 'square-menu' : 'grip-horizontal';
+    }
+
+    cycleGuideLayout(): void {
+        const modes: Array<'overlay' | 'side' | 'guide-only'> = ['overlay', 'side', 'guide-only'];
+        const idx = modes.indexOf(this.guideLayout);
+        this.guideLayout = modes[(idx + 1) % modes.length];
+    }
+
+    get isEmpty(): boolean {
+        return !this.loading && this.channels.length === 0 && this.dataState?.isEmpty === true;
+    }
 
     private hls: any = null;
     private Hls: any = null;
@@ -89,6 +132,19 @@ export class WatchComponent implements OnInit, OnDestroy {
     isCasting = false;
     castAvailable = false;
 
+    // Current-time indicator
+    currentTimeMs = 0;
+    private currentTimeInterval: any = null;
+
+    // Program tooltip state
+    tooltip = {
+        visible: false,
+        x: 0,
+        y: 0,
+        program: null as any,
+        channel: null as any
+    };
+
     // Context Menu State
     contextMenu = {
         visible: false,
@@ -98,12 +154,54 @@ export class WatchComponent implements OnInit, OnDestroy {
         program: null as any
     };
 
+    // DVR recordings — scheduled + active
+    recordings: any[] = [];
+    recordingsByChannel: Map<string, any[]> = new Map();
+
+    get isRecordingCurrentChannel(): boolean {
+        const ch = this.channels[this.currentChannelIndex];
+        return ch ? this.recordingsByChannel.has(ch.id) : false;
+    }
+
+    get currentRecording(): any | null {
+        if (this.currentChannelIndex < 0) return null;
+        const ch = this.channels[this.currentChannelIndex];
+        if (!ch) return null;
+        const recs = this.recordingsByChannel.get(ch.id);
+        if (!recs) return null;
+        const now = Date.now();
+        return recs.find(r => {
+            const start = new Date(r.start_time).getTime();
+            const end = new Date(r.end_time).getTime();
+            return start <= now && end > now && r.status === 'recording';
+        }) || null;
+    }
+
+    themes: Theme[] = [];
+    currentThemeKey = 'cinematic-noir';
+    themePickerOpen = false;
+
+    diagnosticsOpen = false;
+    diagnosticsData = {
+        resolution: 'Unknown',
+        bufferLength: 0,
+        droppedFrames: 0,
+        totalFrames: 0,
+        bandwidth: '0 Mbps',
+        latency: 0,
+        codec: 'Unknown',
+        playerType: 'Native / HLS.js'
+    };
+    private diagnosticsInterval: any = null;
+    private castSub: Subscription | null = null;
+
     private isBrowser: boolean;
 
     constructor(
         private api: ApiService,
         private storage: StorageService,
         public castService: CastService,
+        private themeService: ThemeService,
         @Inject(PLATFORM_ID) platformId: Object,
         private cdr: ChangeDetectorRef
     ) {
@@ -111,22 +209,29 @@ export class WatchComponent implements OnInit, OnDestroy {
     }
 
     ngOnInit(): void {
-        if (this.isBrowser) {
-            this.isMobile = window.innerWidth < 768;
+        this.themes = this.themeService.getThemes();
+        this.currentThemeKey = this.themeService.getCurrentThemeKey();
 
-            // Dynamic import of browser-only SpatialNavigation
-            // @ts-ignore
-            import('spatial-navigation-js').then((mod: any) => {
-                const SpatialNavigation = mod.default || mod;
-                SpatialNavigation.init();
-                SpatialNavigation.add({
-                    selector: 'button, .guide-channel, .guide-program, .ch-btn, .vol-btn'
-                });
-                SpatialNavigation.makeFocusable();
-            }).catch(() => {
-                // Spatial navigation not available, skip gracefully
-            });
+        if (!this.isBrowser) {
+            this.loading = false;
+            return;
         }
+
+        this.isMobile = window.innerWidth < 768;
+        this.serverUrl = this.getServerUrl();
+
+        // Dynamic import of browser-only SpatialNavigation
+        // @ts-ignore
+        import('spatial-navigation-js').then((mod: any) => {
+            const SpatialNavigation = mod.default || mod;
+            SpatialNavigation.init();
+            SpatialNavigation.add({
+                selector: 'button, .guide-channel, .guide-program, .ch-btn, .vol-btn'
+            });
+            SpatialNavigation.makeFocusable();
+        }).catch(() => {
+            // Spatial navigation not available, skip gracefully
+        });
         
         // Initialize storage with backend sync
         this.storage.init().then(() => {
@@ -137,7 +242,13 @@ export class WatchComponent implements OnInit, OnDestroy {
         this.volume = this.storage.getVolume();
         this.muted = this.storage.getMuted();
 
-        this.castService.castState$.subscribe(state => {
+        this.currentTimeMs = Date.now();
+        this.currentTimeInterval = setInterval(() => {
+            this.currentTimeMs = Date.now();
+            this.cdr.markForCheck();
+        }, 60000);
+
+        this.castSub = this.castService.castState$.subscribe(state => {
             this.isCasting = state.isCasting;
             this.castAvailable = state.isAvailable;
 
@@ -149,14 +260,13 @@ export class WatchComponent implements OnInit, OnDestroy {
 
         this.updateGuideHours();
 
-        if (this.isBrowser) {
-            // Bind drag handlers once
-            this.boundDragMove = this.onGuideDragMove.bind(this);
-            this.boundDragEnd = this.onGuideDragEnd.bind(this);
-        }
+        // Bind drag handlers once
+        this.boundDragMove = this.onGuideDragMove.bind(this);
+        this.boundDragEnd = this.onGuideDragEnd.bind(this);
 
         this.loadCategories();
         this.loadGuide();
+        this.loadRecordings();
     }
 
     updateGuideHours(): void {
@@ -173,9 +283,12 @@ export class WatchComponent implements OnInit, OnDestroy {
 
     ngOnDestroy(): void {
         if (this.hls) { this.hls.destroy(); this.hls = null; }
+        if (this.castSub) { this.castSub.unsubscribe(); this.castSub = null; }
         clearTimeout(this.overlayTimer);
         clearTimeout(this.osdTimer);
         clearInterval(this.infoTimer);
+        clearInterval(this.currentTimeInterval);
+        clearInterval(this.diagnosticsInterval);
         if (this.isBrowser) {
             document.removeEventListener('mousemove', this.boundDragMove);
             document.removeEventListener('mouseup', this.boundDragEnd);
@@ -288,6 +401,57 @@ export class WatchComponent implements OnInit, OnDestroy {
         this.guideOpen = !this.guideOpen;
     }
 
+    async loadRecordings(): Promise<void> {
+        try {
+            this.recordings = await this.api.getDvrSchedules().toPromise() || [];
+            this.recordingsByChannel.clear();
+            for (const rec of this.recordings) {
+                const chId = String(rec.channel_id);
+                if (!this.recordingsByChannel.has(chId)) {
+                    this.recordingsByChannel.set(chId, []);
+                }
+                this.recordingsByChannel.get(chId)!.push(rec);
+            }
+        } catch (e) {
+            this.recordings = [];
+        }
+    }
+
+    hasRecording(channelId: string, programStart?: string, programEnd?: string): boolean {
+        const recs = this.recordingsByChannel.get(channelId);
+        if (!recs || recs.length === 0) return false;
+        if (!programStart || !programEnd) return true;
+        return recs.some(r => {
+            const rStart = new Date(r.start_time).getTime();
+            const rEnd = new Date(r.end_time).getTime();
+            const pStart = new Date(programStart).getTime();
+            const pEnd = new Date(programEnd).getTime();
+            return rStart < pEnd && rEnd > pStart;
+        });
+    }
+
+    scheduleRecording(channelId: string, programTitle: string, startTime: string, endTime: string): void {
+        const ch = this.channels.find(c => c.id === channelId);
+        if (!ch) return;
+        this.api.scheduleRecording({
+            channel_id: channelId,
+            program_title: programTitle,
+            start_time: startTime,
+            end_time: endTime,
+            stream_url: ch.stream_url
+        }).subscribe({
+            next: () => this.loadRecordings(),
+            error: () => {}
+        });
+    }
+
+    cancelSchedule(recordingId: number): void {
+        this.api.cancelRecording(recordingId).subscribe({
+            next: () => this.loadRecordings(),
+            error: () => {}
+        });
+    }
+
     // ── Filtering ───────────────────────────────
     applyFilters(): void {
         let channels = this.channels;
@@ -386,6 +550,7 @@ export class WatchComponent implements OnInit, OnDestroy {
         this.visibleOtherChannels = this.cachedOtherChannels.slice(startIndex, endIndex);
         this.virtualPaddingTop = startIndex * this.rowHeight;
         this.virtualPaddingBottom = Math.max(0, (this.cachedOtherChannels.length - endIndex) * this.rowHeight);
+        this.cdr.markForCheck();
     }
 
     onSearchChange(): void {
@@ -415,7 +580,9 @@ export class WatchComponent implements OnInit, OnDestroy {
         if (index < 0 || index >= this.channels.length) return;
         this.currentChannelIndex = index;
         const ch = this.channels[index];
-        this.playStream(ch.stream_url);
+        if (this.isBrowser) {
+            this.playStream(ch.stream_url);
+        }
         this.showOsdBriefly(ch);
         this.showInfoBriefly(ch);
         this.storage.setLastChannel(String(ch.id));
@@ -440,6 +607,11 @@ export class WatchComponent implements OnInit, OnDestroy {
 
     // ── Player ──────────────────────────────────
     private playStream(url: string, forceCast = false): void {
+        if (!this.isBrowser) {
+            this.loading = false;
+            return;
+        }
+
         this.loading = !!url && !this.isCasting;
         this.error = '';
 
@@ -460,14 +632,16 @@ export class WatchComponent implements OnInit, OnDestroy {
             return;
         }
 
+        const resolvedUrl = this.resolveUrl(url);
+
         if (this.isCasting || forceCast) {
             const ch = this.currentChannel;
             if (ch) {
                 this.castService.loadMedia(
-                    url,
+                    resolvedUrl,
                     ch.name,
                     ch.current_program?.title || ch.group_title,
-                    ch.logo
+                    this.resolveUrl(ch.logo)
                 );
             }
             return;
@@ -481,13 +655,13 @@ export class WatchComponent implements OnInit, OnDestroy {
         if (!this.Hls) {
             import('hls.js').then((mod) => {
                 this.Hls = mod.default;
-                this.setupHlsPlayback(url, video);
+                this.setupHlsPlayback(resolvedUrl, video);
             }).catch(() => {
                 this.error = 'HLS player not available';
                 this.loading = false;
             });
         } else {
-            this.setupHlsPlayback(url, video);
+            this.setupHlsPlayback(resolvedUrl, video);
         }
     }
 
@@ -536,8 +710,10 @@ export class WatchComponent implements OnInit, OnDestroy {
     setVolume(val: number): void {
         this.volume = Math.max(0, Math.min(1, val));
         this.muted = false;
-        this.videoRef.nativeElement.volume = this.volume;
-        this.videoRef.nativeElement.muted = false;
+        if (this.videoRef?.nativeElement) {
+            this.videoRef.nativeElement.volume = this.volume;
+            this.videoRef.nativeElement.muted = false;
+        }
         this.storage.setVolume(this.volume);
         this.storage.setMuted(false);
     }
@@ -549,7 +725,9 @@ export class WatchComponent implements OnInit, OnDestroy {
 
     toggleMute(): void {
         this.muted = !this.muted;
-        this.videoRef.nativeElement.muted = this.muted;
+        if (this.videoRef?.nativeElement) {
+            this.videoRef.nativeElement.muted = this.muted;
+        }
         this.storage.setMuted(this.muted);
     }
 
@@ -702,6 +880,40 @@ export class WatchComponent implements OnInit, OnDestroy {
         }
     }
 
+    onProgramHover(event: MouseEvent, channel: Channel, program: any) {
+        this.tooltip = {
+            visible: true,
+            x: Math.min(event.clientX, window.innerWidth - 320),
+            y: Math.min(event.clientY, window.innerHeight - 200),
+            program,
+            channel
+        };
+        this.cdr.markForCheck();
+    }
+
+    hideProgramTooltip() {
+        this.tooltip.visible = false;
+        this.cdr.markForCheck();
+    }
+
+    // ── Mobile Swipe ────────────────────────────
+    private touchStartX = 0;
+    private touchStartY = 0;
+
+    onGuideTouchStart(event: TouchEvent) {
+        this.touchStartX = event.touches[0].clientX;
+        this.touchStartY = event.touches[0].clientY;
+    }
+
+    onGuideTouchEnd(event: TouchEvent) {
+        const dx = event.changedTouches[0].clientX - this.touchStartX;
+        const dy = event.changedTouches[0].clientY - this.touchStartY;
+        if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
+            if (dx > 0) this.guideEarlier();
+            else this.guideLater();
+        }
+    }
+
     @HostListener('document:click', ['$event'])
     onDocumentClick(event: MouseEvent) {
         if (this.contextMenu.visible) {
@@ -736,10 +948,126 @@ export class WatchComponent implements OnInit, OnDestroy {
                 stream_url: channel.stream_url
             };
             await this.api.scheduleRecording(data).toPromise();
-            // Optional: Show a toast/notification here
-            console.log(`Scheduled recording for ${program.title} on ${channel.name}`);
+            await this.loadRecordings();
         } catch (e) {
             console.error('Failed to schedule recording', e);
         }
+    }
+
+    async cancelRecordingFromMenu(channel: Channel, program: any) {
+        this.contextMenu.visible = false;
+        this.cdr.markForCheck();
+        const recs = this.recordingsByChannel.get(channel.id) || [];
+        const pStart = new Date(program.start).getTime();
+        const pEnd = new Date(program.stop).getTime();
+        const toCancel = recs.filter(r => {
+            const rStart = new Date(r.start_time).getTime();
+            const rEnd = new Date(r.end_time).getTime();
+            return rStart < pEnd && rEnd > pStart;
+        });
+        for (const r of toCancel) {
+            try {
+                await this.api.cancelRecording(r.id).toPromise();
+            } catch (_) {}
+        }
+        await this.loadRecordings();
+    }
+
+    resolveUrl(url: string): string {
+        if (!url) return '';
+        if (url.startsWith('/')) {
+            const serverUrl = this.getServerUrl();
+            if (serverUrl) {
+                return `${serverUrl.replace(/\/+$/, '')}${url}`;
+            }
+        }
+        return url;
+    }
+
+    getServerUrl(): string {
+        if (!this.isBrowser) return '';
+        return localStorage.getItem('iptv_server_url') || '';
+    }
+
+    saveServerUrl(): void {
+        if (!this.isBrowser) return;
+        let url = this.serverUrl.trim();
+        if (url && !/^https?:\/\//i.test(url)) {
+            url = 'http://' + url;
+        }
+        localStorage.setItem('iptv_server_url', url);
+        this.serverSettingsOpen = false;
+        this.loadCategories();
+        this.loadGuide();
+        this.loadRecordings();
+    }
+
+    async checkHealth(url: string): Promise<boolean> {
+        try {
+            const res = await fetch(`${url}/api/health`, { signal: AbortSignal.timeout(1000) });
+            if (res.ok) {
+                const data = await res.json();
+                return data && data.status === 'ok';
+            }
+        } catch { }
+        return false;
+    }
+
+    async discoverLocalServer(): Promise<void> {
+        if (!this.isBrowser) return;
+        this.discovering = true;
+        this.discoveryError = false;
+        this.discoveryMessage = 'Scanning local network for EPG Manager server...';
+        this.cdr.markForCheck();
+
+        const targets = new Set<string>();
+        targets.add('http://localhost:3000');
+        if (window.location.origin && !window.location.origin.includes('localhost') && !window.location.origin.startsWith('capacitor:')) {
+            targets.add(window.location.origin);
+        }
+
+        const subnets = ['192.168.1', '192.168.0', '192.168.2', '10.0.0'];
+        const port = 3000;
+
+        for (const subnet of subnets) {
+            for (let i = 1; i <= 254; i++) {
+                targets.add(`http://${subnet}.${i}:${port}`);
+            }
+        }
+
+        const targetArray = Array.from(targets);
+        this.discoveryMessage = `Scanning ${targetArray.length} potential local endpoints...`;
+        this.cdr.markForCheck();
+
+        const batchSize = 50;
+        let foundUrl = '';
+
+        for (let i = 0; i < targetArray.length; i += batchSize) {
+            if (foundUrl) break;
+            const batch = targetArray.slice(i, i + batchSize);
+            this.discoveryMessage = `Scanning local network... (${Math.round((i / targetArray.length) * 100)}%)`;
+            this.cdr.markForCheck();
+
+            await Promise.all(
+                batch.map(async (url) => {
+                    if (foundUrl) return;
+                    const ok = await this.checkHealth(url);
+                    if (ok) {
+                        foundUrl = url;
+                    }
+                })
+            );
+        }
+
+        if (foundUrl) {
+            this.serverUrl = foundUrl;
+            this.discoveryError = false;
+            this.discoveryMessage = `Success! Found server at ${foundUrl}`;
+        } else {
+            this.discoveryError = true;
+            this.discoveryMessage = 'No server found. Please enter the URL manually.';
+        }
+        this.discovering = false;
+        this.cdr.markForCheck();
     }
 }

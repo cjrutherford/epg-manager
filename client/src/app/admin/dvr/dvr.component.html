@@ -1,6 +1,11 @@
-<div class="dvr-page">
+<div class="dvr-page" [class.dvr-overlay]="isOverlay">
     <div class="page-header">
-        <h1>DVR Manager</h1>
+        <div class="header-left">
+            <h1>DVR Manager</h1>
+            @if (isOverlay) {
+                <button class="btn btn-secondary close-btn" (click)="close.emit()">✕ Close</button>
+            }
+        </div>
         <button class="btn btn-primary" (click)="openScheduleModal()">+ Schedule Recording</button>
     </div>
 
@@ -9,6 +14,26 @@
         <div class="spinner"></div>
     </div>
     } @else {
+    <!-- Storage Gauge -->
+    <div class="glass-card storage-card">
+        <div class="storage-gauge">
+            <svg viewBox="0 0 36 36" class="storage-ring">
+                <path class="ring-bg" d="M18 2.0845
+                    a 15.9155 15.9155 0 0 1 0 31.831
+                    a 15.9155 15.9155 0 0 1 0 -31.831" />
+                <path class="ring-fill" [style.stroke-dasharray]="storagePct + ', 100'"
+                    d="M18 2.0845
+                    a 15.9155 15.9155 0 0 1 0 31.831
+                    a 15.9155 15.9155 0 0 1 0 -31.831" />
+                <text x="18" y="20" class="ring-text">{{ storagePct }}%</text>
+            </svg>
+            <div class="storage-labels">
+                <span class="storage-used">{{ fmtBytes(storageUsed) }} used</span>
+                <span class="storage-total">of {{ fmtBytes(storageTotal) }}</span>
+            </div>
+        </div>
+    </div>
+
     @if (recordings.length === 0) {
     <div class="glass-card empty-state">
         <div class="empty-icon">📹</div>

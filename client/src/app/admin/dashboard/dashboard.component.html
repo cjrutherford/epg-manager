@@ -6,6 +6,37 @@
         <div class="spinner"></div>
     </div>
     } @else {
+
+    <!-- ── Empty-state banner ─────────────────────────────────────────── -->
+    @if (isEmpty) {
+    <div class="empty-state-banner glass-card">
+        <div class="empty-state-icon">🚀</div>
+        <div class="empty-state-body">
+            <h2 class="empty-state-title">No data yet — ready to go!</h2>
+            <p class="empty-state-desc">
+                The system has no channels or guide data. Run a full sync to download your playlist,
+                match channels to the IPTV-ORG guide, grab EPG data, and generate your M3U&nbsp;/&nbsp;XML files.
+            </p>
+            @if (!dataState?.hasPlaylist) {
+            <p class="empty-state-warn">⚠️ No playlist URL is configured yet. Head to
+                <strong>Settings</strong> first and add a playlist URL, then come back here to sync.
+            </p>
+            }
+        </div>
+        <button
+            id="btn-initial-sync"
+            class="btn-sync-now"
+            [disabled]="syncStarted || !dataState?.hasPlaylist"
+            (click)="triggerInitialSync()">
+            @if (syncStarted) {
+            <span class="spinner-sm"></span> Sync running…
+            } @else {
+            ▶ Run Initial Sync
+            }
+        </button>
+    </div>
+    }
+
     <!-- Stats -->
     <div class="dashboard-grid">
         <div class="glass-card stat-card">
@@ -25,9 +56,7 @@
             <div class="stat-label">System Status</div>
             <div class="stat-detail">Uptime: {{ formatUptime(health?.uptime || 0) }}</div>
         </div>
-    </div>
-
-    <!-- Actions -->
+    </div>    <!-- Actions -->
     <div class="actions-section">
         <h2>Actions</h2>
         <div class="action-grid">
@@ -45,6 +74,11 @@
                 <div class="action-icon">📦</div>
                 <div class="action-title">Rebuild Files</div>
                 <div class="action-desc">Regenerate M3U and XMLTV files</div>
+            </div>
+            <div class="glass-card action-card danger-card" (click)="resetSystem()">
+                <div class="action-icon">🚨</div>
+                <div class="action-title text-danger">Full Reset</div>
+                <div class="action-desc">Wipe database, overrides, and generated files</div>
             </div>
         </div>
     </div>
@@ -65,6 +99,83 @@
             <span class="text-secondary">{{ jobStatus.weekly }}</span>
         </div>
         }
+
+        <!-- Collapsible Job Progress & Logs -->
+        <div class="progress-collapsible">
+            <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap;">
+                <button class="btn-collapse" (click)="toggleProgressCollapse()" style="margin-bottom: 0; flex: 1; min-width: 200px;">
+                    <span>{{ progressCollapsed ? '▶ Show Sync Progress & Logs' : '▼ Hide Sync Progress & Logs' }}</span>
+                </button>
+                @if (syncStarted) {
+                <button class="btn-cancel-sync" (click)="cancelSync()">
+                    🛑 Cancel Sync
+                </button>
+                }
+            </div>
+            
+            <div class="collapsible-content" [class.collapsed]="progressCollapsed">
+                @if (syncStarted) {
+                <div class="pipeline-flow">
+                    @for (stage of stages; track stage.id) {
+                    <div class="pipeline-stage" [class]="getStageClass(stage)">
+                        <div class="stage-indicator">
+                            @if (stage.status === 'active') {
+                            <div class="stage-spinner"></div>
+                            } @else if (stage.status === 'done') {
+                            <span class="stage-check">✓</span>
+                            } @else {
+                            <span class="stage-icon">{{ stage.icon }}</span>
+                            }
+                        </div>
+                        <div class="stage-label">{{ stage.label }}</div>
+                    </div>
+                    @if (!$last) {
+                    <div class="pipeline-connector" [class.connector-done]="stage.status === 'done'"></div>
+                    }
+                    }
+                </div>
+                }
+
+                <!-- Progress Bars (dynamic phases) -->
+                @for (phase of activePhases; track phase) {
+                <div class="status-progress-row" [class.completed]="progressBars[phase].completed">
+                    <div class="progress-label">
+                        <span>{{ getPhaseLabel(phase) }}</span>
+                        <span>{{ progressBars[phase].current }} / {{ progressBars[phase].total }} ({{ getProgress(phase) }}%)</span>
+                    </div>
+                    <div class="progress-container">
+                        <div class="progress-bar" [class.progress-done]="progressBars[phase].completed"
+                            [style.width.%]="getProgress(phase)"></div>
+                    </div>
+                    @if (progressBars[phase].message) {
+                    <div class="progress-message">{{ progressBars[phase].message }}</div>
+                    }
+                </div>
+                }
+
+                <!-- Logs Area -->
+                <div class="status-logs-wrapper">
+                    <div class="logs-header">
+                        <span>Console Logs</span>
+                        <div class="logs-actions">
+                            <button class="small-btn" (click)="clearLogs()">Clear Logs</button>
+                            <button class="small-btn" (click)="clearCompletedProgress()">Clear Progress</button>
+                        </div>
+                    </div>
+                    <div class="status-logs" #logContainer>
+                        @for (log of logs; track $index) {
+                        <div class="log-entry" [class]="'log-' + log.level">
+                            <span class="log-time">{{ log.time | date:'HH:mm:ss' }}</span>
+                            <span class="log-msg">{{ log.message }}</span>
+                        </div>
+                        }
+                        @if (logs.length === 0) {
+                        <div class="log-empty">No logs yet</div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
     }
     }

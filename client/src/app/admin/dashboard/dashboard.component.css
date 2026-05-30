@@ -92,3 +92,370 @@
         grid-template-columns: 1fr;
     }
 }
+
+.danger-card:hover {
+    border-color: #ff4d4d;
+    box-shadow: 0 0 20px rgba(255, 77, 77, 0.15);
+}
+
+.text-danger {
+    color: #ff4d4d;
+}
+
+/* ── Empty-state banner ────────────────────────────────── */
+.empty-state-banner {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    padding: 32px 36px;
+    margin-bottom: 32px;
+    border: 1px solid rgba(var(--color-primary-rgb), 0.35);
+    background: linear-gradient(135deg, rgba(var(--color-primary-rgb), 0.06) 0%, rgba(var(--color-primary-rgb), 0.02) 100%);
+    animation: bannerGlow 3s ease-in-out infinite alternate;
+}
+
+@keyframes bannerGlow {
+    from { box-shadow: 0 0 18px rgba(var(--color-primary-rgb), 0.08); }
+    to   { box-shadow: 0 0 32px rgba(var(--color-primary-rgb), 0.18); }
+}
+
+.empty-state-icon {
+    font-size: 3.5rem;
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+.empty-state-body {
+    flex: 1;
+}
+
+.empty-state-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin: 0 0 8px;
+    color: var(--text-primary);
+}
+
+.empty-state-desc {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin: 0 0 8px;
+    line-height: 1.6;
+}
+
+.empty-state-warn {
+    font-size: 0.85rem;
+    color: #f59e0b;
+    margin: 0;
+    background: rgba(245, 158, 11, 0.08);
+    border-left: 3px solid #f59e0b;
+    padding: 8px 12px;
+    border-radius: 0 6px 6px 0;
+}
+
+.btn-sync-now {
+    flex-shrink: 0;
+    padding: 14px 28px;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-primary-text);
+    background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: opacity 0.2s, transform 0.15s;
+    white-space: nowrap;
+}
+
+.btn-sync-now:hover:not(:disabled) {
+    opacity: 0.88;
+    transform: translateY(-1px);
+}
+
+.btn-sync-now:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.spinner-sm {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(10, 10, 18, 0.4);
+    border-top-color: #0a0a12;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+@media (max-width: 768px) {
+    .empty-state-banner {
+        flex-direction: column;
+        text-align: center;
+    }
+    .btn-sync-now {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+/* ── Sync Pipeline Visualization ─────────────── */
+.sync-pipeline {
+    margin-bottom: 32px;
+    padding: 24px 28px;
+}
+.sync-pipeline h3 {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+.pipeline-flow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+}
+.pipeline-stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    min-width: 80px;
+}
+.stage-indicator {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    border: 2px solid rgba(255,255,255,0.1);
+    background: rgba(0,0,0,0.2);
+    transition: all 0.3s ease;
+}
+.stage-idle .stage-indicator { border-color: rgba(255,255,255,0.08); opacity: 0.5; }
+.stage-active .stage-indicator {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 16px rgba(var(--color-primary-rgb),0.3);
+    background: rgba(var(--color-primary-rgb),0.1);
+}
+.stage-done .stage-indicator {
+    border-color: #4ade80;
+    background: rgba(74,222,128,0.12);
+    color: #4ade80;
+}
+.stage-label {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.stage-active .stage-label { color: var(--color-primary); font-weight: 600; }
+.stage-done .stage-label { color: #4ade80; font-weight: 600; }
+.stage-check { font-weight: 700; }
+.stage-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(var(--color-primary-rgb),0.3);
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    animation: stage-spin 0.7s linear infinite;
+}
+@keyframes stage-spin { to { transform: rotate(360deg); } }
+.pipeline-connector {
+    width: 40px;
+    height: 2px;
+    background: rgba(255,255,255,0.08);
+    transition: background 0.3s;
+}
+.connector-done { background: rgba(74,222,128,0.5); }
+
+/* Collapsible Job Progress styles inside schedule-card */
+.progress-collapsible {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(var(--color-primary-rgb), 0.15);
+}
+
+.btn-collapse {
+    background: transparent;
+    border: none;
+    color: var(--color-primary);
+    cursor: pointer;
+    font-family: var(--font-heading);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 6px 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 16px;
+    transition: opacity 0.2s;
+}
+
+.btn-collapse:hover {
+    opacity: 0.8;
+}
+
+.collapsible-content {
+    max-height: 1000px;
+    opacity: 1;
+    overflow: hidden;
+    transition: max-height 0.35s ease, opacity 0.35s ease, padding 0.35s ease;
+}
+
+.collapsible-content.collapsed {
+    max-height: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Progress rows and logs inside collapsible content */
+.status-progress-row {
+    margin-top: 14px;
+    transition: opacity 0.3s;
+}
+
+.status-progress-row.completed {
+    opacity: 0.6;
+}
+
+.progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.progress-message {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.progress-bar.progress-done {
+    background: var(--color-success) !important;
+    box-shadow: 0 0 8px rgba(74, 222, 128, 0.3);
+}
+
+.status-logs-wrapper {
+    margin-top: 20px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(var(--color-primary-rgb), 0.15);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.logs-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 16px;
+    background: rgba(0, 0, 0, 0.15);
+    border-bottom: 1px solid rgba(var(--color-primary-rgb), 0.1);
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.logs-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.small-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.7);
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.72rem;
+}
+
+.small-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.status-logs {
+    height: 200px;
+    overflow-y: auto;
+    padding: 10px 14px;
+}
+
+.log-entry {
+    padding: 3px 0;
+    font-size: 0.75rem;
+    font-family: var(--font-mono);
+}
+
+.log-info {
+    color: var(--text-primary);
+}
+
+.log-success {
+    color: var(--color-success);
+}
+
+.btn-cancel-sync {
+    background: linear-gradient(135deg, #ef4444, #b91c1c);
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-family: var(--font-heading);
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-cancel-sync:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+}
+
+.btn-cancel-sync:active {
+    transform: translateY(0);
+}
+
+.log-error {
+    color: var(--color-danger);
+}
+
+.log-warning {
+    color: var(--color-warning);
+}
+
+.log-time {
+    color: var(--text-secondary);
+    margin-right: 8px;
+}
+
+.log-empty {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 20px;
+    font-size: 0.85rem;
+}

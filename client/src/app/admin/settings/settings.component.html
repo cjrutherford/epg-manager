@@ -14,11 +14,22 @@
         @if (selectedPlaylists.length > 0) {
         <div class="selected-playlists">
             <span class="current-label">Active Playlists ({{ selectedPlaylists.length }})</span>
+            <div class="playlist-scope-summary">
+                <span>{{ selectedPlaylistScope.importedChannels }} imported channels</span>
+                <span>{{ selectedPlaylistScope.estimatedChannels || 0 }} estimated source channels</span>
+                <span>{{ epgDays }} EPG day{{ epgDays === 1 ? '' : 's' }}</span>
+            </div>
+            @if (selectedPlaylistScope.isLargeSelection) {
+            <div class="playlist-warning">
+                This selection is broad enough to increase sync time and memory pressure. Consider fewer playlists or fewer EPG days when troubleshooting OOM issues.
+            </div>
+            }
             <div class="playlist-chips">
-                @for (url of selectedPlaylists; track url) {
+                @for (playlist of selectedPlaylistDetails; track playlist.url) {
                 <div class="playlist-chip">
-                    <span class="chip-label" [title]="url">{{ playlistLabel(url) }}</span>
-                    <button class="chip-remove" (click)="removePlaylist(url)" title="Remove playlist">✕</button>
+                    <span class="chip-label" [title]="playlist.url">{{ playlist.label }}</span>
+                    <span class="chip-meta">{{ playlist.category }}</span>
+                    <button class="chip-remove" (click)="removePlaylist(playlist.url)" title="Remove playlist">✕</button>
                 </div>
                 }
             </div>
@@ -40,25 +51,65 @@
         <!-- iptv-org Browser -->
         <div class="form-group">
             <label>Or select from iptv-org</label>
-            <button class="btn btn-secondary" (click)="loadIptvOrgPlaylists()" [disabled]="iptvOrgLoading">
-                {{ iptvOrgLoading ? 'Loading...' : iptvOrgFiles.length ? 'Refresh List' : 'Browse iptv-org Playlists' }}
-            </button>
+            <div class="custom-url-row">
+                <button class="btn btn-secondary" (click)="loadIptvOrgPlaylists()" [disabled]="iptvOrgLoading">
+                    {{ iptvOrgLoading ? 'Loading...' : iptvOrgFiles.length ? 'Refresh List' : 'Browse iptv-org Playlists' }}
+                </button>
+                <button class="btn btn-secondary" style="margin-left: 10px" (click)="syncIptvOrgRepo()" [disabled]="iptvOrgSyncing">
+                    {{ iptvOrgSyncing ? 'Synchronizing Repo...' : 'Sync iptv-org Repo' }}
+                </button>
+            </div>
         </div>
 
         @if (iptvOrgFiles.length > 0) {
         <div class="iptv-org-browser">
-            <input type="text" class="themed-input w-full" [(ngModel)]="iptvOrgSearchQuery"
-                placeholder="Search countries...">
+            <div class="iptv-org-controls">
+                <input type="text" class="themed-input w-full" [(ngModel)]="iptvOrgSearchQuery"
+                    placeholder="Search playlists, host, or path...">
+                <select class="themed-input" [(ngModel)]="iptvOrgCategoryFilter">
+                    <option value="all">All Sources</option>
+                    <option value="selected">Selected</option>
+                    <option value="countries">Countries</option>
+                    <option value="categories">Categories</option>
+                    <option value="languages">Languages</option>
+                    <option value="regions">Regions</option>
+                </select>
+                <select class="themed-input" [(ngModel)]="iptvOrgSortKey">
+                    <option value="selected">Selected First</option>
+                    <option value="name">Name</option>
+                    <option value="category">Category</option>
+                    <option value="channelCount">Channel Count</option>
+                </select>
+                <select class="themed-input" [(ngModel)]="iptvOrgSortDir">
+                    <option value="asc">Ascending</option>
+                    <option value="desc">Descending</option>
+                </select>
+            </div>
             <div class="iptv-org-grid">
-                @for (file of filteredIptvOrgFiles; track file.name) {
+                @for (file of filteredIptvOrgFiles; track file.url) {
                 <button class="iptv-org-item" [class.selected]="isPlaylistSelected(file.url)"
-                    (click)="toggleIptvOrgPlaylist(file)">
-                    <span class="iptv-org-name">{{ file.name }}</span>
+                    (click)="toggleIptvOrgPlaylist(file)" [title]="file.url">
+                    <div class="iptv-org-main">
+                        <span class="iptv-org-name">{{ file.label }}</span>
+                        <span class="iptv-org-meta">{{ file.category }} · {{ file.host }}</span>
+                        <span class="iptv-org-meta secondary">{{ file.pathSummary }}</span>
+                        <span class="iptv-org-stats">
+                            @if (file.importedCount) {
+                            <span>{{ file.importedCount }} imported</span>
+                            }
+                            @if (file.channelCountEstimate !== null) {
+                            <span>{{ file.channelCountEstimate }} est.</span>
+                            }
+                        </span>
+                    </div>
                     @if (isPlaylistSelected(file.url)) {
                     <span class="iptv-org-check">✓</span>
                     }
                 </button>
                 }
+            </div>
+            <div class="iptv-org-footnote">
+                Imported counts reflect channels currently stored from a source. Estimated counts come from lightweight playlist scans and help identify broad sources before syncing.
             </div>
         </div>
         }
@@ -67,6 +118,34 @@
             <label>EPG Data Duration (days)</label>
             <input type="number" class="themed-input" [(ngModel)]="epgDays" min="1" max="14" style="width:100px;">
         </div>
+
+        <div class="form-group" style="margin-top:16px;">
+            <label>Channel Numbering Mode</label>
+            <select class="themed-input" [(ngModel)]="channelNumberingMode">
+                <option value="list">List (Sequential from 700+)</option>
+                <option value="auto-group">Auto-Group (Group by category, map to 100 blocks)</option>
+                <option value="custom-ranges">Custom Ranges (Map categories to start numbers)</option>
+            </select>
+            <p style="font-size: 0.85em; color: var(--text-secondary); margin-top: 4px;">
+                Controls how tvg-chno (Channel Number) is assigned when syncing headers.
+            </p>
+        </div>
+
+        @if (channelNumberingMode === 'custom-ranges') {
+        <div class="form-group custom-ranges-container">
+            <label>Custom Category Numbering Ranges</label>
+            <div class="ranges-list">
+                @for (item of customRangesArray; track $index) {
+                <div class="range-row" style="display: flex; gap: 10px; margin-bottom: 8px;">
+                    <input type="text" class="themed-input flex-1" [(ngModel)]="item.category" placeholder="Category (e.g. News)">
+                    <input type="number" class="themed-input" [(ngModel)]="item.startNum" placeholder="Start (e.g. 100)" style="width: 120px;">
+                    <button class="btn btn-secondary btn-sm" style="padding: 0 10px;" (click)="removeCustomRange($index)">✕</button>
+                </div>
+                }
+            </div>
+            <button class="btn btn-secondary btn-sm" (click)="addCustomRange()" style="margin-top: 5px;">+ Add Category</button>
+        </div>
+        }
 
         <button class="btn btn-primary" (click)="saveConfig()" [disabled]="savingConfig">
             {{ savingConfig ? 'Saving...' : 'Save Configuration' }}

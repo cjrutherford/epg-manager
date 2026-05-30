@@ -22,48 +22,225 @@ function getRecordingsDir(): string {
 }
 
 /**
- * Start recording a stream to a file
+ * Helper to delete all segment parts matching a base filename
  */
-export async function startRecording(recordingId: number): Promise<void> {
+function cleanUpAllPartsForFilename(baseFilename: string) {
+    try {
+        const dir = getRecordingsDir();
+        const files = fs.readdirSync(dir);
+        for (const file of files) {
+            if (file === baseFilename || file.startsWith(`${baseFilename}.part`)) {
+                try { fs.unlinkSync(path.join(dir, file)); } catch (_) {}
+            }
+        }
+    } catch (_) {}
+}
+
+/**
+ * Helper to delete specific list of part file paths
+ */
+function cleanUpParts(partPaths: string[]) {
+    for (const p of partPaths) {
+        try {
+            if (fs.existsSync(p)) {
+                fs.unlinkSync(p);
+            }
+        } catch (_) {}
+    }
+}
+
+/**
+ * Finalize single file (either rename from part or verify size)
+ */
+async function finalizeSingleFile(recordingId: number, singlePath?: string): Promise<void> {
+    const result = await db.execute({
+        sql: 'SELECT * FROM scheduled_recordings WHERE id = ?',
+        args: [recordingId],
+    });
+    if (result.rows.length === 0) return;
+    const rec = result.rows[0];
+    const filename = rec.filename as string;
+    const outputPath = path.join(getRecordingsDir(), filename);
+    const actualPath = singlePath || outputPath;
+
+    try {
+        if (actualPath !== outputPath && fs.existsSync(actualPath)) {
+            fs.renameSync(actualPath, outputPath);
+        }
+
+        if (fs.existsSync(outputPath)) {
+            const stats = fs.statSync(outputPath);
+            await db.execute({
+                sql: 'UPDATE scheduled_recordings SET status = ?, file_size = ? WHERE id = ?',
+                args: ['completed', stats.size, recordingId],
+            });
+            console.log(`[RECORDER] Recording ${recordingId} finalized (single file): ${filename} (${(stats.size / 1024 / 1024).toFixed(1)} MB)`);
+        } else {
+            await db.execute({
+                sql: 'UPDATE scheduled_recordings SET status = ?, error_message = ? WHERE id = ?',
+                args: ['failed', 'Output file not found', recordingId],
+            });
+        }
+    } catch (e: any) {
+        await db.execute({
+            sql: 'UPDATE scheduled_recordings SET status = ?, error_message = ? WHERE id = ?',
+            args: ['failed', `Finalization error: ${e.message}`, recordingId],
+        });
+    }
+}
+
+/**
+ * Merge multiple recording part segments using FFmpeg's concat demuxer
+ */
+async function mergeRecordingParts(recordingId: number, partPaths: string[]): Promise<void> {
+    const result = await db.execute({
+        sql: 'SELECT * FROM scheduled_recordings WHERE id = ?',
+        args: [recordingId],
+    });
+    if (result.rows.length === 0) return;
+    const rec = result.rows[0];
+    const filename = rec.filename as string;
+    const outputPath = path.join(getRecordingsDir(), filename);
+
+    // Filter to only existing parts with non-zero size
+    const existingParts = partPaths.filter(p => {
+        try {
+            return fs.existsSync(p) && fs.statSync(p).size > 0;
+        } catch (_) {
+            return false;
+        }
+    });
+
+    if (existingParts.length === 0) {
+        await db.execute({
+            sql: 'UPDATE scheduled_recordings SET status = ?, error_message = ? WHERE id = ?',
+            args: ['failed', 'No valid parts recorded', recordingId],
+        });
+        return;
+    }
+
+    if (existingParts.length === 1) {
+        await finalizeSingleFile(recordingId, existingParts[0]);
+        return;
+    }
+
+    console.log(`[RECORDER] Concatenating ${existingParts.length} parts for recording ${recordingId}...`);
+
+    // Create concat text file for FFmpeg demuxer
+    const txtPath = path.join(getRecordingsDir(), `concat_${recordingId}.txt`);
+    const txtContent = existingParts.map(p => `file '${path.resolve(p)}'`).join('\n');
+    fs.writeFileSync(txtPath, txtContent);
+
+    // Run ffmpeg concat
+    const concatFfmpeg = spawn('ffmpeg', [
+        '-y',
+        '-f', 'concat',
+        '-safe', '0',
+        '-i', txtPath,
+        '-c', 'copy',
+        outputPath
+    ]);
+
+    concatFfmpeg.on('close', async (code) => {
+        try { fs.unlinkSync(txtPath); } catch (_) {}
+
+        if (code === 0) {
+            // Delete temporary parts
+            for (const p of existingParts) {
+                try { fs.unlinkSync(p); } catch (_) {}
+            }
+
+            try {
+                const stats = fs.statSync(outputPath);
+                await db.execute({
+                    sql: 'UPDATE scheduled_recordings SET status = ?, file_size = ? WHERE id = ?',
+                    args: ['completed', stats.size, recordingId],
+                });
+                console.log(`[RECORDER] Recording ${recordingId} concatenated and completed: ${filename} (${(stats.size / 1024 / 1024).toFixed(1)} MB)`);
+            } catch (e: any) {
+                await db.execute({
+                    sql: 'UPDATE scheduled_recordings SET status = ?, error_message = ? WHERE id = ?',
+                    args: ['failed', `Concat finalization error: ${e.message}`, recordingId],
+                });
+            }
+        } else {
+            // Failed to concat, keep parts but mark as failed
+            await db.execute({
+                sql: 'UPDATE scheduled_recordings SET status = ?, error_message = ? WHERE id = ?',
+                args: ['failed', `Concatenation failed with code ${code}`, recordingId],
+            });
+            console.error(`[RECORDER] Concatenation failed for recording ${recordingId}`);
+        }
+    });
+}
+
+/**
+ * Spawns and manages a recording session segment.
+ */
+async function runRecordingSession(
+    recordingId: number,
+    attempt: number = 1,
+    partPaths: string[] = []
+): Promise<void> {
     const result = await db.execute({
         sql: 'SELECT * FROM scheduled_recordings WHERE id = ?',
         args: [recordingId],
     });
 
-    if (result.rows.length === 0) {
-        throw new Error(`Recording ${recordingId} not found`);
+    if (result.rows.length === 0) return;
+    const rec = result.rows[0];
+
+    // If status has changed from recording, stop immediately
+    if (rec.status !== 'recording') {
+        cleanUpParts(partPaths);
+        return;
     }
 
-    const rec = result.rows[0];
     const streamUrl = rec.stream_url as string;
     const endTime = new Date(rec.end_time as string);
     const now = new Date();
 
-    // Calculate duration in seconds
-    const durationSec = Math.max(60, Math.floor((endTime.getTime() - now.getTime()) / 1000));
+    const durationSec = Math.floor((endTime.getTime() - now.getTime()) / 1000);
+    if (durationSec < 10) {
+        // Schedule ended or too close to end
+        if (partPaths.length > 0) {
+            await mergeRecordingParts(recordingId, partPaths);
+        } else {
+            await finalizeSingleFile(recordingId);
+        }
+        return;
+    }
 
-    // Generate filename
+    // Set filename if not yet defined
     const sanitize = (s: string) => (s || 'recording').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 60);
-    const filename = `${sanitize(rec.program_title as string)}_${Date.now()}.mp4`;
-    const outputPath = path.join(getRecordingsDir(), filename);
+    const baseFilename = rec.filename as string || `${sanitize(rec.program_title as string)}_${Date.now()}.mp4`;
 
-    // Update status to recording
-    await db.execute({
-        sql: 'UPDATE scheduled_recordings SET status = ?, filename = ? WHERE id = ?',
-        args: ['recording', filename, recordingId],
-    });
+    if (!rec.filename) {
+        await db.execute({
+            sql: 'UPDATE scheduled_recordings SET filename = ? WHERE id = ?',
+            args: [baseFilename, recordingId],
+        });
+    }
 
-    console.log(`[RECORDER] Starting recording ${recordingId}: "${rec.program_title}" (${durationSec}s)`);
+    const partFilename = `${baseFilename}.part${attempt}`;
+    const partPath = path.join(getRecordingsDir(), partFilename);
+    partPaths.push(partPath);
 
-    // Spawn ffmpeg
+    console.log(`[RECORDER] Starting recording ${recordingId} attempt ${attempt} ("${rec.program_title}", remaining ${durationSec}s)`);
+
+    // Spawn ffmpeg with native reconnect switches for HLS/HTTP robustness
     const ffmpeg = spawn('ffmpeg', [
-        '-y',                  // Overwrite output
-        '-i', streamUrl,       // Input stream
-        '-t', String(durationSec), // Duration
-        '-c', 'copy',          // Copy codec (no re-encoding)
-        '-movflags', '+faststart', // Web-optimized MP4
+        '-y',
+        '-reconnect', '1',
+        '-reconnect_at_eof', '0',
+        '-reconnect_streamed', '1',
+        '-reconnect_delay_max', '10',
+        '-i', streamUrl,
+        '-t', String(durationSec),
+        '-c', 'copy',
+        '-movflags', '+faststart',
         '-f', 'mp4',
-        outputPath,
+        partPath,
     ], {
         stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -71,49 +248,66 @@ export async function startRecording(recordingId: number): Promise<void> {
     activeProcesses.set(recordingId, ffmpeg);
 
     ffmpeg.stderr?.on('data', (data: Buffer) => {
-        // ffmpeg outputs progress to stderr — we just log it
-        const line = data.toString().trim();
-        if (line.includes('frame=') || line.includes('time=')) {
-            // Progress update — can be emitted via events if needed
-        }
+        // Optional stderr parser
     });
 
     ffmpeg.on('close', async (code: number | null) => {
         activeProcesses.delete(recordingId);
 
+        const currentRec = await db.execute({
+            sql: 'SELECT status FROM scheduled_recordings WHERE id = ?',
+            args: [recordingId],
+        });
+        if (currentRec.rows.length === 0) return;
+        const currentStatus = currentRec.rows[0].status;
+
+        // If recording was stopped/cancelled while this process was running
+        if (currentStatus !== 'recording') {
+            return;
+        }
+
         if (code === 0 || code === 255) {
-            // Success (255 = killed, which is expected for manual stops)
-            try {
-                const stats = fs.statSync(outputPath);
-                await db.execute({
-                    sql: 'UPDATE scheduled_recordings SET status = ?, file_size = ? WHERE id = ? AND status = ?',
-                    args: ['completed', stats.size, recordingId, 'recording'],
-                });
-                console.log(`[RECORDER] Recording ${recordingId} completed: ${filename} (${(stats.size / 1024 / 1024).toFixed(1)} MB)`);
-            } catch (e: any) {
-                await db.execute({
-                    sql: 'UPDATE scheduled_recordings SET status = ?, error_message = ? WHERE id = ?',
-                    args: ['failed', `File stat error: ${e.message}`, recordingId],
-                });
-            }
+            // Natural ending or clean SIGINT manual stop
+            await mergeRecordingParts(recordingId, partPaths);
         } else {
-            await db.execute({
-                sql: 'UPDATE scheduled_recordings SET status = ?, error_message = ? WHERE id = ? AND status = ?',
-                args: ['failed', `ffmpeg exited with code ${code}`, recordingId, 'recording'],
-            });
-            console.error(`[RECORDER] Recording ${recordingId} failed with code ${code}`);
-            // Cleanup partial file
-            try { fs.unlinkSync(outputPath); } catch (_) { }
+            console.warn(`[RECORDER] Recording ${recordingId} process exited with error code ${code}`);
+
+            // Retry logic
+            if (attempt < 5) {
+                console.log(`[RECORDER] Retrying recording ${recordingId} in 5 seconds (attempt ${attempt + 1})...`);
+                setTimeout(() => {
+                    runRecordingSession(recordingId, attempt + 1, partPaths).catch(err => {
+                        console.error(`[RECORDER] Failed to restart recording session:`, err);
+                    });
+                }, 5000);
+            } else {
+                console.error(`[RECORDER] Recording ${recordingId} failed after max retries`);
+                if (partPaths.length > 1) {
+                    await mergeRecordingParts(recordingId, partPaths);
+                } else {
+                    await finalizeSingleFile(recordingId, partPath);
+                }
+            }
         }
     });
 
-    ffmpeg.on('error', async (err: Error) => {
+    ffmpeg.on('error', (err: Error) => {
         activeProcesses.delete(recordingId);
-        await db.execute({
-            sql: 'UPDATE scheduled_recordings SET status = ?, error_message = ? WHERE id = ?',
-            args: ['failed', `ffmpeg error: ${err.message}`, recordingId],
-        });
-        console.error(`[RECORDER] Recording ${recordingId} error:`, err.message);
+        console.error(`[RECORDER] Recording ${recordingId} process error:`, err.message);
+    });
+}
+
+/**
+ * Start recording a stream to a file
+ */
+export async function startRecording(recordingId: number): Promise<void> {
+    await db.execute({
+        sql: "UPDATE scheduled_recordings SET status = 'recording' WHERE id = ?",
+        args: [recordingId],
+    });
+
+    runRecordingSession(recordingId, 1, []).catch(err => {
+        console.error(`[RECORDER] Failed starting session loop for ${recordingId}:`, err);
     });
 }
 
@@ -147,10 +341,8 @@ export async function cancelRecording(recordingId: number): Promise<void> {
 
     if (result.rows.length > 0) {
         const rec = result.rows[0];
-        // Delete file if exists
         if (rec.filename) {
-            const filePath = path.join(getRecordingsDir(), rec.filename as string);
-            try { fs.unlinkSync(filePath); } catch (_) { }
+            cleanUpAllPartsForFilename(rec.filename as string);
         }
     }
 

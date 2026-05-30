@@ -4,47 +4,100 @@ import cliProgress from 'cli-progress';
 import * as fs from 'fs';
 import * as path from 'path';
 import { spawn } from 'child_process';
-import { XMLParser } from 'fast-xml-parser';
+import axios from 'axios';
+import AdmZip from 'adm-zip';
+import { formatMemorySnapshot } from './memory';
+import { parseIptvOrgChannelsXmlStream } from './iptv-org-parser';
 
 const REPO_URL = 'https://github.com/iptv-org/epg.git';
 const DATA_DIR = path.join(DB_DIR, 'iptv-org-epg');
 
+async function downloadAndExtractZip(url: string, targetDir: string): Promise<void> {
+    const zipPath = path.join(DB_DIR, 'temp-download.zip');
+    const extractDir = path.join(DB_DIR, 'temp-extract');
+
+    try {
+        // Download with streaming
+        const response = await axios.get(url, { responseType: 'stream', timeout: 120000 });
+        const totalLength = parseInt(String(response.headers['content-length'] || '0'), 10);
+        let received = 0;
+
+        const writer = fs.createWriteStream(zipPath);
+        response.data.pipe(writer);
+
+        let lastLogTime = 0;
+        response.data.on('data', (chunk: Buffer) => {
+            received += chunk.length;
+            const now = Date.now();
+            if (totalLength > 0 && now - lastLogTime > 2000) {
+                lastLogTime = now;
+                const pct = Math.round((received / totalLength) * 100);
+                emitLog(`Downloading... ${pct}% (${(received / 1024 / 1024).toFixed(1)}MB)`, 'info');
+            }
+        });
+
+        await new Promise<void>((resolve, reject) => {
+            writer.on('finish', resolve);
+            writer.on('error', reject);
+        });
+
+        // Clean target and extract
+        fs.rmSync(extractDir, { recursive: true, force: true });
+        fs.mkdirSync(extractDir, { recursive: true });
+
+        const zip = new AdmZip(zipPath);
+        zip.extractAllTo(extractDir, true);
+
+        // Find the single root directory inside the zip (GitHub convention)
+        const items = fs.readdirSync(extractDir);
+        const rootDir = items.find(item => {
+            try { return fs.statSync(path.join(extractDir, item)).isDirectory(); }
+            catch { return false; }
+        });
+        if (!rootDir) throw new Error('No root directory found in extracted archive');
+
+        const extractedPath = path.join(extractDir, rootDir);
+
+        // Atomically replace target
+        fs.rmSync(targetDir, { recursive: true, force: true });
+        fs.renameSync(extractedPath, targetDir);
+
+        emitLog(`Extracted to ${targetDir}`, 'success');
+    } finally {
+        // Cleanup temp files
+        try { fs.rmSync(zipPath, { force: true }); } catch { /* ignore */ }
+        try { fs.rmSync(extractDir, { recursive: true, force: true }); } catch { /* ignore */ }
+    }
+}
+
 export async function updateIptvOrgData() {
     try {
         emitLog("Updating IPTV-ORG Channel Map from source repo...", "info");
-        if (!fs.existsSync(DATA_DIR)) {
-            emitLog(`Cloning ${REPO_URL}...`, "info", true);
-            await runCommand('git', ['clone', '--depth', '1', REPO_URL, DATA_DIR]);
-            emitLog("Installing scraper dependencies...", "info", true);
-            await runCommand('npm', ['install'], DATA_DIR);
-        } else {
-            if (fs.existsSync(path.join(DATA_DIR, '.git'))) {
-                 try {
-                    await runCommand('git', ['pull'], DATA_DIR);
-                    // Optionally run install if package.json changed, but for simplicity:
-                    // emitLog("Updating scraper dependencies...");
-                    // await runCommand('npm', ['install'], DATA_DIR);
-                 } catch (e) {
-                     emitLog("Git pull failed, re-cloning...", "warning", true);
-                     fs.rmSync(DATA_DIR, { recursive: true, force: true });
-                     await runCommand('git', ['clone', '--depth', '1', REPO_URL, DATA_DIR]);
-                     emitLog("Installing scraper dependencies...", "info", true);
-                     await runCommand('npm', ['install'], DATA_DIR);
-                 }
-            } else {
-                 emitLog("Directory exists but not a git repo. Re-cloning...", "warning", true);
-                 fs.rmSync(DATA_DIR, { recursive: true, force: true });
-                 await runCommand('git', ['clone', '--depth', '1', REPO_URL, DATA_DIR]);
-                 emitLog("Installing scraper dependencies...", "info", true);
-                 await runCommand('npm', ['install'], DATA_DIR);
+        emitLog(formatMemorySnapshot('iptv-org update start'), 'info');
+
+        emitLog("Downloading latest IPTV-ORG EPG zip archive...", "info");
+        await downloadAndExtractZip(
+            'https://github.com/iptv-org/epg/archive/refs/heads/master.zip',
+            DATA_DIR
+        );
+
+        // Delete iptv_org_map in chunks to avoid long-running exclusive lock
+        const countResult = await db.execute("SELECT COUNT(*) as c FROM iptv_org_map");
+        const totalRows = Number(countResult.rows[0]?.c || 0);
+        if (totalRows > 0) {
+            emitLog(`Clearing existing iptv_org_map (${totalRows} rows)...`, 'info');
+            const CHUNK = 200;
+            for (let i = 0; i < totalRows; i += CHUNK) {
+                await db.execute({
+                    sql: `DELETE FROM iptv_org_map WHERE rowid IN (SELECT rowid FROM iptv_org_map LIMIT ?)`,
+                    args: [CHUNK]
+                });
             }
         }
 
-        await db.execute({ sql: "DELETE FROM iptv_org_map", args: [] });
-
         if (!fs.existsSync(path.join(DATA_DIR, 'node_modules'))) {
             emitLog("Scraper dependencies missing. Installing...", "info", true);
-            await runCommand('npm', ['install'], DATA_DIR);
+            await runCommand('npm', ['install', '--ignore-scripts'], DATA_DIR);
         }
 
         const sitesDir = path.join(DATA_DIR, 'sites');
@@ -64,11 +117,6 @@ export async function updateIptvOrgData() {
 
         progressBar.start(sites.length, 0, { msg: 'Initializing...' });
 
-        const xmlParser = new XMLParser({
-            ignoreAttributes: false,
-            attributeNamePrefix: "" 
-        });
-
         let batch: any[] = [];
         const BATCH_SIZE = 100;
         let mappedCount = 0;
@@ -84,39 +132,22 @@ export async function updateIptvOrgData() {
             if (!fs.statSync(sitePath).isDirectory()) continue;
 
             const files = fs.readdirSync(sitePath).filter(f => f.endsWith('.channels.xml'));
-            
+
             for (const file of files) {
                 try {
-                    const content = fs.readFileSync(path.join(sitePath, file), 'utf-8');
-                    const parsed = xmlParser.parse(content);
-                    
-                    let channels = parsed.channels?.channel;
-                    if (!channels) continue;
-                    if (!Array.isArray(channels)) channels = [channels];
+                    const filePath = path.join(sitePath, file);
+                    const input = fs.createReadStream(filePath, { encoding: 'utf8' });
+                    await parseIptvOrgChannelsXmlStream(input, async (row) => {
+                        batch.push(row.name, row.xmltv_id, row.lang, row.site, row.site_id);
+                        mappedCount++;
 
-                    for (const ch of channels) {
-                        const name = ch['#text'];
-                        const xmltv_id = ch.xmltv_id;
-                        const lang = ch.lang || null;
-                        const site_val = ch.site;
-                        const site_id_val = ch.site_id;
-
-                        if (name && xmltv_id) {
-                            batch.push(name);
-                            batch.push(xmltv_id);
-                            batch.push(lang);
-                            batch.push(site_val);
-                            batch.push(site_id_val);
-                            mappedCount++;
+                        if (batch.length >= BATCH_SIZE * 5) {
+                            await insertBatch(batch);
+                            batch = [];
                         }
-                    }
+                    });
                 } catch (e: any) {
                     emitLog(`[DEBUG] Error parsing file ${file} in ${site}: ${e.message}`, "error", true);
-                }
-
-                if (batch.length >= BATCH_SIZE * 5) {
-                    await insertBatch(batch);
-                    batch = [];
                 }
             }
         }
@@ -126,6 +157,7 @@ export async function updateIptvOrgData() {
         }
 
         progressBar.stop();
+        emitLog(formatMemorySnapshot('iptv-org update complete', process.memoryUsage(), { mapped: mappedCount, sites: sites.length }), 'info');
         emitLog(`IPTV-ORG Data Updated. Mapped ${mappedCount} channels with site metadata.`, "success");
 
     } catch (e: any) {

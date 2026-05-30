@@ -1,6 +1,5 @@
 import axios from 'axios';
 import { db, DB_DIR } from '../db';
-import { XMLBuilder } from 'fast-xml-parser';
 import * as zlib from 'zlib';
 import { promisify } from 'util';
 import Fuse from 'fuse.js';
@@ -9,11 +8,78 @@ import { startJob, completeJob } from '../job';
 import * as fs from 'fs';
 import * as path from 'path';
 import sax from 'sax';
-import { updateIptvOrgData } from './iptv-org';
 import { StringDecoder } from 'string_decoder';
+import { updateIptvOrgData } from './iptv-org';
 // cliProgress removed
 
 const gunzip = promisify(zlib.gunzip);
+
+// ── IPTV-ORG Matching Cache ──────────────────────────────────
+// Loaded once per sync cycle and reused across matching + pipeline.
+// Invalidated when updateIptvOrgData() replaces the underlying data.
+interface IptvOrgCache {
+    idMap: Map<string, any>;
+    normalizedIdMap: Map<string, any>;
+    nameMap: Map<string, any>;
+    nameWordMap: Map<string, any>;
+    iptvFuse: Fuse<any>;
+    version: number;
+}
+let iptvOrgCache: IptvOrgCache | null = null;
+let iptvOrgCacheVersion = 0;
+
+/** Invalidate the cache after updateIptvOrgData() replaces the underlying table. */
+export function invalidateIptvOrgCache() {
+    iptvOrgCache = null;
+    iptvOrgCacheVersion++;
+}
+
+export function clearIptvOrgCache() {
+    iptvOrgCache = null;
+}
+
+async function ensureIptvOrgCache(): Promise<IptvOrgCache> {
+    if (iptvOrgCache && iptvOrgCache.version === iptvOrgCacheVersion) {
+        return iptvOrgCache;
+    }
+    emitLog('Loading IPTV-ORG matching data into cache...', 'info');
+
+    const iptvOrgChannels = (await db.execute(`
+        SELECT xmltv_id, name, site, site_id FROM iptv_org_map 
+        WHERE site IS NOT NULL AND site_id IS NOT NULL
+    `)).rows;
+
+    const idMap = new Map();
+    const normalizedIdMap = new Map();
+    const nameMap = new Map();
+    const nameWordMap = new Map();
+
+    for (const row of iptvOrgChannels) {
+        const xmltvId = String(row.xmltv_id);
+        idMap.set(xmltvId.toLowerCase(), row);
+
+        const baseId = normalizeId(xmltvId);
+        if (baseId && !normalizedIdMap.has(baseId)) normalizedIdMap.set(baseId, row);
+
+        const cName = cleanName(String(row.name));
+        if (cName) {
+            const lc = cName.toLowerCase();
+            if (!nameMap.has(lc)) nameMap.set(lc, row);
+            const wordKey = lc.split(/\s+/).sort().join(' ');
+            if (!nameWordMap.has(wordKey)) nameWordMap.set(wordKey, row);
+        }
+    }
+
+    const iptvFuse = new Fuse(iptvOrgChannels, {
+        keys: ['name', 'xmltv_id'],
+        threshold: 0.35,
+        includeScore: true
+    });
+
+    iptvOrgCache = { idMap, normalizedIdMap, nameMap, nameWordMap, iptvFuse, version: iptvOrgCacheVersion };
+    emitLog(`IPTV-ORG cache loaded: ${iptvOrgChannels.length} entries, ${idMap.size} IDs, ${nameMap.size} names.`, 'info');
+    return iptvOrgCache;
+}
 
 interface EpgFileOption {
     name: string;
@@ -99,7 +165,7 @@ export async function processEpg(epgUrls: string[], options: { skipIptvUpdate?: 
                 emitLog(`Downloading EPG: ${url}`, "info", true);
                 try {
                     const response = await axios({ url, method: 'GET', responseType: 'stream' });
-                    totalBytes = parseInt(response.headers['content-length'] || '0', 10);
+                    totalBytes = parseInt(String(response.headers['content-length'] || '0'), 10);
                     inputStream = response.data;
 
                     let lastProgressEmit = 0;
@@ -404,7 +470,8 @@ export async function matchChannelsToIptvOrg(
     onMatch?: (newlyMatchedIds: string[]) => void
 ): Promise<number> {
     emitLog("Starting full channel matching against IPTV-ORG metadata...", "info");
-    const GRAB_BATCH_SIZE = 50; // Fire onMatch callback every N new matches
+    const GRAB_BATCH_SIZE = 25; // Fire onMatch callback every N new matches — lower for faster pipeline streaming
+    const UPDATE_BATCH_SIZE = 100; // Batch DB writes to reduce transaction overhead
 
     // 1. Get all channels from our playlist
     const dbChannels = (await db.execute("SELECT * FROM channels")).rows;
@@ -413,62 +480,53 @@ export async function matchChannelsToIptvOrg(
         return 0;
     }
 
-    // 2. Get all IPTV-ORG metadata
-    const iptvOrgChannels = (await db.execute(`
-        SELECT xmltv_id, name, site, site_id FROM iptv_org_map 
-        WHERE site IS NOT NULL AND site_id IS NOT NULL
-    `)).rows;
+    // 2. Get IPTV-ORG metadata from cache (loaded once per sync cycle)
+    const cache = await ensureIptvOrgCache();
+    const { idMap, normalizedIdMap, nameMap, nameWordMap, iptvFuse } = cache;
 
-    // Create maps for fast lookups
-    const idMap = new Map();          // xmltv_id (lowercase) → row
-    const normalizedIdMap = new Map(); // normalizeId(xmltv_id) → row  (strips @SD etc.)
-    const nameMap = new Map();        // cleanName(name) → row
-    const nameWordMap = new Map();    // sorted words of name → row (for word-order agnostic matching)
+    let matchedCount = 0;
+    const pendingGrabIds: string[] = [];
+    const total = dbChannels.length;
 
-    for (const row of iptvOrgChannels) {
-        const xmltvId = String(row.xmltv_id);
-        idMap.set(xmltvId.toLowerCase(), row);
-
-        // Strip @quality suffix for normalized matching  
-        const baseId = xmltvId.replace(/@.*$/, '').toLowerCase();
-        if (!normalizedIdMap.has(baseId)) normalizedIdMap.set(baseId, row);
-
-        const cName = cleanName(String(row.name));
-        if (cName) {
-            const lc = cName.toLowerCase();
-            if (!nameMap.has(lc)) nameMap.set(lc, row);
-            // Word-sorted key for order-agnostic matching
-            const wordKey = lc.split(/\s+/).sort().join(' ');
-            if (!nameWordMap.has(wordKey)) nameWordMap.set(wordKey, row);
+    // Fetch numbering settings
+    const settingsRows = (await db.execute("SELECT key, value FROM settings WHERE key IN ('channel_numbering_mode', 'custom_channel_ranges')")).rows;
+    let numberingMode = 'list';
+    let customRanges: Record<string, number> = {};
+    for (const row of settingsRows) {
+        if (row.key === 'channel_numbering_mode') numberingMode = String(row.value);
+        if (row.key === 'custom_channel_ranges') {
+            try { customRanges = JSON.parse(String(row.value)); } catch(e) {}
         }
     }
 
-    // Fuzzy Search Index
-    const iptvFuse = new Fuse(iptvOrgChannels, {
-        keys: ['name', 'xmltv_id'],
-        threshold: 0.35, // Slightly more permissive for better recall
-        includeScore: true
-    });
-
-    let matchedCount = 0;
-    let prevMatchCount = 0;
-    const pendingGrabIds: string[] = []; // IDs accumulating for the next onMatch callback
-    const total = dbChannels.length;
-
     const STARTING_CHANNEL_NUMBER = 700;
     let nextNumber = STARTING_CHANNEL_NUMBER;
-    // Find highest current number to continue from if some are pre-set (only if >= 700)
-    const currentMax = dbChannels.reduce((max: number, ch: any) => {
-        const num = Number(ch.channel_number) || 0;
-        return num >= STARTING_CHANNEL_NUMBER ? Math.max(max, num) : max;
-    }, 0);
-    if (currentMax > 0) nextNumber = currentMax + 1;
+    const categoryNextNumber = new Map<string, number>();
+
+    if (numberingMode === 'auto-group') {
+        const categories = [...new Set(dbChannels.map(c => String(c.group_title || 'Uncategorized')))].sort();
+        let currentBlock = 100;
+        for (const cat of categories) {
+            categoryNextNumber.set(cat, currentBlock);
+            currentBlock += 100;
+        }
+    } else if (numberingMode === 'custom-ranges') {
+        for (const [cat, startNum] of Object.entries(customRanges)) {
+            categoryNextNumber.set(cat, Number(startNum) || 100);
+        }
+    } else {
+        const currentMax = dbChannels.reduce((max: number, ch: any) => {
+            const num = Number(ch.channel_number) || 0;
+            return num >= STARTING_CHANNEL_NUMBER ? Math.max(max, num) : max;
+        }, 0);
+        if (currentMax > 0) nextNumber = currentMax + 1;
+    }
 
     emitProgress('Initializing matching...', 0, total, 'match');
 
-    const getBaseMessage = (matchCount: number) => {
-        return `Matching... (${matchCount}/${total} matched)`;
-    }
+    // Accumulate batch DB writes
+    let matchUpdates: { sql: string; args: any[] }[] = [];
+    let numberUpdates: { sql: string; args: any[] }[] = [];
 
     for (let i = 0; i < total; i++) {
         const ch = dbChannels[i];
@@ -476,7 +534,7 @@ export async function matchChannelsToIptvOrg(
         let matchReason = "";
         let matchedEpgId = "";
 
-        const iterationBaseMessage = `${getBaseMessage(matchedCount)} [${String(ch.name || '').substring(0, 30)}]`;
+        const chanName = String(ch.name || '').substring(0, 30);
 
         // a. Exact tvg-id match (case-insensitive)
         const tvgId = String(ch.tvg_id || '').toLowerCase();
@@ -487,10 +545,10 @@ export async function matchChannelsToIptvOrg(
             matched = true;
         }
 
-        // b. Normalized tvg-id match (strip @quality suffix from both sides)
+        // b. Normalized tvg-id match
         if (!matched && tvgId) {
-            const baseId = tvgId.replace(/@.*$/, '');
-            if (normalizedIdMap.has(baseId)) {
+            const baseId = normalizeId(tvgId);
+            if (baseId && normalizedIdMap.has(baseId)) {
                 const match = normalizedIdMap.get(baseId);
                 matchedEpgId = match.xmltv_id;
                 matchReason = "Normalized ID Match";
@@ -505,6 +563,17 @@ export async function matchChannelsToIptvOrg(
                 const match = nameMap.get(cTvgName);
                 matchedEpgId = match.xmltv_id;
                 matchReason = "TVG Name Match";
+                matched = true;
+            }
+        }
+
+        // c2. Normalized TVG Name Match
+        if (!matched && ch.tvg_name) {
+            const baseTvgName = normalizeId(String(ch.tvg_name));
+            if (baseTvgName && normalizedIdMap.has(baseTvgName)) {
+                const match = normalizedIdMap.get(baseTvgName);
+                matchedEpgId = match.xmltv_id;
+                matchReason = "Normalized TVG Name Match";
                 matched = true;
             }
         }
@@ -550,58 +619,94 @@ export async function matchChannelsToIptvOrg(
 
         // Handle auto-numbering
         let channelNumber = ch.channel_number;
-        if (!channelNumber) {
-            channelNumber = nextNumber++;
-        }
-
-        if (matched || !ch.channel_number) {
-            if (matched) {
-                matchedCount++;
-                // Queue this ID for the streaming grab batch (only if channel is enabled)
-                if (onMatch && matchedEpgId && matchedEpgId !== ch.matched_epg_id && ch.enabled === 1) {
-                    pendingGrabIds.push(matchedEpgId);
-                    if (pendingGrabIds.length >= GRAB_BATCH_SIZE) {
-                        onMatch([...pendingGrabIds]);
-                        pendingGrabIds.length = 0;
-                    }
+        const originalChannelNumber = channelNumber;
+        
+        if (numberingMode !== 'list' || !channelNumber) {
+            if (numberingMode === 'auto-group' || numberingMode === 'custom-ranges') {
+                const group = String(ch.group_title || 'Uncategorized');
+                if (!categoryNextNumber.has(group)) {
+                    categoryNextNumber.set(group, nextNumber);
+                    nextNumber += 100;
                 }
-
-                // Save to database immediately
-                try {
-                    await db.execute({
-                        sql: "UPDATE channels SET matched_epg_id = ?, match_type = ?, channel_number = ? WHERE id = ?",
-                        args: [matchedEpgId, matchReason, channelNumber, ch.id]
-                    });
-                } catch (err: any) {
-                    emitLog(`Match update failed for ${ch.name}: ${err.message}`, "error");
-                }
-            } else if (!ch.channel_number) {
-                // No match but needs channel number
-                await db.execute({
-                    sql: "UPDATE channels SET channel_number = ? WHERE id = ?",
-                    args: [channelNumber, ch.id]
-                });
+                channelNumber = categoryNextNumber.get(group)!;
+                categoryNextNumber.set(group, channelNumber + 1);
+            } else {
+                if (!channelNumber) channelNumber = nextNumber++;
             }
         }
 
-        // Progress — emit every 20 channels, but YIELD to event loop every 5 to prevent HTTP starvation
-        if ((i + 1) % 20 === 0 || i === total - 1) {
-            emitProgress(`${iterationBaseMessage} - ${matchReason || 'no match'}`, i + 1, total, 'match');
+        // Batch DB writes
+        if (matched) {
+            matchedCount++;
+            if (onMatch && matchedEpgId && matchedEpgId !== ch.matched_epg_id && ch.enabled === 1) {
+                pendingGrabIds.push(matchedEpgId);
+                if (pendingGrabIds.length >= GRAB_BATCH_SIZE) {
+                    onMatch([...pendingGrabIds]);
+                    pendingGrabIds.length = 0;
+                }
+            }
+
+            matchUpdates.push({
+                sql: "UPDATE channels SET matched_epg_id = ?, match_type = ?, channel_number = ? WHERE id = ?",
+                args: [matchedEpgId, matchReason, channelNumber, ch.id]
+            });
+        } else if (channelNumber !== originalChannelNumber) {
+            numberUpdates.push({
+                sql: "UPDATE channels SET channel_number = ? WHERE id = ?",
+                args: [channelNumber, ch.id]
+            });
         }
+
+        // Flush batched writes every UPDATE_BATCH_SIZE channels
+        if (matchUpdates.length >= UPDATE_BATCH_SIZE) {
+            await executeBatchUpdates(matchUpdates);
+            matchUpdates = [];
+        }
+        if (numberUpdates.length >= UPDATE_BATCH_SIZE) {
+            await executeBatchUpdates(numberUpdates);
+            numberUpdates = [];
+        }
+
+        // Progress every 20 channels
+        if ((i + 1) % 20 === 0 || i === total - 1) {
+            emitProgress(`Matching... (${matchedCount}/${total}) [${chanName}] - ${matchReason || 'no match'}`, i + 1, total, 'match');
+        }
+        // Yield to event loop every 5
         if ((i + 1) % 5 === 0) {
             await new Promise(resolve => setTimeout(resolve, 0));
         }
     }
 
-    // Flush any remaining grab IDs
+    // Flush remaining batched writes
+    if (matchUpdates.length > 0) await executeBatchUpdates(matchUpdates);
+    if (numberUpdates.length > 0) await executeBatchUpdates(numberUpdates);
+
+    // Flush remaining grab IDs
     if (onMatch && pendingGrabIds.length > 0) {
         onMatch([...pendingGrabIds]);
         pendingGrabIds.length = 0;
     }
 
+    categoryNextNumber.clear();
+    clearIptvOrgCache();
+
     emitLog(`Matching complete. ${matchedCount}/${total} channels matched to IPTV-ORG sites.`, "success");
     emitProgress(`Complete: ${matchedCount}/${total} channels matched ✓`, total, total, 'match');
     return matchedCount;
+}
+
+async function executeBatchUpdates(updates: { sql: string; args: any[] }[]) {
+    if (updates.length === 0) return;
+    try {
+        await db.execute('BEGIN TRANSACTION');
+        for (const u of updates) {
+            await db.execute({ sql: u.sql, args: u.args });
+        }
+        await db.execute('COMMIT');
+    } catch (err: any) {
+        emitLog(`Batch update failed: ${err.message}`, "error");
+        try { await db.execute('ROLLBACK'); } catch (_) {}
+    }
 }
 
 
@@ -806,4 +911,3 @@ export async function generatePlaylistAndEpg(): Promise<{ playlistCount: number,
         epgPrograms: epgProgramCount
     };
 }
-

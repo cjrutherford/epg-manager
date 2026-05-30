@@ -41,7 +41,9 @@ RUN apk add --no-cache \
     ffmpeg \
     curl \
     git \
-    tini
+    tini \
+    su-exec \
+    unzip
 
 WORKDIR /app
 
@@ -75,17 +77,16 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 # Data directory with proper permissions
 ENV DB_DIR=/app/data
 ENV PORT=3000
+ENV API_PORT=4000
 ENV ADMIN_PASSWORD=admin
 
 RUN mkdir -p /app/data/recordings && \
     chown -R epg:epg /app/data
 
-EXPOSE 3000
+EXPOSE 3000 4000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:3000/api/health || exit 1
-
-USER epg
+    CMD curl -f http://localhost:4000/api/health || exit 1
 
 ENTRYPOINT ["tini", "--", "entrypoint.sh"]
 CMD ["node", "dist/server.js"]

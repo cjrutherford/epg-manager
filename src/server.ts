@@ -1,29 +1,39 @@
+import './services/patch-axios';
 import express from 'express';
 import { initDb, db, DB_DIR, getSetting } from './db';
 // Playlist service removed
 import axios from 'axios';
 import { parse } from 'iptv-playlist-parser';
 // Playlist service removed
-import { getEpgFiles, processEpg, matchChannelsToIptvOrg, generatePlaylistAndEpg, cleanupEpgData } from './services/epg';
+import { getEpgFiles, processEpg, matchChannelsToIptvOrg, generatePlaylistAndEpg, cleanupEpgData, invalidateIptvOrgCache } from './services/epg';
 import { updateIptvOrgData } from './services/iptv-org';
 import { grabMissingChannels, getAutoDisabledChannels, reEnableChannels } from './services/grabber';
+import { updateIptvOrgPlaylists } from './services/iptv-org-playlists';
 import { enrichProgramsWithMetadata, getEnrichmentStats, clearMetadataCache, isEnrichmentEnabled, refreshImdbData, searchTVMaze, searchTVMazeShows, normalizeTitle } from './services/metadata';
 import { PipelineQueue } from './services/pipeline';
-import { getJobStatus, startJob, completeJob } from './job';
+import { getJobStatus, startJob, completeJob, requestJobCancel } from './job';
 import { eventBus, emitLog, emitProgress } from './events';
 import { startRecordingScheduler, cancelRecording as cancelRec, getRecordingFilePath, checkScheduledRecordings, startRecording, stopRecording } from './recorder';
+import { StreamManager } from './services/stream';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as http from 'http';
 import * as crypto from 'crypto';
-import { spawn, ChildProcess } from 'child_process';
-import { XMLParser, XMLBuilder } from 'fast-xml-parser';
 import { tui } from './services/tui';
+import { formatMemorySnapshot } from './services/memory';
+import { buildPlaylistImportIndexes, createPlaylistChannelRecord, type PlaylistChannelRow } from './services/playlist-import';
+import { describePlaylist } from './services/playlist-metadata';
+
+function summarizePlaylistScope(items: Array<{ importedCount?: number; channelCountEstimate?: number | null }>) {
+    const selectedCount = items.length;
+    const importedChannels = items.reduce((sum, item) => sum + Number(item.importedCount || 0), 0);
+    const estimatedChannels = items.reduce((sum, item) => sum + Number(item.channelCountEstimate || 0), 0);
+    return { selectedCount, importedChannels, estimatedChannels };
+}
 
 import schedule from 'node-cron';
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = parseInt(process.env.API_PORT || '4000', 10);
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin';
 
 // In-memory auth token store
@@ -31,92 +41,12 @@ const validTokens = new Set<string>();
 
 app.use(express.json());
 
-// Serve Angular SPA (production build output)
-const clientDistPath = path.resolve(__dirname, '../client/dist/client/browser');
-const clientIndexPath = path.join(clientDistPath, 'index.html');
+// Backend runs purely as an API server
 
-// Check if Angular build exists, if so serve it; otherwise fall back to legacy UI
-const angularBuildExists = fs.existsSync(clientIndexPath);
-const ssrServerPath = path.resolve(__dirname, '../client/dist/client/server/server.mjs');
-const ssrServerExists = fs.existsSync(ssrServerPath);
-console.log(`[UI] Angular build ${angularBuildExists ? 'FOUND' : 'NOT FOUND'} at ${clientDistPath}`);
-console.log(`[UI] SSR server ${ssrServerExists ? 'FOUND' : 'NOT FOUND'} at ${ssrServerPath}`);
-
-// ── Angular SSR Child Process Management ──
-const SSR_PORT = parseInt(process.env.SSR_PORT || '4000', 10);
-let ssrProcess: ChildProcess | null = null;
-let ssrReady = false;
-
-function startSsrServer(): void {
-    if (!ssrServerExists || ssrProcess) return;
-    console.log(`[SSR] Starting Angular SSR server on port ${SSR_PORT}...`);
-    ssrProcess = spawn(process.execPath, [ssrServerPath], {
-        env: { ...process.env, PORT: String(SSR_PORT), NODE_ENV: 'production' },
-        stdio: ['ignore', 'pipe', 'pipe']
-    });
-    ssrProcess.stdout?.on('data', (d: Buffer) => {
-        const msg = d.toString().trim();
-        if (msg) console.log(`[SSR] ${msg}`);
-        if (msg.includes('listening')) {
-            ssrReady = true;
-            console.log(`[SSR] Ready — will proxy non-API requests to http://localhost:${SSR_PORT}`);
-        }
-    });
-    ssrProcess.stderr?.on('data', (d: Buffer) => {
-        const msg = d.toString().trim();
-        if (msg) console.error(`[SSR] ${msg}`);
-    });
-    ssrProcess.on('exit', (code, signal) => {
-        console.log(`[SSR] Process exited (code=${code}, signal=${signal})`);
-        ssrProcess = null;
-        ssrReady = false;
-    });
-}
-
-function proxyToSsr(req: express.Request, res: express.Response): void {
-    const proxyReq = http.request({
-        hostname: '127.0.0.1',
-        port: SSR_PORT,
-        path: req.originalUrl,
-        method: req.method,
-        headers: { ...req.headers, host: `127.0.0.1:${SSR_PORT}` }
-    }, (proxyRes) => {
-        res.writeHead(proxyRes.statusCode || 500, proxyRes.headers);
-        proxyRes.pipe(res);
-    });
-    proxyReq.on('error', () => {
-        // SSR server not ready or crashed — fall back to static SPA
-        if (fs.existsSync(clientIndexPath)) {
-            res.sendFile(clientIndexPath);
-        } else {
-            res.status(503).send('SSR server unavailable');
-        }
-    });
-    req.pipe(proxyReq);
-}
-
-if (ssrServerExists) {
-    // Always serve static assets directly — SSR only handles HTML page rendering
-    app.use(express.static(clientDistPath));
-    console.log(`[UI] Angular SSR mode — static assets served directly, pages via SSR`);
-} else if (angularBuildExists) {
-    console.log(`[UI] Angular SPA mode — serving static build`);
-    app.use(express.static(clientDistPath));
-} else {
-    console.log(`[UI] Legacy HTML interface`);
-    // Legacy: Serve old admin/watch UIs
-    app.get('/', (req: any, res: any) => res.redirect('/watch/'));
-    app.use('/admin', express.static('src/public/admin'));
-    app.get('/admin', (req: any, res: any) => {
-        res.sendFile(path.resolve('src/public/admin/index.html'));
-    });
-    app.get('/admin/', (req: any, res: any) => {
-        res.sendFile(path.resolve('src/public/admin/index.html'));
-    });
-    app.use('/watch', express.static('src/public/watch'));
-    app.use(express.static('src/public')); // fallback for shared assets
-}
-
+app.use('/files/streams/:id', (req, res, next) => {
+    StreamManager.keepAlive(req.params.id);
+    next();
+});
 app.use('/files', express.static(DB_DIR)); // Static files
 
 
@@ -163,6 +93,8 @@ function requireAuth(req: any, res: any, next: any) {
     res.status(401).json({ error: 'Authentication required. Please log in at /admin/' });
 }
 
+export let activePipeline: PipelineQueue | null = null;
+
 /**
  * Perform a full automation cycle:
  * 1. Refresh playlist from source
@@ -180,7 +112,16 @@ export async function runFullSync() {
 
     startJob();
     try {
+        if (getJobStatus().cancelRequested) throw new Error("Sync cancelled by user");
         emitLog("Starting full automation cycle...", "info");
+
+        // Refresh iptv-org playlists first to make sure any imported local iptv-org playlists have fresh URLs
+        try {
+            emitLog("Updating local iptv-org playlists...", "info");
+            await updateIptvOrgPlaylists();
+        } catch (e: any) {
+            emitLog(`Failed to update iptv-org playlists: ${e.message}`, "warning");
+        }
 
         // 1. Refresh Playlists (multi-playlist support)
         const plUrlsResult = await db.execute("SELECT value FROM settings WHERE key = 'playlist_urls'");
@@ -200,6 +141,7 @@ export async function runFullSync() {
         if (playlistUrls.length > 0) {
             emitLog(`Refreshing ${playlistUrls.length} playlist(s)...`, "info");
             for (const url of playlistUrls) {
+                if (getJobStatus().cancelRequested) throw new Error("Sync cancelled by user");
                 try {
                     emitLog(`Loading playlist: ${url}`, "info");
                     await updatePlaylist(url);
@@ -211,23 +153,29 @@ export async function runFullSync() {
             emitLog("No playlist configured.", "warning");
         }
 
+        if (getJobStatus().cancelRequested) throw new Error("Sync cancelled by user");
         // 2. Update IPTV-ORG Metadata & Match — stream newly matched IDs into the grabber
         //    as matching progresses, so EPG grabs start immediately rather than waiting
         //    for all 1,000+ channels to finish matching first.
         emitLog("Updating IPTV-ORG metadata and matching channels...", "info");
         await updateIptvOrgData();
+        invalidateIptvOrgCache(); // matching cache now stale — will reload on next matchChannelsToIptvOrg call
 
+        if (getJobStatus().cancelRequested) throw new Error("Sync cancelled by user");
         const daysResult = await db.execute("SELECT value FROM settings WHERE key = 'epg_days'");
         const epgDays = daysResult.rows.length > 0 ? String(daysResult.rows[0].value) : '2';
 
         // Initialize our streaming pipeline queue
         const pipeline = new PipelineQueue(epgDays);
+        activePipeline = pipeline;
 
+        const enqueuePromises: Promise<void>[] = [];
         const matchedCount = await matchChannelsToIptvOrg((newIds) => {
             if (newIds.length === 0) return;
             emitLog(`[Pipeline] Queuing batch of ${newIds.length} newly matched channels for EPG grab...`, "info");
-            pipeline.enqueueMatched(newIds);
+            enqueuePromises.push(pipeline.enqueueMatched(newIds));
         });
+        await Promise.all(enqueuePromises);
         emitLog(`Matching complete. Total matched: ${matchedCount}`, "success");
 
         // 3. Also grab any channels that were already matched before this run
@@ -241,7 +189,7 @@ export async function runFullSync() {
         const allIds = alreadyMatched.rows.map(r => String(r.xmltv_id)).filter(Boolean);
 
         // Let the pipeline queue process everything that was already matched
-        pipeline.enqueueMatched(allIds);
+        await pipeline.enqueueMatched(allIds);
 
         // Tell the pipeline no more matches are coming
         pipeline.setMatchingComplete(matchedCount, matchedCount);
@@ -250,7 +198,7 @@ export async function runFullSync() {
         emitLog(`Waiting for background EPG grabs and metadata enrichment to finish...`, "info");
         await pipeline.waitForCompletion();
 
-
+        if (getJobStatus().cancelRequested) throw new Error("Sync cancelled by user");
 
         // 4. (Enrichment is now handled concurrently by the streaming pipeline)
         let enrichmentStats = null;
@@ -284,13 +232,16 @@ export async function runFullSync() {
     } catch (e: any) {
         emitLog(`Automation failed: ${e.message} `, "error");
         console.error("Full sync error:", e);
+        completeJob(null);
+    } finally {
+        activePipeline = null;
     }
 }
 
 
-// Daily Automation Cycle (Every day at 02:00)
-schedule.schedule('0 2 * * *', async () => {
-    emitLog("Running scheduled daily automation cycle...", "info");
+// Automation Cycle (Every day at 02:00 and 14:00)
+schedule.schedule('0 2,14 * * *', async () => {
+    emitLog("Running scheduled automation cycle (every 12 hours)...", "info");
     runFullSync().catch(e => console.error("Scheduled full sync failed:", e));
 });
 
@@ -340,7 +291,11 @@ c.*,
 });
 
 app.get('/api/job-status', (req, res) => {
-    res.json(getJobStatus());
+    res.json({
+        ...getJobStatus(),
+        daily: 'Every 12 hours (02:00, 14:00)',
+        weekly: 'Disabled'
+    });
 });
 
 // Playlist endpoints removed
@@ -396,6 +351,25 @@ app.post('/api/select-epg', requireAuth, async (req: any, res: any) => {
     res.json({ success: true, message: "Sync started in background." });
 });
 
+// POST /api/sync/cancel - Cancel any running sync process
+app.post('/api/sync/cancel', requireAuth, async (req: any, res: any) => {
+    const status = getJobStatus();
+    if (!status.running) {
+        return res.json({ success: false, message: "No sync job is currently running." });
+    }
+    emitLog("Sync cancellation requested by user...", "warning");
+    requestJobCancel();
+    if (activePipeline) {
+        activePipeline.cancel();
+    } else {
+        // Fallback for non-pipeline background grabs
+        import('./services/grabber.js').then(({ cancelAllGrabProcesses }) => {
+            cancelAllGrabProcesses();
+        }).catch(err => console.error("Error calling cancelAllGrabProcesses:", err));
+    }
+    res.json({ success: true, message: "Sync cancellation initiated." });
+});
+
 // POST /api/sync - Clean alias for full pipeline trigger
 app.post('/api/sync', requireAuth, async (req: any, res: any) => {
     const status = getJobStatus();
@@ -449,7 +423,7 @@ WHERE(c.matched_epg_id IS NOT NULL OR mo.epg_id IS NOT NULL)
         }
 
         // Run in background but return success that it started
-        grabMissingChannels(ids).catch(err => {
+        grabMissingChannels(ids, true).catch(err => {
             console.error("Grab failed:", err);
             emitLog(`Grab failed: ${err.message} `, "error");
         });
@@ -466,6 +440,70 @@ app.post('/api/rebuild-files', requireAuth, async (req: any, res: any) => {
         res.json({ success: true, stats: result });
     } catch (e: any) {
         console.error("Manual rebuild failed:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/reset', requireAuth, async (req: any, res: any) => {
+    try {
+        emitLog("Initiating full system reset...", "warning");
+
+        // ── 1. Clear all DB tables (channels, programs, guide data, playlists, etc.) ──
+        const tables = [
+            'settings', 'channels', 'epg_channels', 'epg_programs',
+            'manual_overrides', 'iptv_org_map', 'site_status', 'grab_logs',
+            'metadata_cache', 'episode_metadata_cache', 'channel_grab_status',
+            'tvmaze_cache', 'scheduled_recordings', 'metadata_overrides',
+            'channel_favorites', 'channel_hidden'
+        ];
+        for (const table of tables) {
+            try { await db.execute(`DELETE FROM ${table}`); } catch (_) { /* table may not exist */ }
+        }
+        emitLog("Database tables cleared.", "info");
+
+        // ── 2. Delete the SQLite DB file + WAL/SHM so no stale data persists ──
+        //    (We must close the connection first by calling VACUUM to force a checkpoint)
+        try { await db.execute("VACUUM"); } catch (_) { }
+        const dbFile = path.join(DB_DIR, 'local.db');
+        const dbWal  = path.join(DB_DIR, 'local.db-wal');
+        const dbShm  = path.join(DB_DIR, 'local.db-shm');
+        for (const f of [dbFile, dbWal, dbShm]) {
+            if (fs.existsSync(f)) fs.unlinkSync(f);
+        }
+        emitLog("SQLite database file deleted.", "info");
+
+        // Re-initialise fresh schema
+        fs.writeFileSync(dbFile, '');
+        await initDb();
+        emitLog("Fresh database schema created.", "info");
+
+        // ── 3. Remove generated output files ──
+        for (const name of ['playlist.m3u', 'epg.xml']) {
+            const p = path.join(DB_DIR, name);
+            if (fs.existsSync(p)) fs.unlinkSync(p);
+        }
+
+        // ── 4. Remove downloaded guide source / playlist caches ──
+        //    These are re-downloaded on the next sync.
+        const cacheDirs = ['iptv-org-epg', 'iptv-org-playlists', 'imdb-data'];
+        for (const dir of cacheDirs) {
+            const p = path.join(DB_DIR, dir);
+            if (fs.existsSync(p)) {
+                fs.rmSync(p, { recursive: true, force: true });
+                emitLog(`Removed cached data: ${dir}`, "info");
+            }
+        }
+
+        // ── 5. Remove streams and recordings ──
+        for (const dir of ['streams', 'recordings']) {
+            const p = path.join(DB_DIR, dir);
+            if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
+        }
+
+        emitLog("Full system reset complete. All channels, playlists, guide data, and program data cleared.", "success");
+        res.json({ success: true });
+    } catch (e: any) {
+        console.error("Full reset failed:", e);
         res.status(500).json({ error: e.message });
     }
 });
@@ -507,32 +545,10 @@ async function startServer() {
     // Initialize TUI
     tui.init();
 
-    // Start Angular SSR server (if available)
-    if (ssrServerExists) {
-        startSsrServer();
-    }
-
-    // ── SPA Catch-All (must be AFTER all API/file routes) ──
-    if (angularBuildExists || ssrServerExists) {
-        app.get('*', (req: any, res: any) => {
-            // Don't catch API or file requests
-            if (req.path.startsWith('/api/') || req.path.startsWith('/files/')) {
-                return res.status(404).json({ error: 'Not found' });
-            }
-            // Don't serve index.html for static asset requests (they should 404 instead)
-            const ext = path.extname(req.path);
-            if (ext && ext !== '.html') {
-                return res.status(404).send('Not found');
-            }
-            if (ssrReady) {
-                proxyToSsr(req, res);
-            } else if (angularBuildExists) {
-                res.sendFile(clientIndexPath);
-            } else {
-                res.status(503).send('Service unavailable');
-            }
-        });
-    }
+    // Catch-all 404 for unhandled API/File requests
+    app.use((req: express.Request, res: express.Response) => {
+        res.status(404).json({ error: 'Not found' });
+    });
 
     app.listen(PORT, () => {
         emitLog(`Server running on port ${PORT} `, "success");
@@ -541,24 +557,7 @@ async function startServer() {
     // Start DVR recording scheduler
     startRecordingScheduler();
 
-    // Startup Automation: defer until after server is fully listening so the
-    // HTTP server responds to requests immediately. Heavy I/O (git pull, fs.readFileSync
-    // loops in iptv-org parser) would otherwise block the event loop.
-    setImmediate(async () => {
-        try {
-            emitLog("Checking for initial data sync...", "info");
-            const plResult = await db.execute("SELECT value FROM settings WHERE key = 'playlist_url'");
-            if (plResult.rows.length > 0) {
-                emitLog("Playlist configured. Triggering background sync...", "info");
-                runFullSync().catch(e => console.error("Startup full sync failed:", e));
-            } else {
-                emitLog("No playlist configured. Waiting for user setup.", "info");
-                updateIptvOrgData().catch(err => console.error("Failed startup IPTV-ORG update:", err));
-            }
-        } catch (e) {
-            console.error("Startup automation check failed:", e);
-        }
-    });
+    emitLog("Server ready. Waiting for user-triggered sync.", "info");
 }
 
 startServer().catch(err => {
@@ -568,11 +567,6 @@ startServer().catch(err => {
 
 // Graceful shutdown handlers
 function shutdown(): void {
-    if (ssrProcess) {
-        console.log('[SSR] Stopping SSR server...');
-        ssrProcess.kill('SIGTERM');
-        ssrProcess = null;
-    }
     process.exit(0);
 }
 
@@ -770,7 +764,7 @@ app.post('/api/override', requireAuth, async (req: any, res: any) => {
             (async () => {
                 try {
                     emitLog(`Grabbing EPG for newly matched channel: ${epg_id}`, "info");
-                    await grabMissingChannels([String(epg_id)]);
+                    await grabMissingChannels([String(epg_id)], true);
                     emitLog(`EPG grab complete for: ${epg_id}`, "success");
                 } catch (e: any) {
                     emitLog(`EPG grab failed for ${epg_id}: ${e.message}`, "error");
@@ -820,7 +814,7 @@ app.post('/api/channels/toggle', requireAuth, async (req: any, res: any) => {
             });
             const grabIds = missing.rows.map(r => String(r.xmltv_id));
             if (grabIds.length > 0) {
-                grabMissingChannels(grabIds).catch(err => {
+                grabMissingChannels(grabIds, true).catch(err => {
                     console.error("Grab on toggle failed:", err);
                 });
             }
@@ -968,6 +962,47 @@ app.delete('/api/channels/hidden/:id', requireAuth, async (req: any, res: any) =
     }
 });
 
+// GET /api/iptv-org/playlists - List local iptv-org playlists
+app.get('/api/iptv-org/playlists', requireAuth, async (req: any, res: any) => {
+    try {
+        const targetDir = path.join(DB_DIR, 'iptv-org-playlists');
+        if (!fs.existsSync(targetDir)) {
+            await updateIptvOrgPlaylists();
+        }
+        
+        const playlists: any[] = [];
+        const folders = ['countries', 'categories', 'languages', 'regions'];
+        
+        for (const folder of folders) {
+            const folderPath = path.join(targetDir, folder);
+            if (fs.existsSync(folderPath)) {
+                const files = fs.readdirSync(folderPath).filter(f => f.endsWith('.m3u'));
+                files.forEach(f => {
+                    const url = `/files/iptv-org-playlists/${folder}/${f}`;
+                    const meta = describePlaylist(url);
+                    playlists.push({
+                        ...meta,
+                        name: f.replace('.m3u', '').toUpperCase() + ` (${folder})`
+                    });
+                });
+            }
+        }
+        res.json(playlists);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// POST /api/iptv-org/update-playlists - Force update iptv-org playlists
+app.post('/api/iptv-org/update-playlists', requireAuth, async (req: any, res: any) => {
+    try {
+        await updateIptvOrgPlaylists();
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // GET /api/playlists - List all configured playlist URLs with channel counts
 app.get('/api/playlists', requireAuth, async (req: any, res: any) => {
     try {
@@ -981,17 +1016,16 @@ app.get('/api/playlists', requireAuth, async (req: any, res: any) => {
         // Get channel counts per source_url
         const counts = await db.execute('SELECT source_url, COUNT(*) as count FROM channels GROUP BY source_url');
         const countMap = new Map(counts.rows.map(r => [String(r.source_url), Number(r.count)]));
-
-        res.json(urls.map(url => {
-            let name = url;
-            try { name = new URL(url).pathname.split('/').pop() || url; } catch (_) { }
-            return {
-                url,
-                name,
-                count: countMap.get(url) || 0,
-                active: url === activeUrl
-            };
+        const playlists = urls.map(url => ({
+            ...describePlaylist(url, countMap.get(url) || 0),
+            count: countMap.get(url) || 0,
+            active: url === activeUrl
         }));
+
+        res.json({
+            items: playlists,
+            summary: summarizePlaylistScope(playlists)
+        });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -1148,6 +1182,42 @@ app.delete('/api/dvr/:id', requireAuth, async (req: any, res: any) => {
         const id = parseInt(req.params.id);
         await cancelRec(id);
         res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// GET /api/dvr/storage - Recording storage usage
+app.get('/api/dvr/storage', requireAuth, async (req: any, res: any) => {
+    try {
+        const recordingsDir = path.join(DB_DIR, 'recordings');
+        let usedBytes = 0;
+        if (fs.existsSync(recordingsDir)) {
+            const files = fs.readdirSync(recordingsDir).filter(f => f.endsWith('.mp4') || f.includes('.part'));
+            for (const f of files) {
+                try {
+                    const stat = fs.statSync(path.join(recordingsDir, f));
+                    usedBytes += stat.size;
+                } catch (_) {}
+            }
+        }
+
+        // Get filesystem info for the data directory
+        const { execSync } = require('child_process');
+        let totalBytes = 0;
+        try {
+            const df = execSync(`df -B1 "${DB_DIR}"`, { encoding: 'utf8' });
+            const lines = df.trim().split('\n');
+            if (lines.length > 1) {
+                const parts = lines[1].split(/\s+/);
+                // total blocks, used, available, use%, mount
+                totalBytes = parseInt(parts[1]) || 0;
+            }
+        } catch (_) {
+            totalBytes = usedBytes > 0 ? usedBytes * 10 : 10 * 1024 * 1024 * 1024; // fallback
+        }
+
+        res.json({ usedBytes, totalBytes });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -1339,27 +1409,21 @@ app.get('/api/metadata/config', requireAuth, async (req: any, res: any) => {
  */
 async function updatePlaylist(url: string) {
     try {
-        const response = await axios.get(url, { timeout: 30000 });
-        const playlist = parse(response.data);
+        emitLog(formatMemorySnapshot('playlist import start', process.memoryUsage(), { source: url }), 'info');
+        let playlistStr = '';
+        if (url.startsWith('/files/')) {
+            const localPath = path.join(DB_DIR, url.replace('/files/', ''));
+            playlistStr = fs.readFileSync(localPath, 'utf8');
+        } else {
+            const response = await axios.get(url, { timeout: 30000 });
+            playlistStr = response.data;
+        }
+        const playlist = parse(playlistStr);
+        emitLog(formatMemorySnapshot('playlist parsed', process.memoryUsage(), { source: url, items: playlist.items.length }), 'info');
 
         // Cache existing channel state to preserve user settings (enabled, EPG matches)
-        const currentData = await db.execute("SELECT id, name, url, enabled, matched_epg_id, match_type, channel_number, source_url FROM channels");
-        const existingData = new Map<string, any>();
-        currentData.rows.forEach(r => existingData.set(String(r.id), r));
-
-        // Build lookup maps for deduplication
-        // Primary: tvg-id -> existing channel
-        const tvgIdMap = new Map<string, any>();
-        // Secondary: normalized name + url -> existing channel
-        const nameUrlMap = new Map<string, any>();
-
-        for (const [id, data] of existingData) {
-            if (data.tvg_id) {
-                tvgIdMap.set(data.tvg_id, data);
-            }
-            const normalizedKey = `${String(data.name).toLowerCase().replace(/[^a-z0-9]/g, '')}_${String(data.url)}`;
-            nameUrlMap.set(normalizedKey, data);
-        }
+        const currentData = await db.execute("SELECT id, name, url, enabled, matched_epg_id, match_type, channel_number, source_url, tvg_id FROM channels");
+        const indexes = buildPlaylistImportIndexes(currentData.rows as any[], url);
 
         // Delete only channels from this source_url to allow incremental updates
         await db.execute({
@@ -1368,56 +1432,56 @@ async function updatePlaylist(url: string) {
         });
 
         let count = 0;
-        const usedIds = new Set<string>();
-        for (const item of playlist.items) {
-            const tvgId = item.tvg.id || '';
-            const logo = item.tvg.logo || '';
-            const group = item.group.title || '';
-            const name = item.name || 'Unknown Channel';
-            const streamUrl = item.url;
+        let pendingRows: PlaylistChannelRow[] = [];
+        const INSERT_BATCH_SIZE = 250;
 
-            // Generate a unique channel id: use tvg_id if available, otherwise slugify the name
-            let channelId = tvgId;
-            if (!channelId) {
-                channelId = name.toLowerCase()
-                    .replace(/[^a-z0-9]/g, '_')
-                    .replace(/_+/g, '_')
-                    .replace(/^_|_$/g, '');
-            }
+        const flushRows = async () => {
+            if (pendingRows.length === 0) return;
+            const placeholders = pendingRows.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(',');
+            const args = pendingRows.flatMap((row) => ([
+                row.id,
+                row.name,
+                row.tvg_id,
+                row.tvg_logo,
+                row.group_title,
+                row.url,
+                row.source_url,
+                row.channel_number,
+                row.enabled,
+                row.matched_epg_id,
+                row.match_type
+            ]));
 
-            // Check for duplicates in existing data (from other sources)
-            let existingChannel = null;
-            if (tvgId && tvgIdMap.has(tvgId)) {
-                existingChannel = tvgIdMap.get(tvgId);
-            } else {
-                const normalizedKey = `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}_${streamUrl}`;
-                if (nameUrlMap.has(normalizedKey)) {
-                    existingChannel = nameUrlMap.get(normalizedKey);
-                }
-            }
-
-            // Only append suffix on actual collision within this import
-            let finalId = channelId;
-            let suffix = 1;
-            while (usedIds.has(finalId)) {
-                finalId = `${channelId}_${suffix}`;
-                suffix++;
-            }
-            usedIds.add(finalId);
-
-            // Preserve user settings from existing channel, or use defaults
-            const enabled = existingChannel ? existingChannel.enabled : 1;
-            const matched_epg_id = existingChannel ? existingChannel.matched_epg_id : null;
-            const match_type = existingChannel ? existingChannel.match_type : null;
-            const channelNum = existingChannel && existingChannel.channel_number ? existingChannel.channel_number : count + 1;
-
+            await db.execute('BEGIN TRANSACTION');
             await db.execute({
-                sql: `INSERT INTO channels (id, name, tvg_id, tvg_logo, group_title, url, source_url, channel_number, enabled, matched_epg_id, match_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                args: [finalId, name, tvgId, logo, group, streamUrl, url, channelNum, enabled, matched_epg_id, match_type]
+                sql: `INSERT INTO channels (id, name, tvg_id, tvg_logo, group_title, url, source_url, channel_number, enabled, matched_epg_id, match_type) VALUES ${placeholders}`,
+                args
             });
+            await db.execute('COMMIT');
+            pendingRows = [];
+        };
+
+        for (const item of playlist.items) {
+            const record = createPlaylistChannelRecord({
+                name: item.name || 'Unknown Channel',
+                url: item.url,
+                tvgId: item.tvg.id || '',
+                tvgLogo: item.tvg.logo || '',
+                groupTitle: item.group.title || ''
+            }, indexes, url, count + 1);
+
+            pendingRows.push(record.row);
             count++;
+
+            if (pendingRows.length >= INSERT_BATCH_SIZE) {
+                await flushRows();
+            }
         }
 
+        await flushRows();
+        playlistStr = '';
+
+        emitLog(formatMemorySnapshot('playlist import complete', process.memoryUsage(), { source: url, imported: count }), 'info');
         emitLog(`Updated playlist. Total channels: ${count}`, "success");
         return count;
     } catch (e: any) {
@@ -1534,7 +1598,25 @@ app.get('/api/stats', async (req, res) => {
     }
 });
 
-// GET /api/channels/auto-disabled - View auto-disabled channels
+// GET /api/has-data - Lightweight check: does the system have any channel/EPG data?
+// No auth required so the dashboard can show the empty-state prompt before login.
+app.get('/api/has-data', async (req, res) => {
+    try {
+        const [ch, prog, pl] = await Promise.all([
+            db.execute("SELECT COUNT(*) as c FROM channels"),
+            db.execute("SELECT COUNT(*) as c FROM epg_programs"),
+            db.execute("SELECT value FROM settings WHERE key = 'playlist_url'")
+        ]);
+        res.json({
+            hasChannels: Number(ch.rows[0].c) > 0,
+            hasPrograms: Number(prog.rows[0].c) > 0,
+            hasPlaylist: pl.rows.length > 0 && String(pl.rows[0].value).trim() !== '',
+            isEmpty: Number(ch.rows[0].c) === 0 && Number(prog.rows[0].c) === 0
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
 app.get('/api/channels/auto-disabled', requireAuth, async (req: any, res: any) => {
     try {
         const channels = await getAutoDisabledChannels();
@@ -1577,6 +1659,13 @@ app.get('/api/categories', async (req, res) => {
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
+});
+
+app.get('/api/debug-channels', async (req, res) => {
+    try {
+        const r = await db.execute("SELECT name, group_title, enabled FROM channels LIMIT 10");
+        res.json(r.rows);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
 // GET /api/guide - EPG guide grid data for the streaming UI
@@ -1675,7 +1764,7 @@ c.id, c.name, c.group_title, c.url, c.tvg_logo, c.channel_number,
                 group_title: c.group_title,
                 channel_number: c.channel_number,
                 logo: c.tvg_logo || (epgId ? iconMap.get(epgId) : null) || null,
-                stream_url: c.url,
+                stream_url: `/api/channel/${c.id}/stream`,
                 epg_id: epgId,
                 current_program: currentProg ? {
                     title: currentProg.title,
@@ -1761,7 +1850,7 @@ app.get('/api/channel/:id/programs', async (req, res) => {
                 group_title: channel.group_title,
                 channel_number: channel.channel_number,
                 logo: channel.tvg_logo,
-                stream_url: channel.url,
+                stream_url: `/api/channel/${channel.id}/stream`,
             },
             programs: programsRes.rows.map(p => ({
                 title: p.title,
@@ -1793,7 +1882,8 @@ app.get('/api/channel/:id/stream', async (req, res) => {
             return res.status(404).json({ error: 'Channel not found or disabled' });
         }
 
-        res.json({ url: chRes.rows[0].url });
+        const hlsUrl = await StreamManager.startStream(channelId, String(chRes.rows[0].url));
+        res.redirect(302, hlsUrl);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }

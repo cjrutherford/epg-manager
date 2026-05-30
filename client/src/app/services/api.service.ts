@@ -37,6 +37,10 @@ export class ApiService {
         return this.http.get('/api/health');
     }
 
+    getHasData(): Observable<{ hasChannels: boolean; hasPrograms: boolean; hasPlaylist: boolean; isEmpty: boolean }> {
+        return this.http.get<any>('/api/has-data');
+    }
+
     getJobStatus(): Observable<any> {
         return this.http.get('/api/job-status');
     }
@@ -59,11 +63,11 @@ export class ApiService {
     }
 
     scheduleRecording(data: any): Observable<any> {
-        return this.http.post('/api/recordings', data);
+        return this.http.post('/api/dvr', data, { headers: this.authHeaders() });
     }
 
     cancelRecording(id: number): Observable<any> {
-        return this.http.delete(`/api/recordings/${id}`);
+        return this.http.delete(`/api/dvr/${id}`, { headers: this.authHeaders() });
     }
 
     // ── Auth-protected endpoints ────────────────
@@ -103,8 +107,8 @@ export class ApiService {
         return this.http.get<any[]>(`/api/search-epg?q=${encodeURIComponent(query)}`, { headers: this.authHeaders() });
     }
 
-    getPlaylists(): Observable<any[]> {
-        return this.http.get<any[]>('/api/playlists', { headers: this.authHeaders() });
+    getPlaylists(): Observable<any> {
+        return this.http.get<any>('/api/playlists', { headers: this.authHeaders() });
     }
 
     syncPlaylist(): Observable<any> {
@@ -115,6 +119,10 @@ export class ApiService {
         return this.http.post('/api/sync', {}, { headers: this.authHeaders() });
     }
 
+    cancelSync(): Observable<any> {
+        return this.http.post('/api/sync/cancel', {}, { headers: this.authHeaders() });
+    }
+
     rebuildFiles(): Observable<any> {
         return this.http.post('/api/rebuild-files', {}, { headers: this.authHeaders() });
     }
@@ -123,25 +131,25 @@ export class ApiService {
         return this.http.post('/api/grab', {}, { headers: this.authHeaders() });
     }
 
+    resetSystem(): Observable<any> {
+        return this.http.post('/api/reset', {}, { headers: this.authHeaders() });
+    }
+
     getGrabLogs(): Observable<any[]> {
         return this.http.get<any[]>('/api/grab-logs', { headers: this.authHeaders() });
     }
 
-    // ── DVR ─────────────────────────────────────
-    getDvr(): Observable<any[]> {
+    // ── DVR Scheduler (scheduled recordings) ────
+    getDvrSchedules(): Observable<any[]> {
         return this.http.get<any[]>('/api/dvr', { headers: this.authHeaders() });
     }
 
-    scheduleDvr(data: any): Observable<any> {
-        return this.http.post('/api/dvr', data, { headers: this.authHeaders() });
+    getDvrStorage(): Observable<{ usedBytes: number; totalBytes: number }> {
+        return this.http.get<{ usedBytes: number; totalBytes: number }>('/api/dvr/storage', { headers: this.authHeaders() });
     }
 
     stopDvr(id: number): Observable<any> {
         return this.http.post(`/api/dvr/stop/${id}`, {}, { headers: this.authHeaders() });
-    }
-
-    deleteDvr(id: number): Observable<any> {
-        return this.http.delete(`/api/dvr/${id}`, { headers: this.authHeaders() });
     }
 
     // ── Metadata ────────────────────────────────
@@ -179,12 +187,11 @@ export class ApiService {
 
     // ── iptv-org Playlists ──────────────────────
     getIptvOrgPlaylists(): Observable<any[]> {
-        // Fetch the directory listing from iptv-org GitHub API
-        return this.http.get<any[]>('https://api.github.com/repos/iptv-org/iptv/contents/streams');
+        return this.http.get<any[]>('/api/iptv-org/playlists', { headers: this.authHeaders() });
     }
 
-    getIptvOrgSubdir(path: string): Observable<any[]> {
-        return this.http.get<any[]>(`https://api.github.com/repos/iptv-org/iptv/contents/${path}`);
+    syncIptvOrgPlaylists(): Observable<any> {
+        return this.http.post('/api/iptv-org/update-playlists', {}, { headers: this.authHeaders() });
     }
 
     // ── Channel Favorites (backend) ──────────────

@@ -8,14 +8,22 @@ if (!fs.existsSync(DB_DIR)) {
   fs.mkdirSync(DB_DIR, { recursive: true });
 }
 
+const dbPath = path.join(DB_DIR, 'local.db');
+if (!fs.existsSync(dbPath)) {
+  fs.writeFileSync(dbPath, '');
+}
+
 export const db = createClient({
-  url: `file:${DB_DIR}/local.db`,
+  url: `file:${dbPath}`,
 });
 
 export async function initDb() {
   await db.execute('PRAGMA journal_mode = WAL;');
   await db.execute('PRAGMA synchronous = NORMAL;');
   await db.execute('PRAGMA busy_timeout = 5000;');
+  await db.execute('PRAGMA cache_size = -4000;');
+  await db.execute('PRAGMA journal_size_limit = 67108864;');
+  await db.execute('PRAGMA temp_store = MEMORY;');
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS settings (
@@ -91,8 +99,7 @@ export async function initDb() {
     )
   `);
 
-  // Drops and Recreates for updated schema
-  await db.execute("DROP TABLE IF EXISTS iptv_org_map");
+  // Drops and Recreates for updated schema removed to prevent clearing on every initialization
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS iptv_org_map (
@@ -239,6 +246,77 @@ export async function initDb() {
       created_at INTEGER DEFAULT (unixepoch())
     )
   `);
+
+  // Reset site lockout and re-enable auto-disabled channels on startup
+  try {
+    await db.execute(`
+      UPDATE channels SET enabled = 1 WHERE matched_epg_id IN (
+        SELECT xmltv_id FROM channel_grab_status WHERE auto_disabled = 1
+      )
+    `);
+    await db.execute("UPDATE channel_grab_status SET consecutive_failures = 0, auto_disabled = 0");
+    await db.execute("DELETE FROM site_status");
+  } catch (e) {
+    console.error("Failed to reset site/channel statuses at startup:", e);
+  }
+
+  // File system cleanup
+  await cleanupFileSystemOnBoot();
+
+  // SQLite Optimization
+  try {
+    console.log("[Db] Running SQLite optimization (VACUUM & ANALYZE)...");
+    await db.execute("VACUUM;");
+    await db.execute("ANALYZE;");
+    console.log("[Db] Database optimization complete.");
+  } catch (e) {
+    console.error("Failed to optimize database at startup:", e);
+  }
+}
+
+async function cleanupFileSystemOnBoot() {
+  try {
+    const streamsDir = path.join(DB_DIR, 'streams');
+    if (fs.existsSync(streamsDir)) {
+      console.log("[BootCleanup] Purging stale stream directories...");
+      const items = fs.readdirSync(streamsDir);
+      for (const item of items) {
+        const itemPath = path.join(streamsDir, item);
+        try {
+          fs.rmSync(itemPath, { recursive: true, force: true });
+        } catch (err: any) {
+          console.error(`[BootCleanup] Failed to remove ${itemPath}:`, err.message);
+        }
+      }
+    }
+
+    const cacheDir = path.join(DB_DIR, 'http-cache');
+    if (fs.existsSync(cacheDir)) {
+      console.log("[BootCleanup] Evicting expired cache files (older than 7 days)...");
+      const files = fs.readdirSync(cacheDir);
+      const now = Date.now();
+      const maxAgeMs = 7 * 24 * 60 * 60 * 1000; // 7 days
+      let deletedCount = 0;
+      for (const file of files) {
+        if (!file.endsWith('.bin')) continue;
+        const filePath = path.join(cacheDir, file);
+        try {
+          const stats = fs.statSync(filePath);
+          if (now - stats.mtimeMs > maxAgeMs) {
+            fs.unlinkSync(filePath);
+            deletedCount++;
+          }
+        } catch (err: any) {
+          console.error(`[BootCleanup] Failed to process cache file ${filePath}:`, err.message);
+        }
+      }
+      if (deletedCount > 0) {
+        console.log(`[BootCleanup] Evicted ${deletedCount} expired cache files.`);
+      }
+    }
+  } catch (err: any) {
+    console.error("[BootCleanup] Error running boot filesystem cleanup:", err.message);
+  }
 }
 
 export async function getSetting(key: string): Promise<string | null> {

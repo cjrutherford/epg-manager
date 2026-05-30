@@ -9,18 +9,15 @@
     <!-- Toolbar -->
     <div class="toolbar glass-card">
         <div class="toolbar-row">
-            <input type="text" class="themed-input" placeholder="Filter channels..." [(ngModel)]="filterInput"
+            <input type="text" class="themed-input" style="max-width:260px" placeholder="Filter name or category..." [(ngModel)]="filterInput"
                 (input)="applyFilters()">
-            <select class="themed-select" [(ngModel)]="matchFilter" (change)="applyFilters()">
-                <option value="all">All Match Status</option>
-                <option value="matched">Matched</option>
-                <option value="unmatched">Unmatched</option>
-            </select>
+
             <select class="themed-select" [(ngModel)]="statusFilter" (change)="applyFilters()">
                 <option value="all">All Status</option>
                 <option value="enabled">Enabled</option>
                 <option value="disabled">Disabled</option>
             </select>
+
             <select class="themed-select" [(ngModel)]="categoryFilter" (change)="applyFilters()">
                 <option value="all">All Categories</option>
                 @for (cat of categories; track cat) {
@@ -29,15 +26,21 @@
             </select>
         </div>
         <div class="toolbar-row">
-            <span class="toolbar-stat">{{ filteredChannels.length }} channels • {{ matchedCount }} matched</span>
+            <!-- Match-type filter pills -->
+            <div class="filter-pills">
+                <button class="pill" [class.pill-active]="matchFilter === 'all'" (click)="matchFilter='all';applyFilters()">All</button>
+                <button class="pill pill-success" [class.pill-active]="matchFilter === 'exact'" (click)="matchFilter='exact';applyFilters()">Exact</button>
+                <button class="pill pill-warning" [class.pill-active]="matchFilter === 'fuzzy'" (click)="matchFilter='fuzzy';applyFilters()">Fuzzy</button>
+                <button class="pill pill-primary" [class.pill-active]="matchFilter === 'override'" (click)="matchFilter='override';applyFilters()">Override</button>
+                <button class="pill pill-danger" [class.pill-active]="matchFilter === 'unmatched'" (click)="matchFilter='unmatched';applyFilters()">Unmatched</button>
+            </div>
+            <span class="toolbar-stat" style="margin-left:auto">{{ filteredChannels.length }} channels • {{ matchedCount }} matched</span>
             <div class="toolbar-actions">
                 @if (selectedChannelIds.size > 0) {
-                <span class="toolbar-stat" style="margin-right: 15px;">{{ selectedChannelIds.size }} selected</span>
-                <button class="btn btn-secondary small-btn" (click)="applyBulkAction('enable')">Enable Selected</button>
-                <button class="btn btn-secondary small-btn" (click)="applyBulkAction('disable')">Disable
-                    Selected</button>
-                <button class="btn btn-primary small-btn" (click)="applyBulkAction('auto-assign')">Auto-assign
-                    Numbers</button>
+                <span class="toolbar-stat" style="margin-right: 12px;">{{ selectedChannelIds.size }} selected</span>
+                <button class="btn btn-secondary small-btn" (click)="applyBulkAction('enable')">Enable</button>
+                <button class="btn btn-secondary small-btn" (click)="applyBulkAction('disable')">Disable</button>
+                <button class="btn btn-primary small-btn" (click)="applyBulkAction('auto-assign')">Auto-#</button>
                 }
             </div>
         </div>
@@ -51,9 +54,19 @@
                     <th style="width:50px">
                         <input type="checkbox" [ngModel]="isAllSelected" (ngModelChange)="selectAll($event)">
                     </th>
-                    <th>Channel</th>
+                    <th class="sortable" (click)="sortBy('name')">
+                        Channel
+                        @if (sortKey === 'name') { <span class="sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span> }
+                    </th>
+                    <th class="sortable" (click)="sortBy('number')">
+                        #
+                        @if (sortKey === 'number') { <span class="sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span> }
+                    </th>
                     <th>Now Playing</th>
-                    <th>Match</th>
+                    <th class="sortable" (click)="sortBy('match')">
+                        Match
+                        @if (sortKey === 'match') { <span class="sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span> }
+                    </th>
                     <th style="width:60px"></th>
                 </tr>
             </thead>
@@ -75,6 +88,7 @@
                             </div>
                         </div>
                     </td>
+                    <td class="channel-num">{{ ch.channel_number || '-' }}</td>
                     <td>
                         @if (ch.current_program_title) {
                         <div class="program-now">{{ ch.current_program_title }}</div>
@@ -96,7 +110,7 @@
 
                 @if (expandedChannelId === ch.id) {
                 <tr class="expanded-row">
-                    <td colspan="5">
+                    <td colspan="6">
                         <div class="expanded-content">
                             <div class="expanded-main">
 
@@ -149,7 +163,7 @@
 
                 @if (filteredChannels.length === 0) {
                 <tr>
-                    <td colspan="5" style="text-align:center; padding:40px;">No channels found.</td>
+                    <td colspan="6" style="text-align:center; padding:40px;">No channels found.</td>
                 </tr>
                 }
             </tbody>

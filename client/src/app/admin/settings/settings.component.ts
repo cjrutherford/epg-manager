@@ -2,6 +2,7 @@ import { Component, OnInit, Inject, PLATFORM_ID } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
+import { ToastService } from '../../services/toast.service';
 
 @Component({
     selector: 'app-settings',
@@ -11,17 +12,27 @@ import { ApiService } from '../../services/api.service';
     styleUrl: './settings.component.css'
 })
 export class SettingsComponent implements OnInit {
-    // Config
     playlists: any[] = [];
+    playlistSummary = { selectedCount: 0, importedChannels: 0, estimatedChannels: 0 };
+
+    // Config
     selectedPlaylists: string[] = [];
     customPlaylistUrl = '';
     epgDays = 2;
     savingConfig = false;
 
+    // Channel Numbering
+    channelNumberingMode: string = 'list';
+    customRangesArray: { category: string, startNum: number }[] = [];
+
     // iptv-org browser
-    iptvOrgFiles: { name: string; url: string }[] = [];
+    iptvOrgFiles: PlaylistViewModel[] = [];
     iptvOrgLoading = false;
+    iptvOrgSyncing = false;
     iptvOrgSearchQuery = '';
+    iptvOrgCategoryFilter = 'all';
+    iptvOrgSortKey: 'name' | 'category' | 'channelCount' | 'selected' = 'selected';
+    iptvOrgSortDir: 'asc' | 'desc' = 'asc';
 
     // Metadata
     metadataEnabled = false;
@@ -30,7 +41,7 @@ export class SettingsComponent implements OnInit {
     loading = true;
     private isBrowser: boolean;
 
-    constructor(private api: ApiService, @Inject(PLATFORM_ID) platformId: Object) {
+    constructor(private api: ApiService, private toast: ToastService, @Inject(PLATFORM_ID) platformId: Object) {
         this.isBrowser = isPlatformBrowser(platformId);
     }
 
@@ -41,12 +52,13 @@ export class SettingsComponent implements OnInit {
     async loadAll(): Promise<void> {
         this.loading = true;
         try {
-            const [playlists, config, metaConfig] = await Promise.all([
+            const [playlistResponse, config, metaConfig] = await Promise.all([
                 this.api.getPlaylists().toPromise().catch(() => []),
                 this.api.getConfig().toPromise().catch(() => ({})),
                 this.api.getMetadataConfig().toPromise().catch(() => ({ enabled: false }))
             ]);
-            this.playlists = playlists || [];
+            this.playlists = playlistResponse?.items || [];
+            this.playlistSummary = playlistResponse?.summary || { selectedCount: 0, importedChannels: 0, estimatedChannels: 0 };
 
             // Load playlist_urls array, falling back to single playlist_url
             if (config?.playlist_urls && Array.isArray(config.playlist_urls)) {
@@ -58,6 +70,16 @@ export class SettingsComponent implements OnInit {
             }
 
             this.epgDays = config?.epg_days || 2;
+            
+            // Channel Numbering
+            this.channelNumberingMode = config?.channel_numbering_mode || 'list';
+            try {
+                const ranges = JSON.parse(config?.custom_channel_ranges || '{}');
+                this.customRangesArray = Object.keys(ranges).map(k => ({ category: k, startNum: ranges[k] }));
+            } catch (e) {
+                this.customRangesArray = [];
+            }
+
             this.metadataEnabled = metaConfig?.enabled || false;
             if (this.metadataEnabled) this.loadMetadataStats();
         } catch (e) {
@@ -68,16 +90,10 @@ export class SettingsComponent implements OnInit {
     }
 
     async loadIptvOrgPlaylists(): Promise<void> {
-        if (this.iptvOrgFiles.length > 0) return; // already loaded
         this.iptvOrgLoading = true;
         try {
-            const dirs = await this.api.getIptvOrgPlaylists().toPromise() || [];
-            // Each dir entry is a .m3u file or subdirectory
-            const m3uFiles = dirs.filter((f: any) => f.name.endsWith('.m3u'));
-            this.iptvOrgFiles = m3uFiles.map((f: any) => ({
-                name: f.name.replace('.m3u', '').toUpperCase(),
-                url: f.download_url || `https://raw.githubusercontent.com/iptv-org/iptv/master/streams/${f.name}`
-            }));
+            const files = await this.api.getIptvOrgPlaylists().toPromise() || [];
+            this.iptvOrgFiles = (files || []).map((file: any) => this.toPlaylistViewModel(file));
         } catch (e) {
             console.error('Failed to load iptv-org list', e);
             this.iptvOrgFiles = [];
@@ -86,10 +102,31 @@ export class SettingsComponent implements OnInit {
         }
     }
 
-    get filteredIptvOrgFiles(): { name: string; url: string }[] {
-        if (!this.iptvOrgSearchQuery) return this.iptvOrgFiles;
+    async syncIptvOrgRepo(): Promise<void> {
+        this.iptvOrgSyncing = true;
+        try {
+            this.toast.show('Downloading and syncing IPTV-ORG repository...', 'info');
+            await this.api.syncIptvOrgPlaylists().toPromise();
+            this.toast.show('IPTV-ORG repository synced successfully!', 'success');
+            await this.loadIptvOrgPlaylists();
+        } catch (e) {
+            this.toast.show('Failed to sync iptv-org repository. Check terminal logs.', 'error');
+        } finally {
+            this.iptvOrgSyncing = false;
+        }
+    }
+
+    get filteredIptvOrgFiles(): PlaylistViewModel[] {
         const q = this.iptvOrgSearchQuery.toLowerCase();
-        return this.iptvOrgFiles.filter(f => f.name.toLowerCase().includes(q));
+        const filtered = this.iptvOrgFiles.filter((file) => {
+            const matchesSearch = !q || [file.name, file.label, file.host, file.pathSummary].join(' ').toLowerCase().includes(q);
+            const matchesCategory = this.iptvOrgCategoryFilter === 'all'
+                || (this.iptvOrgCategoryFilter === 'selected' && this.isPlaylistSelected(file.url))
+                || file.category === this.iptvOrgCategoryFilter;
+            return matchesSearch && matchesCategory;
+        });
+
+        return [...filtered].sort((a, b) => this.comparePlaylists(a, b));
     }
 
     isPlaylistSelected(url: string): boolean {
@@ -125,6 +162,8 @@ export class SettingsComponent implements OnInit {
 
     /** Derive a short display label from a URL */
     playlistLabel(url: string): string {
+        const known = this.playlists.find((playlist) => playlist.url === url) || this.iptvOrgFiles.find((playlist) => playlist.url === url);
+        if (known?.label) return known.label;
         // iptv-org raw URLs: extract the filename
         const match = url.match(/\/([^/]+)\.m3u$/i);
         if (match) return match[1].toUpperCase();
@@ -140,27 +179,43 @@ export class SettingsComponent implements OnInit {
 
     async saveConfig(): Promise<void> {
         if (this.selectedPlaylists.length === 0) {
-            alert('Select or enter at least one playlist URL');
+            this.toast.show('Select or enter at least one playlist URL', 'warning');
             return;
         }
 
         this.savingConfig = true;
         try {
+            const rangesObj: Record<string, number> = {};
+            for (const item of this.customRangesArray) {
+                if (item.category.trim()) rangesObj[item.category.trim()] = item.startNum;
+            }
+
             await this.api.saveConfig({
                 playlist_urls: this.selectedPlaylists,
-                playlist_url: this.selectedPlaylists[0], // backward compat
-                epg_days: this.epgDays
+                playlist_url: this.selectedPlaylists[0],
+                epg_days: this.epgDays,
+                channel_numbering_mode: this.channelNumberingMode,
+                custom_channel_ranges: JSON.stringify(rangesObj)
             }).toPromise();
-            alert('Configuration saved!');
-        } catch { alert('Save failed'); }
+            this.toast.show('Configuration saved!', 'success');
+        } catch { this.toast.show('Save failed', 'error'); }
         finally { this.savingConfig = false; }
+    }
+
+    addCustomRange(): void {
+        this.customRangesArray.push({ category: '', startNum: 100 });
+    }
+
+    removeCustomRange(index: number): void {
+        this.customRangesArray.splice(index, 1);
     }
 
     async toggleMetadata(): Promise<void> {
         try {
             await this.api.saveMetadataConfig({ enabled: this.metadataEnabled }).toPromise();
             if (this.metadataEnabled) this.loadMetadataStats();
-        } catch { alert('Failed to update metadata config'); }
+            this.toast.show(this.metadataEnabled ? 'Metadata enrichment enabled' : 'Metadata enrichment disabled', 'success');
+        } catch { this.toast.show('Failed to update metadata config', 'error'); }
     }
 
     async loadMetadataStats(): Promise<void> {
@@ -172,30 +227,110 @@ export class SettingsComponent implements OnInit {
     async triggerEnrichment(): Promise<void> {
         try {
             const res: any = await this.api.triggerEnrichment().toPromise();
-            alert(res?.message || 'Enrichment started');
-        } catch { alert('Failed'); }
+            this.toast.show(res?.message || 'Enrichment started', 'success');
+        } catch { this.toast.show('Failed to start enrichment', 'error'); }
     }
 
     async refreshImdbData(): Promise<void> {
         if (!confirm('Download fresh IMDb dataset? This may take a while.')) return;
         try {
             const res: any = await this.api.refreshImdbData().toPromise();
-            alert(res?.message || 'Refresh started');
-        } catch { alert('Failed'); }
+            this.toast.show(res?.message || 'Refresh started', 'success');
+        } catch { this.toast.show('Failed to refresh IMDb data', 'error'); }
     }
 
     async clearCache(): Promise<void> {
         if (!confirm('Clear all cached metadata?')) return;
         try {
             await this.api.clearMetadataCache().toPromise();
-            alert('Cache cleared');
+            this.toast.show('Cache cleared', 'success');
             this.loadMetadataStats();
-        } catch { alert('Failed'); }
+        } catch { this.toast.show('Failed to clear cache', 'error'); }
     }
 
     copyUrl(path: string): void {
         if (!this.isBrowser) return;
         const url = window.location.origin + path;
-        navigator.clipboard.writeText(url).then(() => alert('Copied: ' + url));
+        navigator.clipboard.writeText(url).then(() => this.toast.show('Copied: ' + url, 'success'));
     }
+
+    get selectedPlaylistDetails(): PlaylistViewModel[] {
+        return this.selectedPlaylists.map((url) => {
+            const match = this.playlists.find((playlist) => playlist.url === url)
+                || this.iptvOrgFiles.find((playlist) => playlist.url === url);
+            return match || this.toPlaylistViewModel({ url, name: this.playlistLabel(url), label: this.playlistLabel(url), category: 'custom', sourceType: 'custom', host: 'custom', pathSummary: url, channelCountEstimate: null, importedCount: 0 });
+        });
+    }
+
+    get selectedPlaylistScope() {
+        const selected = this.selectedPlaylistDetails;
+        const importedChannels = selected.reduce((sum, item) => sum + (item.importedCount || 0), 0);
+        const estimatedChannels = selected.reduce((sum, item) => sum + (item.channelCountEstimate || 0), 0);
+        const isLargeSelection = selected.length >= 8 || estimatedChannels >= 2000 || this.epgDays >= 5;
+        return {
+            selectedCount: selected.length,
+            importedChannels,
+            estimatedChannels,
+            isLargeSelection
+        };
+    }
+
+    private comparePlaylists(a: PlaylistViewModel, b: PlaylistViewModel): number {
+        const dir = this.iptvOrgSortDir === 'asc' ? 1 : -1;
+        let left: string | number = '';
+        let right: string | number = '';
+
+        switch (this.iptvOrgSortKey) {
+            case 'category':
+                left = a.category;
+                right = b.category;
+                break;
+            case 'channelCount':
+                left = a.channelCountEstimate || 0;
+                right = b.channelCountEstimate || 0;
+                break;
+            case 'selected':
+                left = this.isPlaylistSelected(a.url) ? 1 : 0;
+                right = this.isPlaylistSelected(b.url) ? 1 : 0;
+                if (left === right) {
+                    left = a.label.toLowerCase();
+                    right = b.label.toLowerCase();
+                }
+                break;
+            default:
+                left = a.label.toLowerCase();
+                right = b.label.toLowerCase();
+                break;
+        }
+
+        if (left < right) return -1 * dir;
+        if (left > right) return 1 * dir;
+        return 0;
+    }
+
+    private toPlaylistViewModel(file: any): PlaylistViewModel {
+        return {
+            name: file.name,
+            url: file.url,
+            label: file.label || file.name,
+            category: file.category || 'custom',
+            sourceType: file.sourceType || 'custom',
+            host: file.host || 'custom',
+            pathSummary: file.pathSummary || file.url,
+            channelCountEstimate: file.channelCountEstimate ?? null,
+            importedCount: file.importedCount || file.count || 0
+        };
+    }
+}
+
+interface PlaylistViewModel {
+    name: string;
+    url: string;
+    label: string;
+    category: string;
+    sourceType: string;
+    host: string;
+    pathSummary: string;
+    channelCountEstimate: number | null;
+    importedCount: number;
 }

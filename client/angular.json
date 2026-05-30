@@ -69,8 +69,8 @@
                 },
                 {
                   "type": "anyComponentStyle",
-                  "maximumWarning": "16kb",
-                  "maximumError": "32kb"
+                  "maximumWarning": "32kb",
+                  "maximumError": "64kb"
                 }
               ],
               "outputHashing": "all"
@@ -79,6 +79,13 @@
               "optimization": false,
               "extractLicenses": false,
               "sourceMap": true
+            },
+            "mobile": {
+              "optimization": true,
+              "extractLicenses": true,
+              "sourceMap": false,
+              "ssr": false,
+              "prerender": false
             }
           },
           "defaultConfiguration": "production"

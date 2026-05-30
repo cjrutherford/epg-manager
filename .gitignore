@@ -46,3 +46,8 @@ playwright-report/
 test-results/
 e2e/*.js
 demo-data/
+
+# Agent/CLI tool state
+.antigravitycli/
+.kilo/
+.opencode/

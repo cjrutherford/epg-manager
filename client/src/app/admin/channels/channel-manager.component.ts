@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
+import { ToastService } from '../../services/toast.service';
 
 @Component({
     selector: 'app-channel-manager',
@@ -21,13 +22,16 @@ export class ChannelManagerComponent implements OnInit {
     categoryFilter = 'all';
     categories: string[] = [];
 
+    sortKey: string | null = null;
+    sortDir: 'asc' | 'desc' = 'asc';
+
     expandedChannelId: string | null = null;
     selectedChannelIds = new Set<string>();
 
     epgSearchResults: any[] = [];
     epgSearchLoading = false;
 
-    constructor(private api: ApiService) { }
+    constructor(private api: ApiService, private toast: ToastService) { }
 
     ngOnInit(): void {
         this.loadChannels();
@@ -36,9 +40,12 @@ export class ChannelManagerComponent implements OnInit {
     async loadChannels(): Promise<void> {
         this.loading = true;
         try {
-            const res = await this.api.getMapping().toPromise();
-            this.channels = Array.isArray(res) ? res : [];
-            this.updateCategories();
+            const [channels, categories] = await Promise.all([
+                this.api.getMapping().toPromise(),
+                this.api.getCategories().toPromise()
+            ]);
+            this.channels = Array.isArray(channels) ? channels : [];
+            this.categories = (categories || []).map((c: any) => c.group_title);
             this.applyFilters();
         } catch (e) {
             console.error('Load channels failed', e);
@@ -46,10 +53,6 @@ export class ChannelManagerComponent implements OnInit {
         } finally {
             this.loading = false;
         }
-    }
-
-    private updateCategories(): void {
-        this.categories = [...new Set(this.channels.map(c => c.group_title).filter(Boolean))].sort();
     }
 
     applyFilters(): void {
@@ -60,8 +63,15 @@ export class ChannelManagerComponent implements OnInit {
             const searchMatch = nameMatch || catMatch;
 
             let matchStatus = true;
-            if (this.matchFilter === 'matched') matchStatus = !!(c.matched_epg_id || c.override_epg_id);
-            else if (this.matchFilter === 'unmatched') matchStatus = !(c.matched_epg_id || c.override_epg_id);
+            const isMatched = !!(c.matched_epg_id || c.override_epg_id);
+            const matchType = this.getMatchBadge(c).text.toLowerCase();
+            switch (this.matchFilter) {
+                case 'exact': matchStatus = matchType === 'exact'; break;
+                case 'fuzzy': matchStatus = matchType === 'fuzzy' || matchType === 'match'; break;
+                case 'override': matchStatus = matchType === 'override'; break;
+                case 'unmatched': matchStatus = !isMatched; break;
+                default: matchStatus = true;
+            }
 
             let enabledMatch = true;
             if (this.statusFilter === 'enabled') enabledMatch = c.enabled === 1;
@@ -71,6 +81,51 @@ export class ChannelManagerComponent implements OnInit {
             if (this.categoryFilter !== 'all') catFilter = c.group_title === this.categoryFilter;
 
             return searchMatch && matchStatus && enabledMatch && catFilter;
+        });
+        this.sortChannels();
+    }
+
+    sortBy(key: string): void {
+        if (this.sortKey === key) {
+            this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+            this.sortKey = key;
+            this.sortDir = 'asc';
+        }
+        this.sortChannels();
+    }
+
+    sortChannels(): void {
+        if (!this.sortKey) return;
+        const key = this.sortKey;
+        const dir = this.sortDir === 'asc' ? 1 : -1;
+        this.filteredChannels.sort((a, b) => {
+            let va: any, vb: any;
+            switch (key) {
+                case 'name':
+                    va = (a.name || '').toLowerCase();
+                    vb = (b.name || '').toLowerCase();
+                    break;
+                case 'number':
+                    va = Number(a.channel_number) || 0;
+                    vb = Number(b.channel_number) || 0;
+                    break;
+                case 'match':
+                    const badgeA = this.getMatchBadge(a);
+                    const badgeB = this.getMatchBadge(b);
+                    va = badgeA.text;
+                    vb = badgeB.text;
+                    break;
+                case 'category':
+                    va = (a.group_title || '').toLowerCase();
+                    vb = (b.group_title || '').toLowerCase();
+                    break;
+                default:
+                    return 0;
+            }
+            if (va < vb) return -1 * dir;
+            if (va > vb) return 1 * dir;
+            return 0;
         });
     }
 
@@ -107,8 +162,8 @@ export class ChannelManagerComponent implements OnInit {
                 this.channels.forEach(c => {
                     if (ids.includes(c.id)) c.enabled = enabled ? 1 : 0;
                 });
+                this.toast.show(`${ids.length} channels ${enabled ? 'enabled' : 'disabled'}`, 'success');
             } else if (action === 'auto-assign') {
-                // Assign linearly across the current sorted/filtered view
                 let currentNum = 1;
                 for (const ch of this.filteredChannels) {
                     if (this.selectedChannelIds.has(ch.id)) {
@@ -117,11 +172,12 @@ export class ChannelManagerComponent implements OnInit {
                         currentNum++;
                     }
                 }
+                this.toast.show(`Auto-assigned numbers to ${ids.length} channels`, 'success');
             }
             this.selectedChannelIds.clear();
             this.applyFilters();
         } catch (e) {
-            alert('Bulk action failed');
+            this.toast.show('Bulk action failed', 'error');
         }
     }
 
@@ -131,9 +187,10 @@ export class ChannelManagerComponent implements OnInit {
                 channel_number: ch.channel_number,
                 enabled: ch.enabled
             }).toPromise();
+            this.toast.show('Channel saved', 'success');
             this.applyFilters();
         } catch (e) {
-            alert('Failed to save channel details');
+            this.toast.show('Failed to save channel', 'error');
         }
     }
 
@@ -155,7 +212,8 @@ export class ChannelManagerComponent implements OnInit {
             await this.api.setOverride(channelId, epgId).toPromise();
             await this.loadChannels();
             this.expandedChannelId = null;
-        } catch { alert('Override failed'); }
+            this.toast.show(epgId ? `EPG mapping set to ${epgId}` : 'EPG mapping cleared', 'success');
+        } catch { this.toast.show('Override failed', 'error'); }
     }
 
     getMatchBadge(ch: any): { cls: string; text: string } {

@@ -2,6 +2,7 @@ import { eventBus } from './events';
 
 export interface JobStatus {
     running: boolean;
+    cancelRequested?: boolean;
     startTime: number | null;
     endTime: number | null;
     stats: {
@@ -23,6 +24,7 @@ export interface JobStatus {
 
 export const currentJob: JobStatus = {
     running: false,
+    cancelRequested: false,
     startTime: null,
     endTime: null,
     stats: null,
@@ -39,9 +41,17 @@ eventBus.on('progress', (data) => {
 
 export function startJob() {
     currentJob.running = true;
+    currentJob.cancelRequested = false;
     currentJob.startTime = Date.now();
     currentJob.endTime = null;
     currentJob.stats = null;
+    currentJob.progress = null;
+}
+
+export function requestJobCancel() {
+    if (currentJob.running) {
+        currentJob.cancelRequested = true;
+    }
 }
 
 export function completeJob(stats: JobStatus['stats']) {

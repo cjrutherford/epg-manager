@@ -2,11 +2,7 @@
 <header class="topbar">
     <div class="topbar-left">
         <div class="logo">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round">
-                <rect x="2" y="7" width="20" height="15" rx="2" ry="2" />
-                <polyline points="17 2 12 7 7 2" />
-            </svg>
+            <lucide-icon name="monitor-play" class="icon"></lucide-icon>
             <span>IPTV</span>
         </div>
         @if (currentChannel) {
@@ -14,378 +10,509 @@
             <span class="np-channel">{{ currentChannel.name }}</span>
             <span class="np-program">{{ currentChannel.current_program?.title ? '• ' +
                 currentChannel.current_program.title : '' }}</span>
+            @if (currentRecording) {
+            <span class="rec-badge-top">🔴 REC</span>
+            }
         </div>
         }
     </div>
     <div class="topbar-right">
         @if (castAvailable) {
-        <google-cast-launcher class="cast-btn"></google-cast-launcher>
-        }
-        <button class="icon-btn" [class.active]="guideOpen" (click)="toggleGuide()" title="Toggle Guide (G)">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="8" y1="6" x2="21" y2="6" />
-                <line x1="8" y1="12" x2="21" y2="12" />
-                <line x1="8" y1="18" x2="21" y2="18" />
-                <line x1="3" y1="6" x2="3.01" y2="6" />
-                <line x1="3" y1="12" x2="3.01" y2="12" />
-                <line x1="3" y1="18" x2="3.01" y2="18" />
-            </svg>
+        <button class="icon-btn cast-btn-wrapper" title="Google Cast">
+            <google-cast-launcher class="cast-btn"></google-cast-launcher>
         </button>
+        }
+        <button class="icon-btn" [class.active]="dvrOpen" (click)="dvrOpen = !dvrOpen" title="DVR Manager">
+            <lucide-icon name="film" class="icon"></lucide-icon>
+        </button>
+        <!-- Guide layout cycle button -->
+        <button class="icon-btn layout-btn" [class.active]="guideOpen" (click)="cycleGuideLayout()"
+            [title]="'Guide Layout: ' + guideLayout">
+            <lucide-icon [name]="guideLayoutIcon" class="icon" stroke-width="2"></lucide-icon>
+        </button>
+        <button class="icon-btn" [class.active]="guideOpen" (click)="toggleGuide()" title="Toggle Guide (G)">
+            <lucide-icon name="list" class="icon"></lucide-icon>
+        </button>
+        <button class="icon-btn" [class.active]="serverSettingsOpen" (click)="serverSettingsOpen = !serverSettingsOpen" title="Server Connection">
+            <lucide-icon name="server" class="icon"></lucide-icon>
+        </button>
+
+        <!-- Theme Picker -->
+        <div class="theme-picker-container" style="position: relative; display: inline-block;">
+            <button class="icon-btn theme-picker-btn" [class.active]="themePickerOpen" (click)="toggleThemePicker($event)" title="Change Theme">
+                <lucide-icon name="palette" class="icon"></lucide-icon>
+            </button>
+            @if (themePickerOpen) {
+            <div class="theme-picker-dropdown glass-card">
+                <div class="theme-picker-title">Select Theme</div>
+                <div class="theme-options">
+                    @for (theme of themes; track theme.key) {
+                    <button class="theme-option-row" [class.active]="theme.key === currentThemeKey" (click)="selectTheme(theme.key)">
+                        <span class="theme-colors-preview">
+                            <span class="theme-color-dot" [style.background-color]="theme.primaryColor" title="Primary Accent"></span>
+                            <span class="theme-color-dot" [style.background-color]="theme.bgColor" title="Background"></span>
+                        </span>
+                        <span class="theme-name">{{ theme.name }}</span>
+                        @if (theme.key === currentThemeKey) {
+                        <span class="theme-active-check">✓</span>
+                        }
+                    </button>
+                    }
+                </div>
+            </div>
+            }
+        </div>
+
         <a routerLink="/admin" class="icon-btn" title="Admin Settings">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="3" />
-                <path
-                    d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
+            <lucide-icon name="settings" class="icon"></lucide-icon>
         </a>
     </div>
 </header>
 
-<!-- Content Area -->
-<div class="content-area">
-    <main class="player-area">
-        <video #videoPlayer crossorigin="anonymous" [style.display]="isCasting ? 'none' : 'block'"></video>
+@if (dvrOpen) {
+    <app-dvr [isOverlay]="true" [guideChannels]="channels" (close)="dvrOpen = false"></app-dvr>
+}
 
-        @if (isCasting) {
-        <div class="cast-sender-ui">
-            <div class="cast-hero">
-                <div class="cast-status-icon">
-                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path
-                            d="M2 16.1A5 5 0 0 1 5.9 20M2 12.05A9 9 0 0 1 9.95 20M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6">
-                        </path>
-                        <line x1="2" y1="20" x2="2.01" y2="20"></line>
-                    </svg>
-                </div>
-                <h2 class="cast-status-title">Casting to TV</h2>
-                <p class="cast-status-subtitle">{{ currentChannel?.name || 'Ready to cast' }}</p>
-
-                <button class="cast-stop-btn" (click)="castService.stopCasting()">Stop Casting</button>
-            </div>
-
-            <div class="cast-dpad-guide">
-                <h3>Cable Guide</h3>
-                <div class="tv-guide-list">
-                    @for (ch of channels; track ch.id) {
-                    <div class="tv-guide-row" [class.active]="currentChannel?.id === ch.id"
-                        (click)="tuneToChannelById(ch.id)" tabindex="0">
-                        <div class="tv-g-num">{{ ch.channel_number }}</div>
-                        @if (ch.logo) { <img [src]="ch.logo" class="tv-g-logo"> }
-                        <div class="tv-g-text">
-                            <div class="tv-g-name">{{ ch.name }}</div>
-                            <div class="tv-g-prog">{{ ch.current_program?.title || 'No Info' }}</div>
-                        </div>
-                    </div>
-                    }
-                </div>
-            </div>
-        </div>
+<!-- ── No-data empty state ─────────────────────────────────────────── -->
+@if (isEmpty) {
+<div class="watch-empty-state">
+    <div class="wes-static"></div>
+    <div class="wes-content glass-card">
+        <div class="wes-icon">📡</div>
+        <h2 class="wes-title">No channels configured</h2>
+        <p class="wes-desc">
+            The system has no channel or guide data yet.
+            Head to the Admin Dashboard to add a playlist and run your first sync.
+        </p>
+        @if (!dataState?.hasPlaylist) {
+        <p class="wes-hint">No playlist URL is set — start in <strong>Settings</strong> to add one.</p>
         }
-
-        <!-- Channel Controls -->
-        <div class="channel-controls">
-            <button class="ch-btn" (click)="channelUp()" title="Channel Up">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                    <polyline points="6 15 12 9 18 15" />
-                </svg>
-            </button>
-            <button class="ch-btn" (click)="channelDown()" title="Channel Down">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                    <polyline points="6 9 12 15 18 9" />
-                </svg>
-            </button>
-        </div>
-
-        <!-- Volume -->
-        <div class="volume-bar">
-            <button class="vol-btn" (click)="toggleMute()">
-                @if (!muted && volume > 0) {
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-                </svg>
-                } @else {
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                    <line x1="23" y1="9" x2="17" y2="15" />
-                    <line x1="17" y1="9" x2="23" y2="15" />
-                </svg>
-                }
-            </button>
-            <input type="range" class="volume-slider" min="0" max="100" [value]="volume * 100"
-                (input)="onVolumeSlider($event)">
-            <span class="volume-pct">{{ (volume * 100) | number:'1.0-0' }}%</span>
-        </div>
-
-        <!-- OSD -->
-        @if (showOsd && osdChannel) {
-        <div class="channel-osd visible">
-            <span class="osd-number">{{ osdChannel.channel_number }}</span>
-            <span class="osd-name">{{ osdChannel.name }}</span>
-        </div>
-        }
-
-        <!-- Info Overlay -->
-        @if (showInfoOverlay && currentChannel) {
-        <div class="info-overlay">
-            <div class="info-overlay-content">
-                @if (currentChannel.logo) {
-                <img [src]="currentChannel.logo" class="info-logo" alt="">
-                }
-                <div class="info-text">
-                    <div class="info-channel-name">{{ currentChannel.name }}</div>
-                    <div class="info-program-title">{{ currentChannel.current_program?.title || 'No Program Info' }}
-                    </div>
-                    @if (currentChannel.current_program?.sub_title) {
-                    <div class="info-program-subtitle">{{ currentChannel.current_program.sub_title }}</div>
-                    }
-                    <div class="info-meta">
-                        @if (currentChannel.current_program) {
-                        <span>{{ fmtTimeRange(currentChannel.current_program.start, currentChannel.current_program.stop)
-                            }}</span>
-                        }
-                        @if (currentChannel.current_program?.category || currentChannel.group_title) {
-                        <span class="info-category">{{ currentChannel.current_program?.category ||
-                            currentChannel.group_title }}</span>
-                        }
-                    </div>
-                    @if (currentChannel.current_program) {
-                    <div class="info-progress-bar">
-                        <div class="info-progress"
-                            [style.width.%]="programProgress(currentChannel.current_program.start, currentChannel.current_program.stop)">
-                        </div>
-                    </div>
-                    }
-                </div>
-            </div>
-        </div>
-        }
-
-        <!-- Loading -->
-        @if (loading) {
-        <div class="player-loading">
-            <div class="spinner"></div>
-            <span>Loading stream...</span>
-        </div>
-        }
-
-        <!-- Error -->
-        @if (error) {
-        <div class="player-error">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <circle cx="12" cy="12" r="10" />
-                <line x1="15" y1="9" x2="9" y2="15" />
-                <line x1="9" y1="9" x2="15" y2="15" />
-            </svg>
-            <span>{{ error }}</span>
-        </div>
-        }
-    </main>
-
-    <!-- Persistent Channel Info Block (1/6 view height) -->
-    @if (currentChannel) {
-    <div class="channel-info-block glass">
-        <div class="cib-left">
-            @if (currentChannel.logo) {
-            <img [src]="currentChannel.logo" class="cib-logo" alt="">
-            }
-            <div class="cib-text">
-                <div class="cib-channel-name">{{ currentChannel.name }}</div>
-                @if (currentChannel.group_title) {
-                <span class="cib-category">{{ currentChannel.group_title }}</span>
-                }
-            </div>
-        </div>
-        <div class="cib-center">
-            @if (currentChannel.current_program) {
-            <div class="cib-program-title">{{ currentChannel.current_program.title }}</div>
-            @if (currentChannel.current_program.sub_title) {
-            <div class="cib-program-sub">{{ currentChannel.current_program.sub_title }}</div>
-            }
-            <div class="cib-time">
-                {{ fmtTimeRange(currentChannel.current_program.start, currentChannel.current_program.stop) }}
-            </div>
-            <div class="cib-progress">
-                <div class="cib-progress-fill"
-                    [style.width.%]="programProgress(currentChannel.current_program.start, currentChannel.current_program.stop)">
-                </div>
-            </div>
-            } @else {
-            <div class="cib-program-title text-secondary">No Program Info</div>
-            }
-        </div>
-        <div class="cib-right">
-            <button class="icon-btn" [class.active]="isFavorite(currentChannel.id)"
-                (click)="toggleFavorite(currentChannel.id)" title="Toggle Favorite">
-                {{ isFavorite(currentChannel.id) ? '★' : '☆' }}
-            </button>
-            <button class="icon-btn" [class.active]="hiddenChannels.has(currentChannel.id)"
-                (click)="toggleHidden(currentChannel.id)" title="Toggle Hidden">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    @if (hiddenChannels.has(currentChannel.id)) {
-                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-                    <line x1="1" y1="1" x2="23" y2="23"></line>
-                    } @else {
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                    <circle cx="12" cy="12" r="3"></circle>
-                    }
-                </svg>
-            </button>
-            <button class="icon-btn" [class.active]="guideOpen" (click)="toggleGuide()" title="Toggle Guide">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="8" y1="6" x2="21" y2="6" />
-                    <line x1="8" y1="12" x2="21" y2="12" />
-                    <line x1="8" y1="18" x2="21" y2="18" />
-                    <line x1="3" y1="6" x2="3.01" y2="6" />
-                    <line x1="3" y1="12" x2="3.01" y2="12" />
-                    <line x1="3" y1="18" x2="3.01" y2="18" />
-                </svg>
-            </button>
-        </div>
+        <a id="btn-go-to-admin" routerLink="/admin" class="wes-btn">
+            ⚙ Go to Admin Dashboard
+        </a>
     </div>
+</div>
+}
+
+<!-- ═══ MAIN CONTENT — layout driven by guideLayout + guideOpen ═══ -->
+<div class="content-area"
+     [class.layout-overlay]="!guideOpen || guideLayout === 'overlay'"
+     [class.layout-side]="guideOpen && guideLayout === 'side'"
+     [class.layout-guide-only]="guideOpen && guideLayout === 'guide-only'">
+
+    <!-- ── TOP ROW: video + channel card (hidden in guide-only on small heights) ── -->
+    <div class="top-row">
+        <!-- Video / player -->
+        <main class="player-area">
+            <video #videoPlayer crossorigin="anonymous" [style.display]="isCasting ? 'none' : 'block'"></video>
+
+            @if (isCasting) {
+            <div class="cast-sender-ui">
+                <div class="cast-hero">
+                    <div class="cast-status-icon">
+                        <lucide-icon name="cast" class="icon" [style.width.px]="48" [style.height.px]="48"></lucide-icon>
+                    </div>
+                    <h2 class="cast-status-title">Casting to TV</h2>
+                    <p class="cast-status-subtitle">{{ currentChannel?.name || 'Ready to cast' }}</p>
+                    <button class="cast-stop-btn" (click)="castService.stopCasting()">Stop Casting</button>
+                </div>
+                <div class="cast-dpad-guide">
+                    <h3>Cable Guide</h3>
+                    <div class="tv-guide-list">
+                        @for (ch of channels; track ch.id) {
+                        <div class="tv-guide-row" [class.active]="currentChannel?.id === ch.id"
+                            (click)="tuneToChannelById(ch.id)" tabindex="0">
+                            <div class="tv-g-num">{{ ch.channel_number }}</div>
+                            @if (ch.logo) { <img [src]="resolveUrl(ch.logo)" class="tv-g-logo"> }
+                            <div class="tv-g-text">
+                                <div class="tv-g-name">{{ ch.name }}</div>
+                                <div class="tv-g-prog">{{ ch.current_program?.title || 'No Info' }}</div>
+                            </div>
+                        </div>
+                        }
+                    </div>
+                </div>
+            </div>
+            }
+
+            <!-- Channel Controls -->
+            <div class="channel-controls">
+                <button class="ch-btn" (click)="channelUp()" title="Channel Up">
+                    <lucide-icon name="chevron-up" class="icon"></lucide-icon>
+                </button>
+                <button class="ch-btn" (click)="channelDown()" title="Channel Down">
+                    <lucide-icon name="chevron-down" class="icon"></lucide-icon>
+                </button>
+            </div>
+
+            <!-- Volume -->
+            <div class="volume-bar">
+                <button class="vol-btn" (click)="toggleMute()">
+                    @if (!muted && volume > 0) {
+                    <lucide-icon name="volume-2" class="icon"></lucide-icon>
+                    } @else {
+                    <lucide-icon name="volume-x" class="icon"></lucide-icon>
+                    }
+                </button>
+                <input type="range" class="volume-slider" min="0" max="100" [value]="volume * 100"
+                    (input)="onVolumeSlider($event)">
+                <span class="volume-pct">{{ (volume * 100) | number:'1.0-0' }}%</span>
+
+                <!-- Diagnostics Panel Toggle -->
+                <button class="diag-toggle-btn vol-btn" [class.active]="diagnosticsOpen" (click)="toggleDiagnostics()" title="Stream Diagnostics">
+                    <lucide-icon name="activity" class="icon"></lucide-icon>
+                </button>
+            </div>
+
+            <!-- OSD -->
+            @if (showOsd && osdChannel) {
+            <div class="channel-osd visible">
+                <span class="osd-number">{{ osdChannel.channel_number }}</span>
+                <span class="osd-name">{{ osdChannel.name }}</span>
+            </div>
+            }
+
+            <!-- Info Overlay -->
+            @if (showInfoOverlay && currentChannel) {
+            <div class="info-overlay">
+                <div class="info-overlay-content">
+                    @if (currentChannel.logo) {
+                    <img [src]="resolveUrl(currentChannel.logo)" class="info-logo" alt="">
+                    }
+                    <div class="info-text">
+                        <div class="info-channel-name">{{ currentChannel.name }}</div>
+                        <div class="info-program-title">{{ currentChannel.current_program?.title || 'No Program Info' }}</div>
+                        @if (currentChannel.current_program?.sub_title) {
+                        <div class="info-program-subtitle">{{ currentChannel.current_program.sub_title }}</div>
+                        }
+                        <div class="info-meta">
+                            @if (currentChannel.current_program) {
+                            <span>{{ fmtTimeRange(currentChannel.current_program.start, currentChannel.current_program.stop) }}</span>
+                            }
+                            @if (currentChannel.current_program?.category || currentChannel.group_title) {
+                            <span class="info-category">{{ currentChannel.current_program?.category || currentChannel.group_title }}</span>
+                            }
+                        </div>
+                        @if (currentChannel.current_program) {
+                        <div class="info-progress-bar">
+                            <div class="info-progress"
+                                [style.width.%]="programProgress(currentChannel.current_program.start, currentChannel.current_program.stop)">
+                            </div>
+                        </div>
+                        }
+                    </div>
+                </div>
+            </div>
+            }
+
+            <!-- Loading -->
+            @if (loading) {
+            <div class="player-loading">
+                <div class="spinner"></div>
+                <span>Loading stream...</span>
+            </div>
+            }
+
+            <!-- Player Diagnostics Overlay -->
+            @if (diagnosticsOpen) {
+            <div class="player-diagnostics glass-card">
+                <div class="diag-header">
+                    <span class="diag-title">Player Diagnostics</span>
+                    <button class="diag-close-btn" (click)="toggleDiagnostics()">&times;</button>
+                </div>
+                <div class="diag-grid">
+                    <div class="diag-row">
+                        <span class="diag-label">Resolution</span>
+                        <span class="diag-val">{{ diagnosticsData.resolution }}</span>
+                    </div>
+                    <div class="diag-row">
+                        <span class="diag-label">Buffer Length</span>
+                        <span class="diag-val">{{ diagnosticsData.bufferLength }}s</span>
+                    </div>
+                    <div class="diag-row">
+                        <span class="diag-label">Frame Stats</span>
+                        <span class="diag-val">{{ diagnosticsData.totalFrames - diagnosticsData.droppedFrames }}/{{ diagnosticsData.totalFrames }}</span>
+                    </div>
+                    <div class="diag-row">
+                        <span class="diag-label">Dropped Frames</span>
+                        <span class="diag-val" [class.warning]="diagnosticsData.droppedFrames > 0">{{ diagnosticsData.droppedFrames }}</span>
+                    </div>
+                    <div class="diag-row">
+                        <span class="diag-label">Estimated Bitrate</span>
+                        <span class="diag-val">{{ diagnosticsData.bandwidth }}</span>
+                    </div>
+                    <div class="diag-row">
+                        <span class="diag-label">Active Codec</span>
+                        <span class="diag-val codec-text">{{ diagnosticsData.codec }}</span>
+                    </div>
+                    <div class="diag-row">
+                        <span class="diag-label">Engine</span>
+                        <span class="diag-val">{{ diagnosticsData.playerType }}</span>
+                    </div>
+                </div>
+            </div>
+            }
+        </main>
+
+        <!-- Channel Info Card (top-right in expanded layouts) -->
+        @if (currentChannel) {
+        <div class="channel-info-block glass">
+            <div class="cib-left">
+                @if (currentChannel.logo) {
+                <img [src]="resolveUrl(currentChannel.logo)" class="cib-logo" alt="">
+                }
+                <div class="cib-text">
+                    <div class="cib-channel-name">{{ currentChannel.name }}</div>
+                    @if (currentChannel.group_title) {
+                    <span class="cib-category">{{ currentChannel.group_title }}</span>
+                    }
+                </div>
+            </div>
+            <div class="cib-center">
+                @if (currentChannel.current_program) {
+                <div class="cib-program-title">{{ currentChannel.current_program.title }}</div>
+                @if (currentChannel.current_program.sub_title) {
+                <div class="cib-program-sub">{{ currentChannel.current_program.sub_title }}</div>
+                }
+                <div class="cib-time">
+                    {{ fmtTimeRange(currentChannel.current_program.start, currentChannel.current_program.stop) }}
+                </div>
+                <div class="cib-progress">
+                    <div class="cib-progress-fill"
+                        [style.width.%]="programProgress(currentChannel.current_program.start, currentChannel.current_program.stop)">
+                    </div>
+                </div>
+                } @else {
+                <div class="cib-program-title text-secondary">No Program Info</div>
+                }
+            </div>
+            <div class="cib-right">
+                <button class="icon-btn" [class.active]="isFavorite(currentChannel.id)"
+                    (click)="toggleFavorite(currentChannel.id)" title="Toggle Favorite">
+                    {{ isFavorite(currentChannel.id) ? '★' : '☆' }}
+                </button>
+                <button class="icon-btn" [class.active]="hiddenChannels.has(currentChannel.id)"
+                    (click)="toggleHidden(currentChannel.id)" title="Toggle Hidden">
+                    @if (hiddenChannels.has(currentChannel.id)) {
+                        <lucide-icon name="eye-off" class="icon" [style.width.px]="18" [style.height.px]="18"></lucide-icon>
+                    } @else {
+                        <lucide-icon name="eye" class="icon" [style.width.px]="18" [style.height.px]="18"></lucide-icon>
+                    }
+                </button>
+                <button class="icon-btn" [class.active]="guideOpen" (click)="toggleGuide()" title="Toggle Guide">
+                    <lucide-icon name="list" class="icon"></lucide-icon>
+                </button>
+            </div>
+        </div>
+        }
+    </div>
+
+    <!-- ── GUIDE PANEL ── -->
+    @if (guideOpen) {
+    <section class="guide-panel"
+             [style.height.px]="guideLayout === 'overlay' ? guideHeight : null"
+             [style.width.px]="guideLayout === 'side' ? guideHeight * 1.6 : null">
+
+        <!-- Drag Handle (overlay = top edge; side = left edge) -->
+        <div class="guide-drag-handle"
+             [class.guide-drag-handle--side]="guideLayout === 'side'"
+             (mousedown)="onGuideDragStart($event)"
+             (touchstart)="onGuideDragStart($event)">
+            <div class="drag-indicator"></div>
+        </div>
+
+        <div class="guide-header">
+            <div class="guide-title">
+                <lucide-icon name="calendar-days" class="icon" [style.width.px]="16" [style.height.px]="16"></lucide-icon>
+                <span>Program Guide</span>
+            </div>
+            <div class="guide-time-nav">
+                <button class="guide-nav-btn" (click)="guideEarlier()">
+                    <lucide-icon name="chevron-left" class="icon"></lucide-icon>
+                </button>
+                <span class="guide-time-label">{{ guideTimeLabel }}</span>
+                <button class="guide-nav-btn guide-now-btn" (click)="guideNow()">Now</button>
+                <button class="guide-nav-btn" (click)="guideLater()">
+                    <lucide-icon name="chevron-right" class="icon"></lucide-icon>
+                </button>
+            </div>
+        </div>
+
+        <!-- Search + Categories in one compact row -->
+        <div class="guide-controls-row">
+            <div class="guide-search">
+                <lucide-icon name="search" class="icon"></lucide-icon>
+                <input type="text" class="search-input" placeholder="Search..." [(ngModel)]="searchQuery"
+                    (input)="onSearchChange()">
+                @if (searchQuery) {
+                <button class="search-clear" (click)="searchQuery=''; onSearchChange()">✕</button>
+                }
+            </div>
+            <div class="category-tabs">
+                <button class="cat-tab" [class.active]="selectedCategories.size === 0" (click)="clearCategories()">⭐ All</button>
+                @for (cat of categories; track cat.group_title) {
+                <button class="cat-tab" [class.active]="isCategoryActive(cat.group_title)"
+                    (click)="toggleCategory(cat.group_title)">
+                    <lucide-icon [name]="getCategoryIcon(cat.group_title)" class="cat-icon" style="flex-shrink:0;width:14px;height:14px;margin-right:6px;"></lucide-icon> {{ cat.group_title }}
+                </button>
+                }
+            </div>
+        </div>
+
+        <!-- Guide Grid -->
+        <div class="guide-grid">
+            <!-- Timeline -->
+            <div class="guide-timeline">
+                <div class="timeline-channel-spacer">Channel</div>
+                @for (slot of timelineSlots; track $index) {
+                <div class="timeline-block">{{ slot }}</div>
+                }
+                @if (guideStartMs && currentTimeMs >= guideStartMs && currentTimeMs <= guideEndMs) {
+                <div class="time-indicator" [style.left.px]="(currentTimeMs - guideStartMs) * 200 / (30 * 60 * 1000)"></div>
+                }
+            </div>
+            <!-- Rows -->
+            <div class="guide-rows" #guideRows (scroll)="onGuideScroll($event)" (touchstart)="onGuideTouchStart($event)" (touchend)="onGuideTouchEnd($event)">
+                @if (favChannels.length > 0) {
+                <div class="guide-section-divider"><span class="divider-label">★ Favorites</span><span class="divider-line"></span></div>
+                @for (ch of favChannels; track ch.id) {
+                <div class="guide-row" [class.active]="getOriginalIndex(ch) === currentChannelIndex">
+                    <div class="guide-channel" (click)="tuneToChannelById(ch.id)">
+                        <button class="fav-star is-fav" (click)="$event.stopPropagation(); toggleFavorite(ch.id)">★</button>
+                        @if (ch.logo) { <img [src]="resolveUrl(ch.logo)" class="guide-channel-logo" alt="" loading="lazy"> }
+                        <div class="guide-channel-info">
+                            @if (ch.channel_number) { <div class="guide-channel-number">{{ ch.channel_number }}</div> }
+                            <div class="guide-channel-name" [title]="ch.name">{{ ch.name }}</div>
+                        </div>
+                    </div>
+                    <div class="guide-programs">
+                        @for (prog of ch.programs; track prog.start) {
+                        <div class="guide-program" [style.left]="prog._left" [style.width]="prog._width"
+                            [title]="prog.title" (mouseenter)="onProgramHover($event, ch, prog)"
+                            (mouseleave)="hideProgramTooltip()"
+                            (contextmenu)="onProgramContextMenu($event, ch, prog)">
+                            <div class="prog-title">{{ prog.title }}</div>
+                            <div class="prog-time">{{ fmtTimeRange(prog.start, prog.stop) }}</div>
+                            @if (hasRecording(ch.id, prog.start, prog.stop)) {
+                            <div class="rec-badge" title="Recording scheduled">🔴</div>
+                            }
+                        </div>
+                        }
+                        @if (guideStartMs && currentTimeMs >= guideStartMs && currentTimeMs <= guideEndMs) {
+                        <div class="time-indicator" [style.left.px]="(currentTimeMs - guideStartMs) * 200 / (30 * 60 * 1000)"></div>
+                        }
+                    </div>
+                </div>
+                }
+                }
+
+                @if (cachedOtherChannels.length > 0 && favChannels.length > 0) {
+                <div class="guide-section-divider"><span class="divider-label">All Channels</span><span class="divider-line"></span></div>
+                }
+
+                <div [style.height.px]="virtualPaddingTop"></div>
+                @for (ch of otherChannels; track ch.id) {
+                <div class="guide-row" [class.active]="getOriginalIndex(ch) === currentChannelIndex">
+                    <div class="guide-channel" (click)="tuneToChannelById(ch.id)">
+                        <button class="fav-star" [class.is-fav]="isFavorite(ch.id)"
+                            (click)="$event.stopPropagation(); toggleFavorite(ch.id)">{{ isFavorite(ch.id) ? '★' : '☆' }}</button>
+                        @if (hiddenChannels.has(ch.id)) {
+                        <button class="hide-btn" (click)="$event.stopPropagation(); toggleHidden(ch.id)" title="Show Channel">👁</button>
+                        } @else {
+                        <button class="hide-btn" (click)="$event.stopPropagation(); toggleHidden(ch.id)" title="Hide Channel">⦿</button>
+                        }
+                        @if (ch.logo) { <img [src]="resolveUrl(ch.logo)" class="guide-channel-logo" alt="" loading="lazy"> }
+                        <div class="guide-channel-info">
+                            @if (ch.channel_number) { <div class="guide-channel-number">{{ ch.channel_number }}</div> }
+                            <div class="guide-channel-name" [title]="ch.name">{{ ch.name }}</div>
+                        </div>
+                    </div>
+                    <div class="guide-programs">
+                        @for (prog of ch.programs; track prog.start) {
+                        <div class="guide-program" [style.left]="prog._left" [style.width]="prog._width"
+                            [title]="prog.title" (mouseenter)="onProgramHover($event, ch, prog)"
+                            (mouseleave)="hideProgramTooltip()"
+                            (contextmenu)="onProgramContextMenu($event, ch, prog)">
+                            <div class="prog-title">{{ prog.title }}</div>
+                            <div class="prog-time">{{ fmtTimeRange(prog.start, prog.stop) }}</div>
+                            @if (hasRecording(ch.id, prog.start, prog.stop)) {
+                            <div class="rec-badge" title="Recording scheduled">🔴</div>
+                            }
+                        </div>
+                        }
+                        @if (guideStartMs && currentTimeMs >= guideStartMs && currentTimeMs <= guideEndMs) {
+                        <div class="time-indicator" [style.left.px]="(currentTimeMs - guideStartMs) * 200 / (30 * 60 * 1000)"></div>
+                        }
+                    </div>
+                </div>
+                }
+                <div [style.height.px]="virtualPaddingBottom"></div>
+
+                @if (filteredChannels.length === 0 && !loading) {
+                <div class="guide-empty">
+                    {{ searchQuery ? 'No channels matching "' + searchQuery + '"' : 'No channels available' }}
+                </div>
+                }
+            </div>
+        </div>
+    </section>
     }
 </div>
 
-<!-- Guide Panel -->
-@if (guideOpen) {
-<section class="guide-panel" [style.height.px]="guideHeight">
-    <!-- Drag Handle -->
-    <div class="guide-drag-handle" (mousedown)="onGuideDragStart($event)" (touchstart)="onGuideDragStart($event)">
-        <div class="drag-indicator"></div>
-    </div>
-    <div class="guide-header">
-        <div class="guide-title">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                <line x1="16" y1="2" x2="16" y2="6" />
-                <line x1="8" y1="2" x2="8" y2="6" />
-                <line x1="3" y1="10" x2="21" y2="10" />
-            </svg>
-            <span>Program Guide</span>
-        </div>
-        <div class="guide-time-nav">
-            <button class="guide-nav-btn" (click)="guideEarlier()">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="15 18 9 12 15 6" />
-                </svg>
-            </button>
-            <span class="guide-time-label">{{ guideTimeLabel }}</span>
-            <button class="guide-nav-btn guide-now-btn" (click)="guideNow()">Now</button>
-            <button class="guide-nav-btn" (click)="guideLater()">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="9 18 15 12 9 6" />
-                </svg>
-            </button>
-        </div>
-    </div>
-
-    <!-- Search -->
-    <div class="guide-search">
-        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            stroke-width="2">
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-        </svg>
-        <input type="text" class="search-input" placeholder="Search channels or programs..." [(ngModel)]="searchQuery"
-            (input)="onSearchChange()">
-        @if (searchQuery) {
-        <button class="search-clear" (click)="searchQuery=''; onSearchChange()">✕</button>
+<!-- Program Tooltip -->
+@if (tooltip.visible && tooltip.program) {
+<div class="program-tooltip glass-card" [style.left.px]="tooltip.x" [style.top.px]="tooltip.y">
+    <div class="tooltip-title">{{ tooltip.program.title }}</div>
+    @if (tooltip.program.desc) {
+    <div class="tooltip-desc">{{ tooltip.program.desc.slice(0, 150) }}{{ tooltip.program.desc.length > 150 ? '...' : '' }}</div>
+    }
+    <div class="tooltip-meta">
+        <span class="tooltip-time">{{ fmtTimeRange(tooltip.program.start, tooltip.program.stop) }}</span>
+        @if (tooltip.program.rating) {
+        <span class="tooltip-rating">{{ tooltip.program.rating }}</span>
+        }
+        @if (tooltip.program.category) {
+        <span class="tooltip-category">{{ tooltip.program.category }}</span>
         }
     </div>
+</div>
+}
 
-    <!-- Category Tabs -->
-    <div class="category-tabs">
-        <button class="cat-tab" [class.active]="selectedCategories.size === 0" (click)="clearCategories()">⭐
-            All</button>
-        @for (cat of categories; track cat.group_title) {
-        <button class="cat-tab" [class.active]="isCategoryActive(cat.group_title)"
-            (click)="toggleCategory(cat.group_title)">
-            {{ getCategoryIcon(cat.group_title) }} {{ cat.group_title }}
-        </button>
-        }
-    </div>
+<!-- Context Menu -->
+@if (contextMenu.visible) {
+<div class="context-menu" [style.left.px]="contextMenu.x" [style.top.px]="contextMenu.y">
+    @if (contextMenu.program && hasRecording(contextMenu.channel?.id, contextMenu.program.start, contextMenu.program.stop)) {
+    <button (click)="cancelRecordingFromMenu(contextMenu.channel, contextMenu.program)">⏹ Cancel Recording</button>
+    } @else {
+    <button (click)="recordProgram(contextMenu.channel, contextMenu.program)">⏺ Record</button>
+    }
+</div>
+}
 
-    <!-- Guide Grid -->
-    <div class="guide-grid">
-        <!-- Timeline -->
-        <div class="guide-timeline">
-            <div class="timeline-channel-spacer">Channel</div>
-            @for (slot of timelineSlots; track $index) {
-            <div class="timeline-block">{{ slot }}</div>
-            }
+<!-- Server Connection Modal -->
+@if (serverSettingsOpen) {
+<div class="modal-backdrop" (click)="serverSettingsOpen = false">
+    <div class="modal-content glass-card" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+            <h3>Server Connection</h3>
+            <button class="close-btn" (click)="serverSettingsOpen = false">&times;</button>
         </div>
-
-        <!-- Rows -->
-        <div class="guide-rows" #guideRows (scroll)="onGuideScroll($event)">
-            @if (favChannels.length > 0) {
-            <div class="guide-section-divider"><span class="divider-label">★ Favorites</span><span
-                    class="divider-line"></span></div>
-            @for (ch of favChannels; track ch.id) {
-            <div class="guide-row" [class.active]="getOriginalIndex(ch) === currentChannelIndex">
-                <div class="guide-channel" (click)="tuneToChannelById(ch.id)">
-                    <button class="fav-star is-fav" (click)="$event.stopPropagation(); toggleFavorite(ch.id)">★</button>
-                    @if (ch.logo) { <img [src]="ch.logo" class="guide-channel-logo" alt="" loading="lazy"> }
-                    <div class="guide-channel-info">
-                        @if (ch.channel_number) { <div class="guide-channel-number">{{ ch.channel_number }}</div> }
-                        <div class="guide-channel-name" [title]="ch.name">{{ ch.name }}</div>
-                    </div>
-                </div>
-                <div class="guide-programs">
-                    @for (prog of ch.programs; track prog.start) {
-                    <div class="guide-program" [style.left]="prog._left" [style.width]="prog._width"
-                        [title]="prog.title" (contextmenu)="onProgramContextMenu($event, ch, prog)">
-                        <div class="prog-title">{{ prog.title }}</div>
-                        <div class="prog-time">{{ fmtTimeRange(prog.start, prog.stop) }}</div>
-                    </div>
-                    }
-                </div>
+        <div class="modal-body">
+            <p class="settings-desc">Specify the URL of your self-hosted EPG Manager server.</p>
+            <div class="form-group">
+                <label for="serverUrlInput">Server URL</label>
+                <input type="text" id="serverUrlInput" class="text-input" [(ngModel)]="serverUrl" placeholder="e.g. http://192.168.1.100:3000">
             </div>
-            }
-            }
-
-            @if (cachedOtherChannels.length > 0 && favChannels.length > 0) {
-            <div class="guide-section-divider"><span class="divider-label">All Channels</span><span
-                    class="divider-line"></span></div>
-            }
-
-            <div [style.height.px]="virtualPaddingTop"></div>
-            @for (ch of otherChannels; track ch.id) {
-            <div class="guide-row" [class.active]="getOriginalIndex(ch) === currentChannelIndex">
-                <div class="guide-channel" (click)="tuneToChannelById(ch.id)">
-                    <button class="fav-star" [class.is-fav]="isFavorite(ch.id)"
-                        (click)="$event.stopPropagation(); toggleFavorite(ch.id)">{{ isFavorite(ch.id) ? '★' : '☆'
-                        }}</button>
-                    @if (hiddenChannels.has(ch.id)) {
-                    <button class="hide-btn" (click)="$event.stopPropagation(); toggleHidden(ch.id)" title="Show Channel">👁</button>
-                    } @else {
-                    <button class="hide-btn" (click)="$event.stopPropagation(); toggleHidden(ch.id)" title="Hide Channel">⦿</button>
-                    }
-                    @if (ch.logo) { <img [src]="ch.logo" class="guide-channel-logo" alt="" loading="lazy"> }
-                    <div class="guide-channel-info">
-                        @if (ch.channel_number) { <div class="guide-channel-number">{{ ch.channel_number }}</div> }
-                        <div class="guide-channel-name" [title]="ch.name">{{ ch.name }}</div>
-                    </div>
-                </div>
-                <div class="guide-programs">
-                    @for (prog of ch.programs; track prog.start) {
-                    <div class="guide-program" [style.left]="prog._left" [style.width]="prog._width"
-                        [title]="prog.title" (contextmenu)="onProgramContextMenu($event, ch, prog)">
-                        <div class="prog-title">{{ prog.title }}</div>
-                        <div class="prog-time">{{ fmtTimeRange(prog.start, prog.stop) }}</div>
-                    </div>
-                    }
-                </div>
+            <div class="discovery-section">
+                <button class="btn btn-primary" (click)="saveServerUrl()">Save & Reconnect</button>
+                <button class="btn btn-secondary" (click)="discoverLocalServer()" [disabled]="discovering">
+                    {{ discovering ? 'Searching...' : 'Scan Network' }}
+                </button>
             </div>
-            }
-            <div [style.height.px]="virtualPaddingBottom"></div>
-
-            @if (filteredChannels.length === 0 && !loading) {
-            <div class="guide-empty">
-                {{ searchQuery ? 'No channels matching "' + searchQuery + '"' : 'No channels available' }}
-            </div>
+            @if (discoveryMessage) {
+            <p class="discovery-status" [class.error]="discoveryError">{{ discoveryMessage }}</p>
             }
         </div>
     </div>
-</section>
+</div>
 }
