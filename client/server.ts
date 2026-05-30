@@ -11,7 +11,9 @@ import {
 const serverDistFolder = dirname(fileURLToPath(import.meta.url));
 const browserDistFolder = resolve(serverDistFolder, '../browser');
 
-const angularNodeAppEngine = new AngularNodeAppEngine();
+const angularNodeAppEngine = new AngularNodeAppEngine({
+  allowedHosts: ['*']
+});
 
 export function app(): express.Express {
   const server = express();
@@ -32,7 +34,14 @@ export function app(): express.Express {
       proxyRes.pipe(res);
     });
     proxyReq.on('error', (err) => {
-      res.status(503).json({ error: 'Backend API unavailable', details: err.message });
+      if (!res.headersSent) {
+        res.status(503).json({ error: 'Backend API unavailable', details: err.message });
+      }
+    });
+    res.on('close', () => {
+      if (!res.writableEnded) {
+        proxyReq.destroy();
+      }
     });
     req.pipe(proxyReq);
   });
