@@ -18,6 +18,18 @@ const angularNodeAppEngine = new AngularNodeAppEngine({
 export function app(): express.Express {
   const server = express();
 
+  // Enable CORS for mobile apps and external API clients
+  server.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    if (req.method === 'OPTIONS') {
+      res.sendStatus(204);
+      return;
+    }
+    next();
+  });
+
   // Proxy /api and /files requests to the backend API
   const apiHost = process.env['API_HOST'] || '127.0.0.1';
   const apiPort = parseInt(process.env['API_PORT'] || '4000', 10);
@@ -30,7 +42,14 @@ export function app(): express.Express {
       method: req.method,
       headers: { ...req.headers, host: `${apiHost}:${apiPort}` }
     }, (proxyRes) => {
-      res.writeHead(proxyRes.statusCode || 500, proxyRes.headers);
+      // Ensure CORS headers are also appended to the proxied response
+      const headers = {
+        ...proxyRes.headers,
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+      };
+      res.writeHead(proxyRes.statusCode || 500, headers);
       if (proxyRes.headers['content-type'] === 'text/event-stream') {
         res.flushHeaders();
       }

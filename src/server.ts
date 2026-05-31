@@ -41,6 +41,18 @@ const validTokens = new Set<string>();
 
 app.use(express.json());
 
+// Enable CORS for API clients
+app.use((req: any, res: any, next: any) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    if (req.method === 'OPTIONS') {
+        res.sendStatus(204);
+        return;
+    }
+    next();
+});
+
 // Backend runs purely as an API server
 
 app.use('/files/streams/:id', (req, res, next) => {
