@@ -31,6 +31,9 @@ export function app(): express.Express {
       headers: { ...req.headers, host: `${apiHost}:${apiPort}` }
     }, (proxyRes) => {
       res.writeHead(proxyRes.statusCode || 500, proxyRes.headers);
+      if (proxyRes.headers['content-type'] === 'text/event-stream') {
+        res.flushHeaders();
+      }
       proxyRes.pipe(res);
     });
     proxyReq.on('error', (err) => {
@@ -43,7 +46,11 @@ export function app(): express.Express {
         proxyReq.destroy();
       }
     });
-    req.pipe(proxyReq);
+    if (['POST', 'PUT', 'PATCH'].includes(req.method || '')) {
+      req.pipe(proxyReq);
+    } else {
+      proxyReq.end();
+    }
   });
 
   // Serve static files from /browser

@@ -32,27 +32,29 @@ export class SseService {
         if (this.eventSource) return;
 
         this.zone.runOutsideAngular(() => {
-            this.eventSource = new EventSource('/api/progress');
+            const EventSourceImpl = (typeof window !== 'undefined' && (window as any)['__zone_symbol__EventSource']) || EventSource;
+            const es = new EventSourceImpl('/api/progress');
+            this.eventSource = es;
 
-            this.eventSource.addEventListener('log', (event: any) => {
+            es.addEventListener('log', (event: any) => {
                 this.zone.run(() => {
                     try { this.logs$.next(JSON.parse(event.data)); } catch { }
                 });
             });
 
-            this.eventSource.addEventListener('progress', (event: any) => {
+            es.addEventListener('progress', (event: any) => {
                 this.zone.run(() => {
                     try { this.progress$.next(JSON.parse(event.data)); } catch { }
                 });
             });
 
-            this.eventSource.addEventListener('report', (event: any) => {
+            es.addEventListener('report', (event: any) => {
                 this.zone.run(() => {
                     try { this.report$.next(JSON.parse(event.data)); } catch { }
                 });
             });
 
-            this.eventSource.onerror = () => {
+            es.onerror = () => {
                 this.zone.run(() => {
                     this.disconnect();
                     setTimeout(() => this.connect(), 5000);
