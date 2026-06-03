@@ -1,8 +1,11 @@
-import { Component, OnInit, Input, Output, EventEmitter } from '@angular/core';
+import { ChangeDetectorRef, Component, OnDestroy, OnInit, Input, Output, EventEmitter } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Subscription } from 'rxjs';
 import { ApiService } from '../../services/api.service';
 import { ToastService } from '../../services/toast.service';
+import { ClientRecordingService } from '../../services/client-recording.service';
+import { ClientRecording } from '../../services/client-recording.types';
 
 @Component({
     selector: 'app-dvr',
@@ -11,12 +14,14 @@ import { ToastService } from '../../services/toast.service';
     templateUrl: './dvr.component.html',
     styleUrl: './dvr.component.css'
 })
-export class DvrComponent implements OnInit {
+export class DvrComponent implements OnInit, OnDestroy {
     @Input() isOverlay = false;
     @Input() guideChannels: any[] | null = null;
     @Output() close = new EventEmitter<void>();
 
     recordings: any[] = [];
+    localRecordings: ClientRecording[] = [];
+    recordingsTab: 'system' | 'my' = 'system';
     loading = true;
     showScheduleModal = false;
     storageUsed = 0;
@@ -26,12 +31,32 @@ export class DvrComponent implements OnInit {
     channels: any[] = [];
     selectedChannelPrograms: any[] = [];
     selectedProgram: any = null;
+    programSearchQuery = '';
+    recordSeries = false;
     newRec = { channelId: '', title: '', startTime: '', endTime: '' };
 
-    constructor(private api: ApiService, private toast: ToastService) { }
+    private localRecordingsSub: Subscription | null = null;
+
+    constructor(
+        private api: ApiService,
+        private toast: ToastService,
+        private cdr: ChangeDetectorRef,
+        private clientRecordings: ClientRecordingService
+    ) { }
 
     ngOnInit(): void {
+        this.localRecordingsSub = this.clientRecordings.recordings$.subscribe(recordings => {
+            this.localRecordings = recordings;
+            this.cdr.markForCheck();
+        });
         this.loadAll();
+    }
+
+    ngOnDestroy(): void {
+        if (this.localRecordingsSub) {
+            this.localRecordingsSub.unsubscribe();
+            this.localRecordingsSub = null;
+        }
     }
 
     async loadAll(): Promise<void> {
@@ -39,26 +64,37 @@ export class DvrComponent implements OnInit {
         try {
             const [recordings, storage] = await Promise.all([
                 this.api.getDvrSchedules().toPromise().catch(() => []),
-                this.api.getDvrStorage().toPromise().catch(() => ({ usedBytes: 0, totalBytes: 1 }))
+                this.api.getDvrStorage().toPromise().catch(() => ({ usedBytes: 0, totalBytes: 1 })),
+                this.clientRecordings.refresh().catch(() => undefined)
             ]);
-            this.recordings = recordings || [];
+            this.recordings = (recordings || []).map((rec: any) => {
+                let startTime = rec.start_time;
+                let endTime = rec.end_time;
+                if (startTime && typeof startTime === 'string' && !startTime.includes('-') && !startTime.includes(':')) {
+                    const parsed = this.parseEpgTime(startTime);
+                    if (parsed) startTime = parsed.toISOString();
+                }
+                if (endTime && typeof endTime === 'string' && !endTime.includes('-') && !endTime.includes(':')) {
+                    const parsed = this.parseEpgTime(endTime);
+                    if (parsed) endTime = parsed.toISOString();
+                }
+                return {
+                    ...rec,
+                    start_time: startTime,
+                    end_time: endTime
+                };
+            });
             const s = storage as { usedBytes: number; totalBytes: number };
             this.storageUsed = s.usedBytes;
             this.storageTotal = s.totalBytes;
         } catch { this.recordings = []; }
-        finally { this.loading = false; }
+        finally {
+            this.loading = false;
+            this.cdr.detectChanges();
+        }
     }
 
     async openScheduleModal(): Promise<void> {
-        if (this.guideChannels && this.guideChannels.length > 0) {
-            this.channels = this.guideChannels;
-        } else {
-            try {
-                const res = await this.api.getGuide().toPromise();
-                this.channels = res?.channels || [];
-            } catch { this.channels = []; }
-        }
-
         const now = new Date();
         const end = new Date(now.getTime() + 3600000);
         this.newRec.startTime = now.toISOString().slice(0, 16);
@@ -67,17 +103,71 @@ export class DvrComponent implements OnInit {
         this.newRec.title = '';
         this.selectedChannelPrograms = [];
         this.selectedProgram = null;
+        this.programSearchQuery = '';
+        this.recordSeries = false;
         this.showScheduleModal = true;
+        this.cdr.detectChanges();
+
+        if (this.guideChannels && this.guideChannels.length > 0) {
+            this.channels = this.guideChannels;
+        } else {
+            try {
+                const res = await this.api.getGuide().toPromise();
+                this.channels = res?.channels || [];
+                if (this.channels.length === 0) {
+                    const allChannels = await this.api.getChannels().toPromise();
+                    this.channels = allChannels || [];
+                }
+            } catch {
+                try {
+                    const allChannels = await this.api.getChannels().toPromise();
+                    this.channels = allChannels || [];
+                } catch {
+                    this.channels = [];
+                }
+            }
+        }
+
+        this.cdr.detectChanges();
     }
 
-    onChannelSelect(): void {
-        const ch = this.channels.find(c => c.id === this.newRec.channelId);
-        if (ch && ch.programs && ch.programs.length > 0) {
-            this.selectedChannelPrograms = ch.programs;
-        } else {
-            this.selectedChannelPrograms = [];
-        }
+    async onChannelSelect(): Promise<void> {
+        this.selectedChannelPrograms = [];
         this.selectedProgram = null;
+        this.programSearchQuery = '';
+        this.recordSeries = false;
+        if (!this.newRec.channelId) {
+            this.cdr.detectChanges();
+            return;
+        }
+        try {
+            const ch = this.channels.find(c => c.id === this.newRec.channelId);
+            if (ch && ch.programs && ch.programs.length > 0) {
+                this.selectedChannelPrograms = ch.programs;
+            } else {
+                const res = await this.api.getChannelPrograms(this.newRec.channelId).toPromise();
+                this.selectedChannelPrograms = res?.programs || [];
+            }
+        } catch (e) {
+            this.selectedChannelPrograms = [];
+        } finally {
+            this.cdr.detectChanges();
+        }
+    }
+
+    get filteredPrograms(): any[] {
+        if (!this.programSearchQuery) {
+            return this.selectedChannelPrograms;
+        }
+        const query = this.programSearchQuery.toLowerCase();
+        return this.selectedChannelPrograms.filter(p => (p.title || '').toLowerCase().includes(query));
+    }
+
+    selectProgramFromGuide(prog: any): void {
+        this.selectedProgram = prog;
+        this.recordSeries = this.recordSeries && this.isSeriesCandidate(prog, this.selectedChannelPrograms);
+        this.onProgramSelect();
+        this.cdr.detectChanges();
     }
 
     parseEpgTime(epgTime: string): Date | null {
@@ -103,6 +193,18 @@ export class DvrComponent implements OnInit {
         }
     }
 
+    isAlreadyScheduled(channelId: string, programStart: string, programEnd: string): boolean {
+        const pStart = this.parseEpgTime(programStart)?.getTime();
+        const pEnd = this.parseEpgTime(programEnd)?.getTime();
+        if (!pStart || !pEnd) return false;
+        return this.recordings.some(r => {
+            if (r.channel_id !== channelId) return false;
+            const rStart = new Date(r.start_time).getTime();
+            const rEnd = new Date(r.end_time).getTime();
+            return rStart < pEnd && rEnd > pStart;
+        });
+    }
+
     async submitSchedule(): Promise<void> {
         if (!this.newRec.channelId || !this.newRec.title || !this.newRec.startTime || !this.newRec.endTime) {
             this.toast.show('All fields are required', 'warning'); return;
@@ -110,16 +212,65 @@ export class DvrComponent implements OnInit {
         const channel = this.channels.find(c => c.id === this.newRec.channelId);
         const streamUrl = channel?.stream_url || channel?.url;
         if (!streamUrl) { this.toast.show('Invalid channel', 'error'); return; }
+
+        const canRecordSeries = this.isSeriesCandidate(this.selectedProgram, this.selectedChannelPrograms);
+        if (this.recordSeries && (!this.selectedProgram || !canRecordSeries)) {
+            this.toast.show('Please select a program from the guide search to record as a series', 'warning');
+            return;
+        }
+
         try {
-            await this.api.scheduleRecording({
-                channel_id: this.newRec.channelId,
-                program_title: this.newRec.title,
-                start_time: new Date(this.newRec.startTime).toISOString(),
-                end_time: new Date(this.newRec.endTime).toISOString(),
-                stream_url: streamUrl
-            }).toPromise();
-            this.showScheduleModal = false;
-            this.toast.show('Recording scheduled', 'success');
+            if (this.recordSeries && this.selectedProgram) {
+                const matchingPrograms = (this.selectedChannelPrograms || []).filter(
+                    (p: any) => p.title === this.selectedProgram.title
+                );
+                let count = 0;
+                for (const p of matchingPrograms) {
+                    const start = this.parseEpgTime(p.start);
+                    const stop = this.parseEpgTime(p.stop);
+                    if (!start || !stop) continue;
+                    if (stop.getTime() < Date.now()) continue;
+
+                    if (this.isAlreadyScheduled(this.newRec.channelId, p.start, p.stop)) {
+                        continue;
+                    }
+
+                    await this.api.scheduleRecording({
+                        channel_id: this.newRec.channelId,
+                        channel_name: channel?.name,
+                        program_title: p.title,
+                        start_time: start.toISOString(),
+                        end_time: stop.toISOString(),
+                        stream_url: streamUrl,
+                        thumbnail: p.icon || channel?.logo || channel?.tvg_logo,
+                        sub_title: p.sub_title,
+                        episode_num: p.episode_num,
+                        description: p.description,
+                        rating: p.rating,
+                        category: p.category
+                    }).toPromise();
+                    count++;
+                }
+                this.showScheduleModal = false;
+                this.toast.show(`Scheduled series: ${count} episodes of '${this.selectedProgram.title}'`, 'success');
+            } else {
+                await this.api.scheduleRecording({
+                    channel_id: this.newRec.channelId,
+                    channel_name: channel?.name,
+                    program_title: this.newRec.title,
+                    start_time: new Date(this.newRec.startTime).toISOString(),
+                    end_time: new Date(this.newRec.endTime).toISOString(),
+                    stream_url: streamUrl,
+                    thumbnail: this.selectedProgram?.icon || channel?.logo || channel?.tvg_logo,
+                    sub_title: this.selectedProgram?.sub_title,
+                    episode_num: this.selectedProgram?.episode_num,
+                    description: this.selectedProgram?.description,
+                    rating: this.selectedProgram?.rating,
+                    category: this.selectedProgram?.category
+                }).toPromise();
+                this.showScheduleModal = false;
+                this.toast.show('Recording scheduled', 'success');
+            }
             await this.loadAll();
         } catch { this.toast.show('Failed to schedule', 'error'); }
     }
@@ -132,12 +283,47 @@ export class DvrComponent implements OnInit {
         } catch { this.toast.show('Failed to stop', 'error'); }
     }
 
-    async deleteRecording(id: number): Promise<void> {
-        if (!confirm('Delete this recording?')) return;
+    async playLocalRecording(rec: ClientRecording): Promise<void> {
+        const url = await this.clientRecordings.createPlaybackUrl(rec.id);
+        if (!url) {
+            this.toast.show('No captured video segments are available for this recording', 'warning');
+            return;
+        }
+        window.open(url, '_blank');
+    }
+
+    async downloadLocalRecording(rec: ClientRecording): Promise<void> {
+        await this.clientRecordings.download(rec.id);
+    }
+
+    async cancelLocalRecording(rec: ClientRecording): Promise<void> {
+        await this.clientRecordings.cancel(rec.id);
+        await this.clientRecordings.refresh();
+        this.toast.show('Local recording cancelled', 'success');
+    }
+
+    async deleteLocalRecording(rec: ClientRecording): Promise<void> {
+        if (!confirm(`Delete '${rec.programTitle}' from this device?`)) return;
+        await this.clientRecordings.delete(rec.id);
+        await this.clientRecordings.refresh();
+        this.toast.show('Local recording deleted', 'success');
+    }
+
+    async deleteRecording(id: number, status: string): Promise<void> {
+        const isScheduled = status === 'scheduled';
+        const confirmMsg = isScheduled
+            ? 'Are you sure you want to cancel this scheduled recording?'
+            : 'Are you sure you want to delete this recording?';
+        
+        if (!confirm(confirmMsg)) return;
+
         try {
             await this.api.cancelRecording(id).toPromise();
+            this.toast.show(isScheduled ? 'Scheduled recording cancelled' : 'Recording deleted', 'success');
             await this.loadAll();
-        } catch { this.toast.show('Failed to delete', 'error'); }
+        } catch {
+            this.toast.show(isScheduled ? 'Failed to cancel scheduled recording' : 'Failed to delete recording', 'error');
+        }
     }
 
     getStatusClass(status: string): string {
@@ -160,5 +346,49 @@ export class DvrComponent implements OnInit {
         if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
         if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
         return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+    }
+
+    recordingEpisode(rec: any): string {
+        return [rec.episode_num, rec.sub_title].filter(Boolean).join(' - ');
+    }
+
+    recordingTime(rec: any): string {
+        const start = new Date(rec.start_time);
+        const end = new Date(rec.end_time);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return '';
+        return `${start.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+    }
+
+    recordingSize(rec: any): string {
+        return this.fmtBytes(Number(rec.file_size || 0));
+    }
+
+    isSeriesCandidate(program: any, programs: any[] = []): boolean {
+        if (!program?.title) return false;
+        if (program.episode_num || program.sub_title) return true;
+
+        const category = String(program.category || '').toLowerCase();
+        const blockedCategories = ['movie', 'film', 'sports', 'news', 'event', 'special', 'shopping'];
+        if (blockedCategories.some(blocked => category.includes(blocked))) return false;
+
+        const showCategories = ['series', 'show', 'entertainment', 'comedy', 'drama', 'animation', 'kids', 'documentary'];
+        const title = String(program.title).trim().toLowerCase();
+        const repeatCount = programs.filter(candidate => String(candidate?.title || '').trim().toLowerCase() === title).length;
+        return repeatCount > 1 && showCategories.some(showCategory => category.includes(showCategory));
+    }
+
+    localRecordingEpisode(rec: ClientRecording): string {
+        return [rec.episodeNum, rec.subTitle].filter(Boolean).join(' - ');
+    }
+
+    localRecordingTime(rec: ClientRecording): string {
+        const start = new Date(rec.startTime);
+        const end = new Date(rec.endTime);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return '';
+        return `${start.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+    }
+
+    localRecordingSize(rec: ClientRecording): string {
+        return this.fmtBytes(rec.sizeBytes);
     }
 }

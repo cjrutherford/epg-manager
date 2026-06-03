@@ -121,7 +121,7 @@ export class StreamManager {
                 segCount = fs.readdirSync(strDir).filter(f => f.endsWith('.ts')).length;
             } catch (_) { }
 
-            if (segCount >= 3 && fs.existsSync(m3u8Path)) {
+            if (segCount >= 1 && fs.existsSync(m3u8Path)) {
                 return `/files/streams/${id}/index.m3u8`;
             }
 

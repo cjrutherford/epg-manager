@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
@@ -31,7 +31,12 @@ export class ChannelManagerComponent implements OnInit {
     epgSearchResults: any[] = [];
     epgSearchLoading = false;
 
-    constructor(private api: ApiService, private toast: ToastService) { }
+    showAutoNumberModal = false;
+    autoNumberMode: 'list' | 'auto-group' | 'custom-ranges' = 'list';
+    autoNumberStartNum = 700;
+    customRangesStr = '{}';
+
+    constructor(private api: ApiService, private toast: ToastService, private cdr: ChangeDetectorRef) { }
 
     ngOnInit(): void {
         this.loadChannels();
@@ -52,6 +57,7 @@ export class ChannelManagerComponent implements OnInit {
             this.channels = [];
         } finally {
             this.loading = false;
+            this.cdr.detectChanges();
         }
     }
 
@@ -153,7 +159,9 @@ export class ChannelManagerComponent implements OnInit {
         const ids = Array.from(this.selectedChannelIds);
         if (ids.length === 0) return;
 
-        if (!confirm(`Are you sure you want to perform this action on ${ids.length} channels?`)) return;
+        if (action === 'enable' || action === 'disable') {
+            if (!confirm(`Are you sure you want to perform this action on ${ids.length} channels?`)) return;
+        }
 
         try {
             if (action === 'enable' || action === 'disable') {
@@ -164,20 +172,83 @@ export class ChannelManagerComponent implements OnInit {
                 });
                 this.toast.show(`${ids.length} channels ${enabled ? 'enabled' : 'disabled'}`, 'success');
             } else if (action === 'auto-assign') {
-                let currentNum = 1;
-                for (const ch of this.filteredChannels) {
-                    if (this.selectedChannelIds.has(ch.id)) {
-                        await this.api.updateChannel(ch.id, { channel_number: currentNum }).toPromise();
-                        ch.channel_number = currentNum;
-                        currentNum++;
-                    }
-                }
-                this.toast.show(`Auto-assigned numbers to ${ids.length} channels`, 'success');
+                const config = await this.api.getConfig().toPromise();
+                this.autoNumberMode = config?.channel_numbering_mode || 'list';
+                this.customRangesStr = config?.custom_channel_ranges || '{}';
+                this.autoNumberStartNum = 700;
+                this.showAutoNumberModal = true;
             }
+            if (action !== 'auto-assign') {
+                this.selectedChannelIds.clear();
+                this.applyFilters();
+            }
+        } catch (e) {
+            this.toast.show('Bulk action failed', 'error');
+        } finally {
+            this.cdr.detectChanges();
+        }
+    }
+
+    async executeAutoNumber(): Promise<void> {
+        this.showAutoNumberModal = false;
+        const ids = Array.from(this.selectedChannelIds);
+        if (ids.length === 0) return;
+
+        try {
+            let startNum = this.autoNumberStartNum;
+            let categoryNextNumber = new Map<string, number>();
+            let nextNumber = 700;
+            
+            if (this.autoNumberMode === 'auto-group') {
+                const selectedChannels = this.channels.filter(c => this.selectedChannelIds.has(c.id));
+                const selectedCategories = [...new Set(selectedChannels.map(c => c.group_title || 'Uncategorized'))].sort();
+                let currentBlock = 100;
+                for (const cat of selectedCategories) {
+                    categoryNextNumber.set(cat, currentBlock);
+                    currentBlock += 100;
+                }
+            } else if (this.autoNumberMode === 'custom-ranges') {
+                let customRanges: Record<string, number> = {};
+                try { customRanges = JSON.parse(this.customRangesStr); } catch (e) {}
+                for (const [cat, startNumVal] of Object.entries(customRanges)) {
+                    categoryNextNumber.set(cat, Number(startNumVal) || 100);
+                }
+                
+                const currentMax = this.channels.reduce((max: number, ch: any) => {
+                    const num = Number(ch.channel_number) || 0;
+                    return num >= 700 ? Math.max(max, num) : max;
+                }, 0);
+                nextNumber = currentMax > 0 ? currentMax + 100 - (currentMax % 100) : 700;
+            }
+            
+            let count = 0;
+            for (const ch of this.filteredChannels) {
+                if (this.selectedChannelIds.has(ch.id)) {
+                    let num = 0;
+                    if (this.autoNumberMode === 'list') {
+                        num = startNum++;
+                    } else {
+                        const group = ch.group_title || 'Uncategorized';
+                        if (!categoryNextNumber.has(group)) {
+                            categoryNextNumber.set(group, nextNumber);
+                            nextNumber += 100;
+                        }
+                        num = categoryNextNumber.get(group)!;
+                        categoryNextNumber.set(group, num + 1);
+                    }
+                    
+                    await this.api.updateChannel(ch.id, { channel_number: num }).toPromise();
+                    ch.channel_number = num;
+                    count++;
+                }
+            }
+            this.toast.show(`Auto-assigned numbers to ${count} channels using '${this.autoNumberMode}' method`, 'success');
             this.selectedChannelIds.clear();
             this.applyFilters();
         } catch (e) {
-            this.toast.show('Bulk action failed', 'error');
+            this.toast.show('Auto-numbering failed', 'error');
+        } finally {
+            this.cdr.detectChanges();
         }
     }
 

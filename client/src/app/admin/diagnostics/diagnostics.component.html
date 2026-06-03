@@ -1,0 +1,305 @@
+<div class="diagnostics-page">
+    <div class="page-header">
+        <div class="header-left">
+            <h1>EPG & Match Diagnostics</h1>
+        </div>
+        <button class="btn btn-primary" (click)="loadAll()">🔄 Refresh Data</button>
+    </div>
+
+    @if (loading) {
+    <div class="loading-container">
+        <div class="spinner"></div>
+    </div>
+    } @else {
+
+    <!-- Summary Metrics -->
+    <div class="metrics-grid">
+        <div class="glass-card metric-card">
+            <div class="metric-val text-primary">{{ analysis?.metrics?.total || 0 }}</div>
+            <div class="metric-label">Total Playlist Channels</div>
+        </div>
+        <div class="glass-card metric-card">
+            <div class="metric-val text-success">{{ analysis?.metrics?.matched || 0 }}</div>
+            <div class="metric-label">Matched Channels</div>
+        </div>
+        <div class="glass-card metric-card">
+            <div class="metric-val text-warning">{{ analysis?.metrics?.match_rate || 0 }}%</div>
+            <div class="metric-label">Overall Match Rate</div>
+        </div>
+        <div class="glass-card metric-card">
+            <div class="metric-val text-danger">{{ analysis?.metrics?.unmatched || 0 }}</div>
+            <div class="metric-label">Unmatched Streams</div>
+        </div>
+    </div>
+
+    <!-- Tab Navigation -->
+    <div class="tab-nav">
+        <button class="tab-btn" [class.active]="activeTab === 'matches'" (click)="activeTab = 'matches'">
+            🔗 Match Analyzer
+        </button>
+        <button class="tab-btn" [class.active]="activeTab === 'sources'" (click)="activeTab = 'sources'">
+            📡 EPG Source Reliability
+        </button>
+    </div>
+
+    <!-- TAB 1: MATCH ANALYZER -->
+    @if (activeTab === 'matches') {
+    <div class="glass-card table-wrapper">
+        <div class="filter-bar">
+            <div class="search-box">
+                <lucide-icon name="search" class="search-icon"></lucide-icon>
+                <input type="text" [(ngModel)]="searchQuery" placeholder="Search channels, matched IDs, score tags...">
+            </div>
+            
+            <div class="status-filters">
+                <button class="filter-btn" [class.active]="filterStatus === 'all'" (click)="filterStatus = 'all'">
+                    All ({{ analysis?.metrics?.total || 0 }})
+                </button>
+                <button class="filter-btn" [class.active]="filterStatus === 'matched'" (click)="filterStatus = 'matched'">
+                    Matched ({{ analysis?.metrics?.matched || 0 }})
+                </button>
+                <button class="filter-btn" [class.active]="filterStatus === 'unmatched'" (click)="filterStatus = 'unmatched'">
+                    Unmatched ({{ analysis?.metrics?.unmatched || 0 }})
+                </button>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Channel Stream Name</th>
+                        <th>Matched EPG ID</th>
+                        <th>Match Type / Confidence Score</th>
+                        <th class="actions-col">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (ch of filteredChannels; track ch.id) {
+                    <tr>
+                        <td>
+                            <div class="channel-info-cell">
+                                <strong class="channel-name">{{ ch.name }}</strong>
+                                <span class="channel-group">{{ ch.group || 'Uncategorized' }}</span>
+                            </div>
+                        </td>
+                        <td>
+                            @if (ch.matched_epg_id) {
+                            <code class="epg-id-badge">{{ ch.matched_epg_id }}</code>
+                            } @else {
+                            <span class="unmatched-label">⚠️ No Match</span>
+                            }
+                        </td>
+                        <td>
+                            @if (ch.matched_epg_id) {
+                            <span class="match-type-tag" [class.manual]="ch.match_type?.includes('Manual')" [class.fuzzy]="ch.match_type?.includes('Fuzzy')">
+                                {{ ch.match_type || 'Auto Matched' }}
+                            </span>
+                            } @else {
+                            <span class="text-muted">—</span>
+                            }
+                        </td>
+                        <td>
+                            <div class="actions-cell">
+                                <button class="btn btn-secondary small-btn" (click)="openRematchModal(ch)">Rematch</button>
+                                @if (ch.matched_epg_id) {
+                                <button class="btn btn-secondary small-btn btn-danger-text" (click)="clearChannelMatch(ch)">Clear</button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                    }
+                    @if (filteredChannels.length === 0) {
+                    <tr>
+                        <td colspan="4" class="empty-table-row">No channels match the active filters or search query.</td>
+                    </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+    }
+
+    <!-- TAB 2: EPG SOURCES PERFORMANCE -->
+    @if (activeTab === 'sources') {
+    <div class="glass-card table-wrapper">
+        <div class="table-section-header">
+            <div>
+                <h2>Grab-Capable Match Sources</h2>
+                <p>Enabled sources are used for both matching candidates and EPG grabbing.</p>
+            </div>
+            <button class="btn btn-secondary" (click)="syncEpgSources()" [disabled]="syncingSources">
+                {{ syncingSources ? 'Sync Starting...' : 'Sync Sources' }}
+            </button>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Source</th>
+                        <th>Imported Rows</th>
+                        <th>Upstream Channels</th>
+                        <th>Grab Success</th>
+                        <th>Status</th>
+                        <th class="actions-col">Enabled</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (source of epgSources; track source.key) {
+                    <tr>
+                        <td>
+                            <div class="site-info-cell">
+                                <strong>{{ source.label || source.site }}</strong>
+                                @if (source.priority > 0) {
+                                <span class="featured-source-badge">Featured provider</span>
+                                }
+                                <span class="text-muted">{{ source.key }}</span>
+                            </div>
+                        </td>
+                        <td>{{ source.importedRows || 0 }}</td>
+                        <td>{{ source.channelCountEstimate || '—' }}</td>
+                        <td>
+                            <span class="success-rate-badge" [class]="getSuccessRateClass(getSuccessRate(source))">
+                                {{ getSuccessRate(source) }}%
+                            </span>
+                        </td>
+                        <td>
+                            <div class="attempt-time-cell">
+                                <span>{{ source.last_sync_status || 'unknown' }}</span>
+                                @if (source.last_error) {
+                                <span class="site-error-badge">⚠️ {{ source.last_error }}</span>
+                                }
+                            </div>
+                        </td>
+                        <td>
+                            <button class="btn btn-secondary small-btn" (click)="toggleEpgSource(source)">
+                                {{ source.enabled ? 'Disable' : 'Enable' }}
+                            </button>
+                        </td>
+                    </tr>
+                    }
+                    @if (epgSources.length === 0) {
+                    <tr>
+                        <td colspan="6" class="empty-table-row">No grab-capable EPG match sources are registered yet. Sync sources to populate the registry.</td>
+                    </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="glass-card table-wrapper">
+        <div class="table-section-header">
+            <div>
+                <h2>Scraper Site Reliability</h2>
+                <p>Historical grab outcomes by underlying scraper site.</p>
+            </div>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>EPG Scraper Site</th>
+                        <th>Channel Hits (Ok)</th>
+                        <th>Channel Misses (Failed)</th>
+                        <th>Site Success Rate</th>
+                        <th>Avg Programs</th>
+                        <th>Last Grab Attempt</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (source of sources; track source.site) {
+                    <tr>
+                        <td>
+                            <div class="site-info-cell">
+                                <strong>{{ source.site }}</strong>
+                            </div>
+                        </td>
+                        <td class="text-success font-semibold">{{ source.channels_success }}</td>
+                        <td class="text-danger font-semibold">{{ source.channels_failure }}</td>
+                        <td>
+                            <span class="success-rate-badge" [class]="getSuccessRateClass(getSuccessRate(source))">
+                                {{ getSuccessRate(source) }}%
+                            </span>
+                        </td>
+                        <td>{{ source.avg_programs }} progs</td>
+                        <td>
+                            @if (source.last_attempt) {
+                            <div class="attempt-time-cell">
+                                <span>{{ source.last_attempt | date:'medium' }}</span>
+                                @if (source.overall_failure_count > 0) {
+                                <span class="site-error-badge">⚠️ {{ source.overall_failure_count }} consecutive fails</span>
+                                }
+                            </div>
+                            } @else {
+                            <span class="text-muted">Never attempted</span>
+                            }
+                        </td>
+                    </tr>
+                    }
+                    @if (sources.length === 0) {
+                    <tr>
+                        <td colspan="6" class="empty-table-row">No EPG sources are currently registered or cached. Run a sync to populate source reliability data.</td>
+                    </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+    }
+
+    }
+
+    <!-- Rematch Override Modal -->
+    @if (showRematchModal) {
+    <div class="modal-backdrop" (click)="showRematchModal = false">
+        <div class="modal-content" (click)="$event.stopPropagation()">
+            <div class="modal-header">
+                <h2>EPG Manual Rematch</h2>
+                <button class="close-modal-btn" (click)="showRematchModal = false">✕</button>
+            </div>
+            
+            <p class="modal-intro">
+                Rematching EPG source for stream: <strong>{{ selectedChannel?.name }}</strong>
+            </p>
+
+            <div class="search-box-row">
+                <input type="text" class="themed-input" [(ngModel)]="rematchQuery" (keyup.enter)="searchRematchEpg()" placeholder="Search EPG channels by name or ID...">
+                <button class="btn btn-primary" (click)="searchRematchEpg()" [disabled]="rematchLoading">
+                    @if (rematchLoading) {
+                    <span class="spinner-sm"></span>
+                    } @else {
+                    Search
+                    }
+                </button>
+            </div>
+
+            <div class="rematch-results-list">
+                @if (rematchLoading) {
+                <div class="results-loader">
+                    <div class="spinner-sm"></div>
+                    <span>Loading EPG candidates...</span>
+                </div>
+                } @else {
+                @for (res of rematchResults; track res.id) {
+                <div class="rematch-result-item" (click)="selectRematchEpg(res)">
+                    <div class="result-details">
+                        <strong class="result-name">{{ res.name }}</strong>
+                        <span class="result-meta">ID: <code>{{ res.id }}</code> • Site: {{ res.site }}</span>
+                    </div>
+                    <button class="btn btn-secondary small-btn">Link Channel</button>
+                </div>
+                }
+                @if (rematchResults.length === 0 && rematchQuery) {
+                <div class="no-results-msg">No matching EPG channels found. Try adjusting your search query.</div>
+                }
+                }
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-secondary" (click)="showRematchModal = false">Cancel</button>
+            </div>
+        </div>
+    </div>
+    }
+</div>

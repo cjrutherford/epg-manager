@@ -114,6 +114,71 @@ export async function initDb() {
 
   await db.execute("CREATE INDEX IF NOT EXISTS idx_iptv_map_name ON iptv_org_map(name)");
 
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS epg_sources (
+        key TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        site TEXT NOT NULL,
+        label TEXT NOT NULL,
+        enabled INTEGER DEFAULT 1,
+        priority INTEGER DEFAULT 0,
+        grab_capable INTEGER DEFAULT 1,
+        channel_count_estimate INTEGER,
+        imported_rows INTEGER DEFAULT 0,
+        last_sync_at INTEGER,
+        last_sync_status TEXT,
+        last_error TEXT,
+        notes TEXT
+    )
+  `);
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_epg_sources_enabled ON epg_sources(enabled, grab_capable)");
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS epg_source_channels (
+        source_key TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        name TEXT NOT NULL,
+        xmltv_id TEXT NOT NULL,
+        lang TEXT,
+        site TEXT NOT NULL,
+        site_id TEXT NOT NULL,
+        PRIMARY KEY (source_key, name, xmltv_id, site, site_id)
+    )
+  `);
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_epg_source_channels_xmltv ON epg_source_channels(xmltv_id)");
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_epg_source_channels_name ON epg_source_channels(name)");
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_epg_source_channels_site ON epg_source_channels(site)");
+  await db.execute(`
+    INSERT OR IGNORE INTO epg_sources (key, provider, site, label, enabled, priority, grab_capable, imported_rows, last_sync_status, notes)
+    SELECT
+      'iptv-org:' || lower(site),
+      'iptv-org',
+      site,
+      CASE WHEN lower(site) = 'epgshare01.online' THEN 'EPGShare 01' ELSE site END,
+      1,
+      CASE WHEN lower(site) = 'epgshare01.online' THEN 100 ELSE 0 END,
+      1,
+      COUNT(*),
+      'migrated',
+      CASE WHEN lower(site) = 'epgshare01.online' THEN 'Featured global grab-capable source' ELSE NULL END
+    FROM iptv_org_map
+    WHERE site IS NOT NULL AND site_id IS NOT NULL
+    GROUP BY site
+  `);
+  await db.execute(`
+    INSERT OR IGNORE INTO epg_source_channels (source_key, provider, name, xmltv_id, lang, site, site_id)
+    SELECT 'iptv-org:' || lower(site), 'iptv-org', name, xmltv_id, lang, site, site_id
+    FROM iptv_org_map
+    WHERE site IS NOT NULL AND site_id IS NOT NULL
+  `);
+  await db.execute(`
+    UPDATE epg_sources
+    SET label = 'EPGShare 01',
+        priority = 100,
+        notes = COALESCE(NULLIF(notes, ''), 'Featured global grab-capable source')
+    WHERE key = 'iptv-org:epgshare01.online'
+  `);
+
   // Site status tracking for dynamic retry logic
   await db.execute(`
     CREATE TABLE IF NOT EXISTS site_status (
@@ -189,6 +254,19 @@ export async function initDb() {
   `);
   await db.execute("CREATE INDEX IF NOT EXISTS idx_channel_grab_status_disabled ON channel_grab_status(auto_disabled)");
 
+  // Channel-site performance tracking for source preferences and grab failovers
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS channel_site_status (
+        xmltv_id TEXT,
+        site TEXT,
+        success_count INTEGER DEFAULT 0,
+        failure_count INTEGER DEFAULT 0,
+        last_program_count INTEGER DEFAULT 0,
+        last_attempt INTEGER,
+        PRIMARY KEY (xmltv_id, site)
+    )
+  `);
+
   // TVMaze metadata cache (also created by metadata service, but needed for stats endpoint)
   await db.execute(`
     CREATE TABLE IF NOT EXISTS tvmaze_cache (
@@ -214,9 +292,21 @@ export async function initDb() {
         filename TEXT,
         file_size INTEGER,
         error_message TEXT,
+        thumbnail TEXT,
+        sub_title TEXT,
+        episode_num TEXT,
+        description TEXT,
+        rating TEXT,
+        category TEXT,
         created_at INTEGER DEFAULT (unixepoch())
     )
   `);
+  try { await db.execute("ALTER TABLE scheduled_recordings ADD COLUMN thumbnail TEXT"); } catch (e) { }
+  try { await db.execute("ALTER TABLE scheduled_recordings ADD COLUMN sub_title TEXT"); } catch (e) { }
+  try { await db.execute("ALTER TABLE scheduled_recordings ADD COLUMN episode_num TEXT"); } catch (e) { }
+  try { await db.execute("ALTER TABLE scheduled_recordings ADD COLUMN description TEXT"); } catch (e) { }
+  try { await db.execute("ALTER TABLE scheduled_recordings ADD COLUMN rating TEXT"); } catch (e) { }
+  try { await db.execute("ALTER TABLE scheduled_recordings ADD COLUMN category TEXT"); } catch (e) { }
   await db.execute("CREATE INDEX IF NOT EXISTS idx_scheduled_recordings_status ON scheduled_recordings(status)");
   await db.execute("CREATE INDEX IF NOT EXISTS idx_scheduled_recordings_start ON scheduled_recordings(start_time)");
 

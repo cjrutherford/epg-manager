@@ -174,4 +174,40 @@
         }
     </div>
     }
+
+    <!-- Auto-Number Modal -->
+    @if (showAutoNumberModal) {
+    <div class="modal-backdrop" (click)="showAutoNumberModal = false">
+        <div class="modal-content" (click)="$event.stopPropagation()" style="max-width: 500px;">
+            <h2>Auto-Number Channels</h2>
+            <p class="modal-subtitle" style="margin-bottom: 20px; color: var(--text-secondary);">
+                Auto-assign channel numbers to the {{ selectedChannelIds.size }} selected channels.
+            </p>
+            
+            <div class="form-grid" style="display: flex; flex-direction: column; gap: 16px;">
+                <div class="form-group">
+                    <label style="display: block; margin-bottom: 6px; font-weight: 500;">Numbering Method</label>
+                    <select class="themed-select w-full" [(ngModel)]="autoNumberMode" style="width: 100%; box-sizing: border-box;">
+                        <option value="list">List (Sequential)</option>
+                        <option value="auto-group">Auto-Group (Grouped by category)</option>
+                        <option value="custom-ranges">Custom Ranges (Mapped from Settings)</option>
+                    </select>
+                </div>
+                
+                @if (autoNumberMode === 'list') {
+                <div class="form-group">
+                    <label style="display: block; margin-bottom: 6px; font-weight: 500;">Starting Number</label>
+                    <input type="number" class="themed-input w-full" [(ngModel)]="autoNumberStartNum"
+                           style="width: 100%; box-sizing: border-box;" min="1" placeholder="700">
+                </div>
+                }
+            </div>
+            
+            <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+                <button class="btn btn-secondary" (click)="showAutoNumberModal = false">Cancel</button>
+                <button class="btn btn-primary" (click)="executeAutoNumber()">Auto-Number</button>
+            </div>
+        </div>
+    </div>
+    }
 </div>

@@ -75,9 +75,9 @@
     margin-bottom: 12px;
     padding: 10px 12px;
     border-radius: 8px;
-    background: rgba(255, 180, 0, 0.1);
-    border: 1px solid rgba(255, 180, 0, 0.25);
-    color: #ffd37a;
+    background: rgba(var(--color-warning-rgb), 0.1);
+    border: 1px solid rgba(var(--color-warning-rgb), 0.25);
+    color: var(--color-warning);
     font-size: 0.82rem;
 }
 
@@ -186,7 +186,7 @@
     justify-content: space-between;
     padding: 10px 14px;
     background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border-medium);
     border-radius: 8px;
     color: rgba(255, 255, 255, 0.8);
     cursor: pointer;
@@ -289,7 +289,7 @@
 }
 
 .metadata-section {
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    border-top: 1px solid var(--border-subtle);
     padding-top: 16px;
     margin-top: 16px;
 }

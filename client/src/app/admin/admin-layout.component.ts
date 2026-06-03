@@ -1,9 +1,10 @@
-import { Component, OnInit, OnDestroy, ViewChild, ElementRef, AfterViewChecked, Inject, PLATFORM_ID } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild, ElementRef, AfterViewChecked, Inject, PLATFORM_ID, ChangeDetectorRef } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 import { ApiService } from '../services/api.service';
 import { SseService } from '../services/sse.service';
+import { ThemeService } from '../services/theme.service';
 import { ToastContainerComponent } from '../services/toast-container.component';
 import { ToastService } from '../services/toast.service';
 import { FormsModule } from '@angular/forms';
@@ -24,6 +25,7 @@ export class AdminLayoutComponent implements OnInit, OnDestroy, AfterViewChecked
     loginError = '';
     sidebarOpen = true;
     isMobile = false;
+    themePickerOpen = false;
 
     private subscriptions: Subscription[] = [];
     private isBrowser: boolean;
@@ -32,7 +34,9 @@ export class AdminLayoutComponent implements OnInit, OnDestroy, AfterViewChecked
         public auth: AuthService,
         private api: ApiService,
         private sse: SseService,
+        public themeService: ThemeService,
         public toast: ToastService,
+        private cdr: ChangeDetectorRef,
         @Inject(PLATFORM_ID) platformId: Object
     ) {
         this.isBrowser = isPlatformBrowser(platformId);
@@ -50,6 +54,7 @@ export class AdminLayoutComponent implements OnInit, OnDestroy, AfterViewChecked
                 if (ok && this.isBrowser) {
                     this.sse.connect();
                 }
+                this.cdr.detectChanges();
             })
         );
     }
@@ -76,8 +81,12 @@ export class AdminLayoutComponent implements OnInit, OnDestroy, AfterViewChecked
                     } else {
                         this.loginError = 'Invalid password';
                     }
+                    this.cdr.detectChanges();
                 },
-                error: () => { this.loginError = 'Authentication failed'; }
+                error: (err) => {
+                    this.loginError = err?.error?.error || 'Authentication failed';
+                    this.cdr.detectChanges();
+                }
             })
         );
     }
@@ -90,5 +99,13 @@ export class AdminLayoutComponent implements OnInit, OnDestroy, AfterViewChecked
 
     toggleSidebar(): void {
         this.sidebarOpen = !this.sidebarOpen;
+    }
+
+    toggleThemePicker(): void {
+        this.themePickerOpen = !this.themePickerOpen;
+    }
+
+    setTheme(key: string): void {
+        this.themeService.setTheme(key);
     }
 }

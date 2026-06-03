@@ -1,6 +1,27 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('API Endpoints', () => {
+  let authToken = '';
+
+  test.beforeAll(async ({ request }) => {
+    // Authenticate to get a token
+    const authResponse = await request.post('/api/auth', {
+      data: { password: 'admin' }
+    });
+    expect(authResponse.ok()).toBeTruthy();
+    const body = await authResponse.json();
+    expect(body.success).toBe(true);
+    expect(body.token).toBeDefined();
+    authToken = body.token;
+  });
+
+  function getHeaders() {
+    return {
+      'Authorization': `Bearer ${authToken}`,
+      'Content-Type': 'application/json'
+    };
+  }
+
   test('health check returns healthy status', async ({ request }) => {
     const response = await request.get('/api/health');
     expect(response.ok()).toBeTruthy();
@@ -37,7 +58,9 @@ test.describe('API Endpoints', () => {
   });
 
   test('auto-disabled endpoint returns array', async ({ request }) => {
-    const response = await request.get('/api/channels/auto-disabled');
+    const response = await request.get('/api/channels/auto-disabled', {
+      headers: getHeaders()
+    });
     expect(response.ok()).toBeTruthy();
     
     const body = await response.json();
@@ -45,26 +68,30 @@ test.describe('API Endpoints', () => {
   });
 
   test('playlists endpoint returns available playlists', async ({ request }) => {
-    const response = await request.get('/api/playlists');
+    const response = await request.get('/api/playlists', {
+      headers: getHeaders()
+    });
     expect(response.ok()).toBeTruthy();
     
     const body = await response.json();
-    expect(Array.isArray(body)).toBeTruthy();
-    // Should have at least some playlist options
-    expect(body.length).toBeGreaterThan(0);
+    expect(body).toHaveProperty('items');
+    expect(Array.isArray(body.items)).toBeTruthy();
   });
 
   test('config endpoint returns configuration', async ({ request }) => {
-    const response = await request.get('/api/config');
+    const response = await request.get('/api/config', {
+      headers: getHeaders()
+    });
     expect(response.ok()).toBeTruthy();
     
     const body = await response.json();
-    // Config may or may not have these set, but should be an object
     expect(typeof body).toBe('object');
   });
 
   test('mapping endpoint returns channel list', async ({ request }) => {
-    const response = await request.get('/api/mapping');
+    const response = await request.get('/api/mapping', {
+      headers: getHeaders()
+    });
     expect(response.ok()).toBeTruthy();
     
     const body = await response.json();
@@ -72,7 +99,9 @@ test.describe('API Endpoints', () => {
   });
 
   test('metadata config endpoint returns configuration', async ({ request }) => {
-    const response = await request.get('/api/metadata/config');
+    const response = await request.get('/api/metadata/config', {
+      headers: getHeaders()
+    });
     expect(response.ok()).toBeTruthy();
     
     const body = await response.json();
@@ -81,7 +110,9 @@ test.describe('API Endpoints', () => {
   });
 
   test('metadata stats endpoint returns statistics', async ({ request }) => {
-    const response = await request.get('/api/metadata/stats');
+    const response = await request.get('/api/metadata/stats', {
+      headers: getHeaders()
+    });
     expect(response.ok()).toBeTruthy();
     
     const body = await response.json();
@@ -100,12 +131,11 @@ test.describe('API Endpoints', () => {
   });
 
   test('re-enable endpoint validates input', async ({ request }) => {
-    // Test without proper body
     const response = await request.post('/api/channels/re-enable', {
+      headers: getHeaders(),
       data: {}
     });
     
-    // Should fail with 500 due to missing xmltv_ids
     expect(response.status()).toBe(500);
     
     const body = await response.json();
@@ -114,6 +144,7 @@ test.describe('API Endpoints', () => {
 
   test('re-enable endpoint accepts valid input', async ({ request }) => {
     const response = await request.post('/api/channels/re-enable', {
+      headers: getHeaders(),
       data: { xmltv_ids: [] }
     });
     

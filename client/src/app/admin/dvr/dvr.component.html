@@ -14,65 +14,142 @@
         <div class="spinner"></div>
     </div>
     } @else {
-    <!-- Storage Gauge -->
-    <div class="glass-card storage-card">
-        <div class="storage-gauge">
-            <svg viewBox="0 0 36 36" class="storage-ring">
-                <path class="ring-bg" d="M18 2.0845
-                    a 15.9155 15.9155 0 0 1 0 31.831
-                    a 15.9155 15.9155 0 0 1 0 -31.831" />
-                <path class="ring-fill" [style.stroke-dasharray]="storagePct + ', 100'"
-                    d="M18 2.0845
-                    a 15.9155 15.9155 0 0 1 0 31.831
-                    a 15.9155 15.9155 0 0 1 0 -31.831" />
-                <text x="18" y="20" class="ring-text">{{ storagePct }}%</text>
-            </svg>
-            <div class="storage-labels">
-                <span class="storage-used">{{ fmtBytes(storageUsed) }} used</span>
-                <span class="storage-total">of {{ fmtBytes(storageTotal) }}</span>
-            </div>
-        </div>
+    <div class="dvr-tabs">
+        <button [class.active]="recordingsTab === 'system'" (click)="recordingsTab = 'system'">
+            Server Recordings
+            <span>{{ recordings.length }}</span>
+        </button>
+        <button [class.active]="recordingsTab === 'my'" (click)="recordingsTab = 'my'">
+            My Recordings
+            <span>{{ localRecordings.length }}</span>
+        </button>
     </div>
 
-    @if (recordings.length === 0) {
-    <div class="glass-card empty-state">
-        <div class="empty-icon">📹</div>
-        <h3>No Recordings</h3>
-        <p>Schedule a recording to get started.</p>
-    </div>
-    } @else {
-    <div class="glass-card table-container">
-        <table>
-            <thead>
-                <tr>
-                    <th>Status</th>
-                    <th>Program</th>
-                    <th>Channel</th>
-                    <th>Start</th>
-                    <th>End</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                @for (rec of recordings; track rec.id) {
-                <tr>
-                    <td><span class="badge" [class]="getStatusClass(rec.status)">{{ rec.status }}</span></td>
-                    <td><strong>{{ rec.program_title }}</strong></td>
-                    <td>{{ rec.channel_name || rec.channel_id }}</td>
-                    <td>{{ rec.start_time | date:'short' }}</td>
-                    <td>{{ rec.end_time | date:'short' }}</td>
-                    <td>
+    @if (recordingsTab === 'system') {
+        <!-- Storage Gauge -->
+        <div class="glass-card storage-card">
+            <div class="storage-gauge">
+                <svg viewBox="0 0 36 36" class="storage-ring">
+                    <path class="ring-bg" d="M18 2.0845
+                        a 15.9155 15.9155 0 0 1 0 31.831
+                        a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    <path class="ring-fill" [style.stroke-dasharray]="storagePct + ', 100'"
+                        d="M18 2.0845
+                        a 15.9155 15.9155 0 0 1 0 31.831
+                        a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    <text x="18" y="20" class="ring-text">{{ storagePct }}%</text>
+                </svg>
+                <div class="storage-labels">
+                    <span class="storage-used">{{ fmtBytes(storageUsed) }} used</span>
+                    <span class="storage-total">of {{ fmtBytes(storageTotal) }}</span>
+                </div>
+            </div>
+        </div>
+
+        @if (recordings.length === 0) {
+        <div class="glass-card empty-state">
+            <div class="empty-icon">📹</div>
+            <h3>No Server Recordings</h3>
+            <p>Schedule a server recording to get started.</p>
+        </div>
+        } @else {
+        <div class="recording-grid">
+            @for (rec of recordings; track rec.id) {
+            <article class="recording-card glass-card" [class.recording-active]="rec.status === 'recording'">
+                <div class="recording-thumb">
+                    @if (rec.thumbnail) {
+                    <img [src]="rec.thumbnail" [alt]="rec.program_title">
+                    } @else {
+                    <div class="recording-fallback">DVR</div>
+                    }
+                    <span class="recording-source">Server</span>
+                </div>
+                <div class="recording-body">
+                    <div class="recording-row">
+                        <span class="badge" [class]="getStatusClass(rec.status)">{{ rec.status }}</span>
+                        <span class="recording-size">{{ recordingSize(rec) }}</span>
+                    </div>
+                    <h3>{{ rec.program_title }}</h3>
+                    <p class="recording-channel">{{ rec.channel_name || rec.channel_id }}</p>
+                    @if (recordingEpisode(rec)) {
+                    <p class="recording-episode">{{ recordingEpisode(rec) }}</p>
+                    }
+                    <p class="recording-time">{{ recordingTime(rec) }}</p>
+                    @if (rec.description) {
+                    <p class="recording-description">{{ rec.description }}</p>
+                    }
+                    @if (rec.error_message) {
+                    <p class="recording-error">{{ rec.error_message }}</p>
+                    }
+                    <div class="recording-actions">
+                        @if (rec.status === 'completed' && rec.filename) {
+                        <a class="btn btn-secondary small-btn" [href]="'/files/recordings/' + rec.filename" target="_blank">Download</a>
+                        }
                         @if (rec.status === 'recording') {
                         <button class="btn btn-secondary small-btn" (click)="stopRecording(rec.id)">Stop</button>
                         }
-                        <button class="btn btn-secondary small-btn" style="color:var(--color-danger);"
-                            (click)="deleteRecording(rec.id)">Delete</button>
-                    </td>
-                </tr>
-                }
-            </tbody>
-        </table>
-    </div>
+                        @if (rec.status === 'scheduled') {
+                        <button class="btn btn-secondary small-btn danger" (click)="deleteRecording(rec.id, rec.status)">Cancel</button>
+                        } @else {
+                        <button class="btn btn-secondary small-btn danger" (click)="deleteRecording(rec.id, rec.status)">Delete</button>
+                        }
+                    </div>
+                </div>
+            </article>
+            }
+        </div>
+        }
+    } @else {
+        @if (localRecordings.length === 0) {
+        <div class="glass-card empty-state">
+            <div class="empty-icon">💾</div>
+            <h3>No Local Recordings</h3>
+            <p>Local recordings created from the watch guide on this device will appear here.</p>
+        </div>
+        } @else {
+        <div class="recording-grid">
+            @for (rec of localRecordings; track rec.id) {
+            <article class="recording-card glass-card" [class.recording-active]="rec.status === 'recording'">
+                <div class="recording-thumb">
+                    @if (rec.thumbnail) {
+                    <img [src]="rec.thumbnail" [alt]="rec.programTitle">
+                    } @else {
+                    <div class="recording-fallback">LOCAL</div>
+                    }
+                    <span class="recording-source">Local</span>
+                </div>
+                <div class="recording-body">
+                    <div class="recording-row">
+                        <span class="badge" [class]="getStatusClass(rec.status)">{{ rec.status }}</span>
+                        <span class="recording-size">{{ localRecordingSize(rec) }}</span>
+                    </div>
+                    <h3>{{ rec.programTitle }}</h3>
+                    <p class="recording-channel">{{ rec.channelName }}</p>
+                    @if (localRecordingEpisode(rec)) {
+                    <p class="recording-episode">{{ localRecordingEpisode(rec) }}</p>
+                    }
+                    <p class="recording-time">{{ localRecordingTime(rec) }}</p>
+                    @if (rec.description) {
+                    <p class="recording-description">{{ rec.description }}</p>
+                    }
+                    @if (rec.errorMessage) {
+                    <p class="recording-error">{{ rec.errorMessage }}</p>
+                    }
+                    <div class="recording-actions">
+                        @if (rec.status === 'completed') {
+                        <button class="btn btn-secondary small-btn" (click)="playLocalRecording(rec)">Play</button>
+                        <button class="btn btn-secondary small-btn" (click)="downloadLocalRecording(rec)">Download</button>
+                        }
+                        @if (rec.status === 'queued' || rec.status === 'recording') {
+                        <button class="btn btn-secondary small-btn" (click)="cancelLocalRecording(rec)">Cancel</button>
+                        }
+                        <button class="btn btn-secondary small-btn danger" (click)="deleteLocalRecording(rec)">Delete</button>
+                    </div>
+                </div>
+            </article>
+            }
+        </div>
+        }
     }
     }
 
@@ -84,7 +161,7 @@
             <div class="form-grid">
                 <div class="form-group">
                     <label>Channel</label>
-                    <select class="themed-select w-full" [(ngModel)]="newRec.channelId">
+                    <select class="themed-select w-full" [(ngModel)]="newRec.channelId" (change)="onChannelSelect()">
                         <option value="">Select Channel...</option>
                         @for (ch of channels; track ch.id) {
                         <option [value]="ch.id">{{ ch.channel_number ? ch.channel_number + '. ' : '' }}{{ ch.name }}
@@ -92,6 +169,40 @@
                         }
                     </select>
                 </div>
+                
+                @if (selectedChannelPrograms.length > 0) {
+                <div class="form-group" style="grid-column: 1 / -1; margin-top: 4px;">
+                    <label>Program Guide Search</label>
+                    <div style="background: rgba(var(--color-primary-rgb),0.02); border: 1px solid rgba(var(--color-primary-rgb),0.12); border-radius: var(--radius-md); padding: 12px; display: flex; flex-direction: column; gap: 10px;">
+                        <input type="text" class="themed-input w-full" [(ngModel)]="programSearchQuery" placeholder="Search programs by title...">
+                        <div style="max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding-right: 4px;">
+                            @for (prog of filteredPrograms; track prog.start) {
+                            <div (click)="selectProgramFromGuide(prog)" 
+                                 [style.background]="selectedProgram === prog ? 'rgba(var(--color-primary-rgb), 0.15)' : 'rgba(255,255,255,0.02)'"
+                                 [style.border-color]="selectedProgram === prog ? 'var(--color-primary)' : 'rgba(var(--color-primary-rgb), 0.08)'"
+                                 style="padding: 6px 10px; border: 1px solid; border-radius: var(--radius-sm); cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; transition: all 0.15s;">
+                                <div>
+                                    <strong style="color: var(--text-primary);">{{ prog.title }}</strong>
+                                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">
+                                        {{ parseEpgTime(prog.start) | date:'short' }} - {{ parseEpgTime(prog.stop) | date:'shortTime' }}
+                                    </div>
+                                </div>
+                                @if (selectedProgram === prog) {
+                                <span style="color: var(--color-primary); font-weight: 600; font-size: 0.75rem;">Selected</span>
+                                }
+                            </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+                @if (isSeriesCandidate(selectedProgram, selectedChannelPrograms)) {
+                <div class="form-group" style="grid-column: 1 / -1; display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="recordSeries" [(ngModel)]="recordSeries" style="width: 16px; height: 16px; accent-color: var(--color-primary); cursor: pointer;">
+                    <label for="recordSeries" style="margin: 0; cursor: pointer; user-select: none; text-transform: none; letter-spacing: normal; font-size: 0.9rem; color: var(--text-primary);">Record Series (Record all upcoming episodes of this series)</label>
+                </div>
+                }
+                }
+
                 <div class="form-group">
                     <label>Program Title</label>
                     <input type="text" class="themed-input w-full" [(ngModel)]="newRec.title"

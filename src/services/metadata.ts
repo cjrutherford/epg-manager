@@ -1,5 +1,5 @@
 import { db, getSetting } from '../db';
-import { emitLog, emitProgress } from '../events';
+import { emitLog, emitProgress, emitProgressComplete } from '../events';
 import axios from 'axios';
 
 // TVMaze API - Free, no API key required!
@@ -249,7 +249,7 @@ export async function enrichProgramsWithMetadata(channelId?: string): Promise<{
             if (!channelId) {
                 emitLog('No programs need enrichment', 'info');
                 console.log('[Enrich] No programs need enrichment');
-                emitProgress('Enrichment complete - no pending programs', 0, 0, 'enrich');
+                emitProgressComplete('enrich', 'Enrichment complete - no pending programs', 0);
             }
             return stats;
         }
@@ -423,7 +423,7 @@ export async function enrichProgramsWithMetadata(channelId?: string): Promise<{
         if (!channelId) {
             const finalMsg = `Enrichment complete: ${stats.enriched} matched, ${stats.notFound} not found, ${stats.skipped} skipped (${durationSec}s)`;
             emitLog(finalMsg, 'success');
-            emitProgress(`Complete: ${stats.enriched} matched, ${stats.notFound} not found ✓`, titles.length, titles.length, 'enrich');
+            emitProgressComplete('enrich', `Complete: ${stats.enriched} matched, ${stats.notFound} not found ✓`, titles.length);
         }
 
     } catch (error: any) {

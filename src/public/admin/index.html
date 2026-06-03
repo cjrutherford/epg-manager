@@ -10,10 +10,20 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Libre+Franklin:wght@300;400;500;600&family=JetBrains+Mono:wght@400;600&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="/css/theme.css">
     <link rel="stylesheet" href="/admin/css/admin.css">
+    <script>
+        (function() {
+            try {
+                const theme = localStorage.getItem('iptv_theme');
+                if (theme && theme !== 'cinematic-noir') {
+                    document.documentElement.classList.add('theme-' + theme);
+                }
+            } catch (e) {}
+        })();
+    </script>
 </head>
 
 <body>
@@ -111,7 +121,7 @@
                         </div>
 
                         <div class="stat-item" onclick="showGrabHistory()"
-                            style="cursor:pointer; border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.05);">
+                            style="cursor:pointer;">
                             <div class="stat-val">History</div>
                             <div class="stat-label">View Logs</div>
                         </div>

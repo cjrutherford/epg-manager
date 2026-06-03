@@ -8,8 +8,8 @@ import { ToastService } from './toast.service';
     imports: [CommonModule],
     template: `
     <div class="toast-container">
-      @for (toast of toastService.toasts; track toast.id) {
-        <div class="toast" [class]="'toast-' + toast.type" (click)="toastService.dismiss(toast.id)">
+      @for (toast of toastService.toasts(); track toast.id) {
+        <div [class]="'toast toast-' + toast.type + ' ' + toast.type" (click)="toastService.dismiss(toast.id)">
           <span class="toast-icon">
             @if (toast.type === 'success') { ✓ }
             @else if (toast.type === 'error') { ✕ }
@@ -28,6 +28,7 @@ import { ToastService } from './toast.service';
       pointer-events: none;
     }
     .toast {
+      position: relative;
       pointer-events: auto;
       display: flex; align-items: center; gap: 10px;
       padding: 12px 20px; border-radius: 10px;
@@ -38,16 +39,46 @@ import { ToastService } from './toast.service';
       animation: toast-in 0.25s ease-out;
       max-width: 400px;
       cursor: pointer;
+      overflow: hidden;
+    }
+    .toast::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      border-radius: 0 0 10px 10px;
+      animation: toast-progress 4s linear forwards;
     }
     .toast-icon { font-weight: 700; font-size: 1rem; }
     .toast-msg { line-height: 1.4; }
-    .toast-success .toast-icon { color: #4ade80; }
-    .toast-error .toast-icon { color: #f87171; }
-    .toast-warning .toast-icon { color: #fbbf24; }
-    .toast-info .toast-icon { color: #60a5fa; }
+    .toast-success { border-left: 3px solid var(--color-success); }
+    .toast-success .toast-icon { color: var(--color-success); }
+    .toast-success::after { background: var(--color-success); }
+    .toast-error { border-left: 3px solid var(--color-danger); }
+    .toast-error .toast-icon { color: var(--color-danger); }
+    .toast-error::after { background: var(--color-danger); }
+    .toast-warning { border-left: 3px solid var(--color-warning); }
+    .toast-warning .toast-icon { color: var(--color-warning); }
+    .toast-warning::after { background: var(--color-warning); }
+    .toast-info { border-left: 3px solid var(--color-info); }
+    .toast-info .toast-icon { color: var(--color-info); }
+    .toast-info::after { background: var(--color-info); }
+    .toast-exiting {
+      animation: toast-out 0.25s ease-in forwards;
+    }
     @keyframes toast-in {
       from { opacity: 0; transform: translateX(20px); }
       to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes toast-out {
+      from { opacity: 1; transform: translateX(0); }
+      to { opacity: 0; transform: translateX(20px); }
+    }
+    @keyframes toast-progress {
+      from { width: 100%; }
+      to { width: 0%; }
     }
   `]
 })

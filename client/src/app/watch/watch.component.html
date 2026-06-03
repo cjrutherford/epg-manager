@@ -17,11 +17,10 @@
         }
     </div>
     <div class="topbar-right">
-        @if (castAvailable) {
-        <button class="icon-btn cast-btn-wrapper" title="Google Cast">
+        <button class="icon-btn cast-btn-wrapper" title="Google Cast"
+                [style.display]="castAvailable ? 'inline-flex' : 'none'">
             <google-cast-launcher class="cast-btn"></google-cast-launcher>
         </button>
-        }
         <button class="icon-btn" [class.active]="dvrOpen" (click)="dvrOpen = !dvrOpen" title="DVR Manager">
             <lucide-icon name="film" class="icon"></lucide-icon>
         </button>
@@ -70,7 +69,204 @@
 </header>
 
 @if (dvrOpen) {
-    <app-dvr [isOverlay]="true" [guideChannels]="channels" (close)="dvrOpen = false"></app-dvr>
+<aside class="recordings-library glass-card">
+    <div class="recordings-head">
+        <div>
+            <div class="recordings-kicker">DVR Library</div>
+            <h2>Recordings</h2>
+        </div>
+        <div class="recordings-head-actions">
+            <button class="btn btn-secondary small-btn" (click)="openWatchScheduleModal()">Schedule Recording</button>
+            <button class="icon-btn" (click)="dvrOpen = false" title="Close recordings">
+                <lucide-icon name="x" class="icon"></lucide-icon>
+            </button>
+        </div>
+    </div>
+
+    <div class="recording-tabs">
+        <button [class.active]="recordingsTab === 'my'" (click)="recordingsTab = 'my'">
+            My Recordings
+            <span>{{ localRecordings.length }}</span>
+        </button>
+        <button [class.active]="recordingsTab === 'system'" (click)="recordingsTab = 'system'; loadRecordings()">
+            System
+            <span>{{ systemRecordings.length }}</span>
+        </button>
+    </div>
+
+    @if (recordingsTab === 'my') {
+        @if (localRecordings.length === 0) {
+        <div class="recording-empty">
+            <lucide-icon name="hard-drive" class="empty-line-icon"></lucide-icon>
+            <h3>No local recordings</h3>
+            <p>Use the guide context menu to record an episode or series on this device.</p>
+            <button class="btn btn-secondary small-btn" (click)="openWatchScheduleModal()">Schedule Recording</button>
+        </div>
+        } @else {
+        <div class="recording-card-list">
+            @for (rec of localRecordings; track rec.id) {
+            <article class="recording-card" [class.recording-active]="rec.status === 'recording'">
+                <div class="recording-thumb">
+                    @if (recordingThumbnail(rec)) {
+                    <img [src]="recordingThumbnail(rec)!" [alt]="recordingTitle(rec)">
+                    } @else {
+                    <lucide-icon name="film" class="recording-fallback-icon"></lucide-icon>
+                    }
+                    <span class="recording-source">Local</span>
+                </div>
+                <div class="recording-body">
+                    <div class="recording-row">
+                        <span class="recording-status" [class]="rec.status">{{ rec.status }}</span>
+                        @if (isDocumentHidden && rec.status === 'recording') {
+                        <span class="recording-risk">background best-effort</span>
+                        }
+                    </div>
+                    <h3>{{ recordingTitle(rec) }}</h3>
+                    <p class="recording-channel">{{ recordingChannel(rec) }}</p>
+                    @if (recordingEpisode(rec)) {
+                    <p class="recording-episode">{{ recordingEpisode(rec) }}</p>
+                    }
+                    <p class="recording-time">{{ fmtRecordingTime(recordingStart(rec), recordingEnd(rec)) }}</p>
+                    @if (rec.errorMessage) {
+                    <p class="recording-error">{{ rec.errorMessage }}</p>
+                    }
+                    <div class="recording-foot">
+                        <span>{{ rec.segmentCount }} segments</span>
+                        <span>{{ fmtBytes(recordingSize(rec)) }}</span>
+                    </div>
+                    <div class="recording-actions">
+                        @if (rec.status === 'completed') {
+                        <button class="btn btn-primary small-btn" (click)="playLocalRecording(rec)">Play</button>
+                        <button class="btn btn-secondary small-btn" (click)="downloadLocalRecording(rec)">Download</button>
+                        }
+                        @if (rec.status === 'queued' || rec.status === 'recording') {
+                        <button class="btn btn-secondary small-btn" (click)="cancelLocalRecording(rec)">Cancel</button>
+                        }
+                        <button class="btn btn-secondary small-btn danger" (click)="deleteLocalRecording(rec)">Delete</button>
+                    </div>
+                </div>
+            </article>
+            }
+        </div>
+        }
+    } @else {
+        @if (systemRecordings.length === 0) {
+        <div class="recording-empty">
+            <lucide-icon name="server" class="empty-line-icon"></lucide-icon>
+            <h3>No system recordings</h3>
+            <p>Server DVR recordings scheduled from the admin page will appear here.</p>
+            <button class="btn btn-secondary small-btn" (click)="openWatchScheduleModal()">Schedule Recording</button>
+        </div>
+        } @else {
+        <div class="recording-card-list">
+            @for (rec of systemRecordings; track rec.id) {
+            <article class="recording-card">
+                <div class="recording-thumb">
+                    @if (recordingThumbnail(rec)) {
+                    <img [src]="recordingThumbnail(rec)!" [alt]="recordingTitle(rec)">
+                    } @else {
+                    <lucide-icon name="server" class="recording-fallback-icon"></lucide-icon>
+                    }
+                    <span class="recording-source">System</span>
+                </div>
+                <div class="recording-body">
+                    <div class="recording-row">
+                        <span class="recording-status" [class]="rec.status">{{ rec.status }}</span>
+                    </div>
+                    <h3>{{ recordingTitle(rec) }}</h3>
+                    <p class="recording-channel">{{ recordingChannel(rec) }}</p>
+                    @if (recordingEpisode(rec)) {
+                    <p class="recording-episode">{{ recordingEpisode(rec) }}</p>
+                    }
+                    <p class="recording-time">{{ fmtRecordingTime(recordingStart(rec), recordingEnd(rec)) }}</p>
+                    @if (rec.error_message) {
+                    <p class="recording-error">{{ rec.error_message }}</p>
+                    }
+                    <div class="recording-foot">
+                        <span>Server DVR</span>
+                        <span>{{ fmtBytes(recordingSize(rec)) }}</span>
+                    </div>
+                    <div class="recording-actions">
+                        @if (rec.status === 'completed' && rec.url) {
+                        <button class="btn btn-primary small-btn" (click)="playSystemRecording(rec)">Play</button>
+                        <a class="btn btn-secondary small-btn" [href]="rec.url" target="_blank">Download</a>
+                        } @else {
+                        <button class="recording-readonly link-button" (click)="openWatchScheduleModal()">Schedule another recording</button>
+                        }
+                    </div>
+                </div>
+            </article>
+            }
+        </div>
+        }
+    }
+</aside>
+}
+
+@if (showWatchScheduleModal) {
+<div class="modal-backdrop" (click)="showWatchScheduleModal = false">
+    <div class="modal-content schedule-modal" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+            <h3>Schedule Local Recording</h3>
+            <button class="close-btn" (click)="showWatchScheduleModal = false">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p class="settings-desc">Recordings created here are saved in this browser under My Recordings.</p>
+            <div class="form-group">
+                <label>Channel</label>
+                <select class="themed-select" [(ngModel)]="watchSchedule.channelId" (change)="onWatchScheduleChannelSelect()">
+                    <option value="">Select channel...</option>
+                    @for (ch of channels; track ch.id) {
+                    <option [value]="ch.id">{{ ch.channel_number ? ch.channel_number + '. ' : '' }}{{ ch.name }}</option>
+                    }
+                </select>
+            </div>
+            @if (watchSchedulePrograms.length > 0) {
+            <div class="form-group">
+                <label>Program Guide Search</label>
+                <input class="themed-input" [(ngModel)]="watchScheduleSearch" placeholder="Search programs...">
+                <div class="schedule-program-list">
+                    @for (program of filteredWatchSchedulePrograms; track program.start) {
+                    <button class="schedule-program-row" [class.selected]="watchScheduleSelectedProgram === program" (click)="selectWatchScheduleProgram(program)">
+                        <span>
+                            <strong>{{ program.title }}</strong>
+                            <small>{{ fmtTimeRange(program.start, program.stop) }}</small>
+                        </span>
+                        @if (watchScheduleSelectedProgram === program) {
+                        <em>Selected</em>
+                        }
+                    </button>
+                    }
+                </div>
+            </div>
+            @if (isSeriesCandidate(watchScheduleSelectedProgram, watchSchedulePrograms)) {
+            <label class="schedule-checkbox">
+                <input type="checkbox" [(ngModel)]="watchScheduleRecordSeries">
+                <span>Record every upcoming episode with this title</span>
+            </label>
+            }
+            }
+            <div class="form-group">
+                <label>Program Title</label>
+                <input class="themed-input" [(ngModel)]="watchSchedule.title" placeholder="Recording name...">
+            </div>
+            <div class="schedule-time-grid">
+                <div class="form-group">
+                    <label>Start Time</label>
+                    <input type="datetime-local" class="themed-input" [(ngModel)]="watchSchedule.startTime">
+                </div>
+                <div class="form-group">
+                    <label>End Time</label>
+                    <input type="datetime-local" class="themed-input" [(ngModel)]="watchSchedule.endTime">
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" (click)="showWatchScheduleModal = false">Cancel</button>
+                <button class="btn btn-primary" (click)="submitWatchSchedule()">Schedule</button>
+            </div>
+        </div>
+    </div>
+</div>
 }
 
 <!-- ── No-data empty state ─────────────────────────────────────────── -->
@@ -209,7 +405,11 @@
             @if (loading) {
             <div class="player-loading">
                 <div class="spinner"></div>
+                @if (reconnecting) {
+                <span>Reconnecting stream (attempt {{ reconnectAttempt }}/{{ maxReconnectAttempts }})...</span>
+                } @else {
                 <span>Loading stream...</span>
+                }
             </div>
             }
 
@@ -481,10 +681,19 @@
 <!-- Context Menu -->
 @if (contextMenu.visible) {
 <div class="context-menu" [style.left.px]="contextMenu.x" [style.top.px]="contextMenu.y">
-    @if (contextMenu.program && hasRecording(contextMenu.channel?.id, contextMenu.program.start, contextMenu.program.stop)) {
-    <button (click)="cancelRecordingFromMenu(contextMenu.channel, contextMenu.program)">⏹ Cancel Recording</button>
-    } @else {
-    <button (click)="recordProgram(contextMenu.channel, contextMenu.program)">⏺ Record</button>
+    @if (contextMenu.program) {
+        @if (getRecordingForProgram(contextMenu.channel?.id, contextMenu.program.start, contextMenu.program.stop); as rec) {
+            @if (rec.status === 'scheduled') {
+                <button (click)="cancelRecordingFromMenu(contextMenu.channel, contextMenu.program)">⏹ Cancel Recording</button>
+            } @else {
+                <button (click)="cancelRecordingFromMenu(contextMenu.channel, contextMenu.program)">🗑️ Delete Recording</button>
+            }
+        } @else {
+            <button (click)="recordProgram(contextMenu.channel, contextMenu.program)">⏺ Record Episode</button>
+            @if (isSeriesCandidate(contextMenu.program, contextMenu.channel?.programs || [])) {
+            <button (click)="recordSeries(contextMenu.channel, contextMenu.program)">🔁 Record Series</button>
+            }
+        }
     }
 </div>
 }

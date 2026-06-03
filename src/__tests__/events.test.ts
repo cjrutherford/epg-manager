@@ -90,18 +90,18 @@ describe('events module', () => {
       emitProgress('Enriching', 1, 5, 'enrich');
     });
 
-    it('sets completed to true when current >= total', (done) => {
+    it('does not mark progress complete just because current equals total', (done) => {
       eventBus.once('progress', (progress: ProgressUpdate) => {
-        expect(progress.completed).toBe(true);
+        expect(progress.completed).toBe(false);
         done();
       });
       
       emitProgress('Done', 10, 10);
     });
 
-    it('sets completed to true when current > total', (done) => {
+    it('does not mark progress complete just because current exceeds total', (done) => {
       eventBus.once('progress', (progress: ProgressUpdate) => {
-        expect(progress.completed).toBe(true);
+        expect(progress.completed).toBe(false);
         done();
       });
       
@@ -124,6 +124,20 @@ describe('events module', () => {
       });
       
       emitProgress('No total', 0, 0);
+    });
+
+    it('supports full sync phases beyond grab matching and enrichment', (done) => {
+      const phases = ['playlist', 'metadata', 'match', 'grab', 'enrich', 'rebuild'] as const;
+      const seen: string[] = [];
+      eventBus.on('progress', (progress: ProgressUpdate) => {
+        seen.push(progress.phase);
+        if (seen.length === phases.length) {
+          expect(seen).toEqual(phases);
+          done();
+        }
+      });
+
+      phases.forEach(phase => emitProgress(phase, 0, 1, phase));
     });
   });
 

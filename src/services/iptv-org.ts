@@ -1,5 +1,5 @@
 import { db, DB_DIR } from '../db';
-import { emitLog, emitProgress } from '../events';
+import { emitLog, emitProgress, emitProgressComplete } from '../events';
 import cliProgress from 'cli-progress';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -7,7 +7,8 @@ import { spawn } from 'child_process';
 import axios from 'axios';
 import AdmZip from 'adm-zip';
 import { formatMemorySnapshot } from './memory';
-import { parseIptvOrgChannelsXmlStream } from './iptv-org-parser';
+import { IptvOrgChannelRow, parseIptvOrgChannelsXmlStream } from './iptv-org-parser';
+import { buildEpgSourceKey, getFeaturedIptvOrgSource, parseIptvOrgSitesMarkdown } from './epg-sources';
 
 const REPO_URL = 'https://github.com/iptv-org/epg.git';
 const DATA_DIR = path.join(DB_DIR, 'iptv-org-epg');
@@ -94,6 +95,7 @@ export async function updateIptvOrgData() {
                 });
             }
         }
+        await db.execute({ sql: `DELETE FROM epg_source_channels WHERE provider = ?`, args: ['iptv-org'] });
 
         if (!fs.existsSync(path.join(DATA_DIR, 'node_modules'))) {
             emitLog("Scraper dependencies missing. Installing...", "info", true);
@@ -106,6 +108,7 @@ export async function updateIptvOrgData() {
         }
 
         const sites = fs.readdirSync(sitesDir);
+        await upsertIptvOrgSources(sites);
         emitLog(`Found ${sites.length} site folders. Parsing channels...`, "info");
 
         const progressBar = new cliProgress.SingleBar({
@@ -117,7 +120,7 @@ export async function updateIptvOrgData() {
 
         progressBar.start(sites.length, 0, { msg: 'Initializing...' });
 
-        let batch: any[] = [];
+        let batch: IptvOrgChannelRow[] = [];
         const BATCH_SIZE = 100;
         let mappedCount = 0;
         let sitesProcessed = 0;
@@ -126,7 +129,7 @@ export async function updateIptvOrgData() {
             sitesProcessed++;
             if (sitesProcessed % 10 === 0 || sitesProcessed === sites.length) {
                 progressBar.update(sitesProcessed, { msg: site });
-                emitProgress(`Parsing metadata... (${mappedCount} channels)`, sitesProcessed, sites.length, 'match');
+                emitProgress(`Parsing metadata... (${mappedCount} channels)`, sitesProcessed, sites.length, 'metadata');
             }
             const sitePath = path.join(sitesDir, site);
             if (!fs.statSync(sitePath).isDirectory()) continue;
@@ -138,10 +141,10 @@ export async function updateIptvOrgData() {
                     const filePath = path.join(sitePath, file);
                     const input = fs.createReadStream(filePath, { encoding: 'utf8' });
                     await parseIptvOrgChannelsXmlStream(input, async (row) => {
-                        batch.push(row.name, row.xmltv_id, row.lang, row.site, row.site_id);
+                        batch.push(row);
                         mappedCount++;
 
-                        if (batch.length >= BATCH_SIZE * 5) {
+                        if (batch.length >= BATCH_SIZE) {
                             await insertBatch(batch);
                             batch = [];
                         }
@@ -156,23 +159,102 @@ export async function updateIptvOrgData() {
             await insertBatch(batch);
         }
 
+        await refreshIptvOrgSourceImportCounts();
+
         progressBar.stop();
         emitLog(formatMemorySnapshot('iptv-org update complete', process.memoryUsage(), { mapped: mappedCount, sites: sites.length }), 'info');
         emitLog(`IPTV-ORG Data Updated. Mapped ${mappedCount} channels with site metadata.`, "success");
+        emitProgressComplete('metadata', `Metadata updated: ${mappedCount} channels mapped`, sites.length);
 
     } catch (e: any) {
         emitLog(`Failed to update IPTV-ORG data: ${e.message}`, "error");
+        emitProgress(`Metadata update failed: ${e.message}`, 0, 1, 'metadata');
     }
 }
 
-async function insertBatch(batch: any[]) {
-    try {
-        const rowCount = batch.length / 5;
-        const placeholders = Array(rowCount).fill("(?, ?, ?, ?, ?)").join(",");
+async function upsertIptvOrgSources(sites: string[]) {
+    const sitesMdPath = path.join(DATA_DIR, 'SITES.md');
+    const summaries = fs.existsSync(sitesMdPath)
+        ? parseIptvOrgSitesMarkdown(fs.readFileSync(sitesMdPath, 'utf8'))
+        : [];
+    const summaryBySite = new Map(summaries.map(source => [source.site, source]));
+    const now = Date.now();
+
+    for (const site of sites) {
+        const summary = summaryBySite.get(site);
+        const featured = getFeaturedIptvOrgSource(site);
         await db.execute({
-            sql: `INSERT OR REPLACE INTO iptv_org_map (name, xmltv_id, lang, site, site_id) VALUES ${placeholders}`,
-            args: batch
+            sql: `INSERT INTO epg_sources (
+                    key, provider, site, label, enabled, priority, grab_capable,
+                    channel_count_estimate, imported_rows, last_sync_at, last_sync_status, last_error, notes
+                  )
+                  VALUES (?, ?, ?, ?, 1, ?, 1, ?, 0, ?, 'syncing', NULL, ?)
+                  ON CONFLICT(key) DO UPDATE SET
+                    provider = excluded.provider,
+                    site = excluded.site,
+                    label = excluded.label,
+                    priority = excluded.priority,
+                    grab_capable = 1,
+                    channel_count_estimate = excluded.channel_count_estimate,
+                    imported_rows = 0,
+                    last_sync_at = excluded.last_sync_at,
+                    last_sync_status = 'syncing',
+                    last_error = NULL,
+                    notes = excluded.notes`,
+            args: [
+                buildEpgSourceKey('iptv-org', site),
+                'iptv-org',
+                site,
+                featured?.label || summary?.label || site,
+                featured?.priority || 0,
+                summary?.channelCountEstimate ?? null,
+                now,
+                [featured?.notes, summary?.notes].filter(Boolean).join(' | ') || null
+            ]
         });
+    }
+}
+
+async function refreshIptvOrgSourceImportCounts() {
+    await db.execute({
+        sql: `UPDATE epg_sources
+              SET imported_rows = (
+                    SELECT COUNT(*) FROM epg_source_channels esc WHERE esc.source_key = epg_sources.key
+                  ),
+                  last_sync_status = 'success',
+                  last_error = NULL,
+                  last_sync_at = ?
+              WHERE provider = ?`,
+        args: [Date.now(), 'iptv-org']
+    });
+}
+
+async function insertBatch(batch: IptvOrgChannelRow[]) {
+    try {
+        const mapRows = batch.map(row => [row.name, row.xmltv_id, row.lang, row.site, row.site_id]);
+        const sourceRows = batch
+            .filter(row => row.site && row.site_id)
+            .map(row => [
+                buildEpgSourceKey('iptv-org', String(row.site)),
+                'iptv-org',
+                row.name,
+                row.xmltv_id,
+                row.lang,
+                row.site,
+                row.site_id
+            ]);
+        const mapPlaceholders = mapRows.map(() => "(?, ?, ?, ?, ?)").join(",");
+        await db.execute({
+            sql: `INSERT OR REPLACE INTO iptv_org_map (name, xmltv_id, lang, site, site_id) VALUES ${mapPlaceholders}`,
+            args: mapRows.flat()
+        });
+        if (sourceRows.length > 0) {
+            const sourcePlaceholders = sourceRows.map(() => "(?, ?, ?, ?, ?, ?, ?)").join(",");
+            await db.execute({
+                sql: `INSERT OR REPLACE INTO epg_source_channels (source_key, provider, name, xmltv_id, lang, site, site_id) VALUES ${sourcePlaceholders}`,
+                args: sourceRows.flat()
+            });
+        }
     } catch (e: any) {
         emitLog(`Insert batch failed: ${e.message}`, "error");
         throw e;

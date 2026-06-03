@@ -12,7 +12,7 @@ import { updateIptvOrgPlaylists } from './services/iptv-org-playlists';
 import { enrichProgramsWithMetadata, getEnrichmentStats, clearMetadataCache, isEnrichmentEnabled, refreshImdbData, searchTVMaze, searchTVMazeShows, normalizeTitle } from './services/metadata';
 import { PipelineQueue } from './services/pipeline';
 import { getJobStatus, startJob, completeJob, requestJobCancel } from './job';
-import { eventBus, emitLog, emitProgress } from './events';
+import { eventBus, emitLog, emitProgress, emitProgressComplete } from './events';
 import { startRecordingScheduler, cancelRecording as cancelRec, getRecordingFilePath, checkScheduledRecordings, startRecording, stopRecording } from './recorder';
 import { StreamManager } from './services/stream';
 import * as fs from 'fs';
@@ -22,6 +22,10 @@ import { tui } from './services/tui';
 import { formatMemorySnapshot } from './services/memory';
 import { buildPlaylistImportIndexes, createPlaylistChannelRecord, type PlaylistChannelRow } from './services/playlist-import';
 import { describePlaylist } from './services/playlist-metadata';
+import { mapSystemRecordingRow } from './services/recordings';
+import { dedupeChannelsForDisplay } from './services/channel-dedup';
+import { setOpenCorsHeaders } from './http-headers';
+import { rankEpgSources } from './services/epg-sources';
 
 function summarizePlaylistScope(items: Array<{ importedCount?: number; channelCountEstimate?: number | null }>) {
     const selectedCount = items.length;
@@ -39,19 +43,18 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin';
 // In-memory auth token store
 const validTokens = new Set<string>();
 
-app.use(express.json());
+app.set('trust proxy', true);
 
 // Enable CORS for API clients
 app.use((req: any, res: any, next: any) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    setOpenCorsHeaders(req, res);
     if (req.method === 'OPTIONS') {
         res.sendStatus(204);
         return;
     }
     next();
 });
+app.use(express.json());
 
 // Backend runs purely as an API server
 
@@ -152,17 +155,22 @@ export async function runFullSync() {
 
         if (playlistUrls.length > 0) {
             emitLog(`Refreshing ${playlistUrls.length} playlist(s)...`, "info");
-            for (const url of playlistUrls) {
+            emitProgress(`Refreshing ${playlistUrls.length} playlist(s)...`, 0, playlistUrls.length, 'playlist');
+            for (let i = 0; i < playlistUrls.length; i++) {
+                const url = playlistUrls[i];
                 if (getJobStatus().cancelRequested) throw new Error("Sync cancelled by user");
                 try {
                     emitLog(`Loading playlist: ${url}`, "info");
                     await updatePlaylist(url);
+                    emitProgress(`Loaded playlist ${i + 1}/${playlistUrls.length}`, i + 1, playlistUrls.length, 'playlist');
                 } catch (e: any) {
                     emitLog(`Failed to load playlist ${url}: ${e.message}`, "error");
                 }
             }
+            emitProgressComplete('playlist', 'Playlist refresh complete', playlistUrls.length);
         } else {
             emitLog("No playlist configured.", "warning");
+            emitProgressComplete('playlist', 'No playlist configured', 0);
         }
 
         if (getJobStatus().cancelRequested) throw new Error("Sync cancelled by user");
@@ -170,6 +178,7 @@ export async function runFullSync() {
         //    as matching progresses, so EPG grabs start immediately rather than waiting
         //    for all 1,000+ channels to finish matching first.
         emitLog("Updating IPTV-ORG metadata and matching channels...", "info");
+        emitProgress('Updating IPTV-ORG metadata...', 0, 1, 'metadata');
         await updateIptvOrgData();
         invalidateIptvOrgCache(); // matching cache now stale — will reload on next matchChannelsToIptvOrg call
 
@@ -220,9 +229,13 @@ export async function runFullSync() {
         }
 
         // 5. Cleanup and Generate Final Files
+        emitProgress('Cleaning up EPG data...', 0, 3, 'rebuild');
         await cleanupEpgData();
+        emitProgress('Cleanup complete. Preparing final files...', 1, 3, 'rebuild');
         emitLog("Generating final M3U and XML files...", "info");
+        emitProgress('Generating final M3U and XML files...', 2, 3, 'rebuild');
         const result = await generatePlaylistAndEpg();
+        emitProgressComplete('rebuild', 'Final M3U and XML files generated', 3);
 
         // 6. Complete
         const totalChannels = await db.execute("SELECT COUNT(*) as c FROM channels");
@@ -245,6 +258,7 @@ export async function runFullSync() {
         emitLog(`Automation failed: ${e.message} `, "error");
         console.error("Full sync error:", e);
         completeJob(null);
+        eventBus.emit('report', { error: e.message });
     } finally {
         activePipeline = null;
     }
@@ -333,14 +347,20 @@ app.get('/api/grab-logs', requireAuth, async (req: any, res: any) => {
 
 app.get('/api/progress', (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
 
     const sendEvent = (event: string, data: any) => {
         res.write(`event: ${event}\n`);
         res.write(`data: ${JSON.stringify(data)}\n\n`);
     };
+
+    res.write(': connected\n\n');
+    const heartbeat = setInterval(() => {
+        res.write(`: keep-alive ${Date.now()}\n\n`);
+    }, 15000);
 
     const onLog = (log: any) => sendEvent('log', log);
     const onProgress = (prog: any) => sendEvent('progress', prog);
@@ -351,6 +371,7 @@ app.get('/api/progress', (req, res) => {
     eventBus.on('report', onReport);
 
     req.on('close', () => {
+        clearInterval(heartbeat);
         eventBus.off('log', onLog);
         eventBus.off('progress', onProgress);
         eventBus.off('report', onReport);
@@ -395,6 +416,10 @@ app.post('/api/sync', requireAuth, async (req: any, res: any) => {
 // POST /api/sync-playlist - Reload playlist only (no match/grab/enrich) — runs in background
 app.post('/api/sync-playlist', requireAuth, async (req: any, res: any) => {
     try {
+        const status = getJobStatus();
+        if (status.running) {
+            return res.json({ success: false, message: "Sync already in progress." });
+        }
         const plResult = await db.execute("SELECT value FROM settings WHERE key = 'playlist_url'");
         if (plResult.rows.length === 0) {
             return res.status(400).json({ error: "No playlist URL configured." });
@@ -402,13 +427,26 @@ app.post('/api/sync-playlist', requireAuth, async (req: any, res: any) => {
         const url = String(plResult.rows[0].value);
         // Fire in background — return immediately so the client doesn't wait on network I/O
         (async () => {
+            startJob();
             try {
                 emitLog(`Reloading playlist from: ${url}`, "info");
+                emitProgress("Reloading playlist...", 0, 1, 'playlist');
                 const count = await updatePlaylist(url);
                 emitLog(`Playlist reloaded: ${count} channels imported.`, "success");
-                emitProgress("Playlist reload complete", 100, 100, 'match');
+                emitProgressComplete('playlist', `Playlist reload complete: ${count} channels imported`, 1);
+                const stats = {
+                    channelsProcessed: count,
+                    programsProcessed: 0,
+                    channelsMatched: 0,
+                    totalChannels: count,
+                    filesGenerated: [],
+                    customGrabCount: 0
+                };
+                completeJob(stats);
+                eventBus.emit('report', stats);
             } catch (e: any) {
                 emitLog(`Playlist reload failed: ${e.message}`, "error");
+                completeJob(null);
             }
         })();
         res.json({ success: true, message: "Playlist reload started in background." });
@@ -419,6 +457,10 @@ app.post('/api/sync-playlist', requireAuth, async (req: any, res: any) => {
 
 app.post('/api/grab', requireAuth, async (req: any, res: any) => {
     try {
+        const status = getJobStatus();
+        if (status.running) {
+            return res.json({ success: false, message: "Sync already in progress." });
+        }
         // Trigger grab for all pre-matched channels that are currently missing guide data
         const missing = await db.execute(`
             SELECT DISTINCT COALESCE(mo.epg_id, c.matched_epg_id) as xmltv_id 
@@ -435,11 +477,193 @@ WHERE(c.matched_epg_id IS NOT NULL OR mo.epg_id IS NOT NULL)
         }
 
         // Run in background but return success that it started
-        grabMissingChannels(ids, true).catch(err => {
-            console.error("Grab failed:", err);
-            emitLog(`Grab failed: ${err.message} `, "error");
-        });
+        (async () => {
+            startJob();
+            try {
+                await grabMissingChannels(ids, true);
+                const stats = {
+                    channelsProcessed: 0,
+                    programsProcessed: 0,
+                    channelsMatched: 0,
+                    totalChannels: 0,
+                    filesGenerated: [],
+                    customGrabCount: ids.length
+                };
+                completeJob(stats);
+                eventBus.emit('report', stats);
+            } catch (err: any) {
+                console.error("Grab failed:", err);
+                emitLog(`Grab failed: ${err.message} `, "error");
+                completeJob(null);
+            }
+        })();
         res.json({ success: true, count: ids.length });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/grab/sources', requireAuth, async (req: any, res: any) => {
+    try {
+        const siteStatusRes = await db.execute("SELECT * FROM site_status");
+        const channelSiteStatsRes = await db.execute(`
+            SELECT site, 
+                   SUM(success_count) as total_success, 
+                   SUM(failure_count) as total_failure, 
+                   AVG(last_program_count) as avg_programs
+            FROM channel_site_status
+            GROUP BY site
+        `);
+        
+        const siteMap = new Map();
+        for (const row of siteStatusRes.rows) {
+            siteMap.set(row.site, {
+                site: row.site,
+                last_attempt: row.last_attempt,
+                last_success: row.last_success,
+                overall_failure_count: row.failure_count,
+                channels_success: 0,
+                channels_failure: 0,
+                avg_programs: 0
+            });
+        }
+        
+        for (const row of channelSiteStatsRes.rows) {
+            const site = String(row.site);
+            if (!siteMap.has(site)) {
+                siteMap.set(site, {
+                    site,
+                    last_attempt: null,
+                    last_success: null,
+                    overall_failure_count: 0,
+                    channels_success: 0,
+                    channels_failure: 0,
+                    avg_programs: 0
+                });
+            }
+            const s = siteMap.get(site);
+            s.channels_success = Number(row.total_success) || 0;
+            s.channels_failure = Number(row.total_failure) || 0;
+            s.avg_programs = Math.round(Number(row.avg_programs) || 0);
+        }
+        
+        res.json(Array.from(siteMap.values()));
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/epg-sources', requireAuth, async (req: any, res: any) => {
+    try {
+        const result = await db.execute(`
+            SELECT
+                es.*,
+                COALESCE(SUM(css.success_count), 0) as channels_success,
+                COALESCE(SUM(css.failure_count), 0) as channels_failure,
+                COALESCE(AVG(NULLIF(css.last_program_count, 0)), 0) as avg_programs,
+                MAX(css.last_attempt) as last_attempt
+            FROM epg_sources es
+            LEFT JOIN epg_source_channels esc ON esc.source_key = es.key
+            LEFT JOIN channel_site_status css
+                ON css.xmltv_id = esc.xmltv_id AND css.site = esc.site
+            GROUP BY es.key
+        `);
+        const sources = rankEpgSources(result.rows.map((row: any) => ({
+            key: String(row.key),
+            provider: String(row.provider),
+            site: String(row.site),
+            label: String(row.label || row.site),
+            enabled: Number(row.enabled) === 1,
+            priority: Number(row.priority) || 0,
+            grab_capable: Number(row.grab_capable) === 1,
+            channelCountEstimate: row.channel_count_estimate === null || row.channel_count_estimate === undefined ? null : Number(row.channel_count_estimate),
+            importedRows: Number(row.imported_rows) || 0,
+            last_sync_at: row.last_sync_at ? Number(row.last_sync_at) : null,
+            last_sync_status: row.last_sync_status || null,
+            last_error: row.last_error || null,
+            notes: row.notes || '',
+            channels_success: Number(row.channels_success) || 0,
+            channels_failure: Number(row.channels_failure) || 0,
+            avg_programs: Math.round(Number(row.avg_programs) || 0),
+            last_attempt: row.last_attempt ? Number(row.last_attempt) : null
+        })));
+        res.json(sources);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/epg-sources/:key/toggle', requireAuth, async (req: any, res: any) => {
+    try {
+        const key = String(req.params.key);
+        const enabled = req.body?.enabled === true || req.body?.enabled === 1;
+        const result = await db.execute({
+            sql: `UPDATE epg_sources SET enabled = ? WHERE key = ?`,
+            args: [enabled ? 1 : 0, key]
+        });
+        invalidateIptvOrgCache();
+        res.json({ success: true, updated: result.rowsAffected || 0 });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/epg-sources/sync', requireAuth, async (req: any, res: any) => {
+    try {
+        updateIptvOrgData()
+            .then(() => invalidateIptvOrgCache())
+            .catch((e: any) => emitLog(`EPG source sync failed: ${e.message}`, 'error'));
+        res.json({ success: true, message: 'EPG source sync started in background.' });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/match/analysis', requireAuth, async (req: any, res: any) => {
+    try {
+        const channelsRes = await db.execute("SELECT id, name, group_title, matched_epg_id, match_type, enabled FROM channels");
+        const channels = channelsRes.rows;
+        
+        const total = channels.length;
+        let matchedCount = 0;
+        const typeBreakdown: Record<string, number> = {};
+        
+        for (const ch of channels) {
+            if (ch.matched_epg_id) {
+                matchedCount++;
+                let type = 'Auto Matched';
+                const matchTypeStr = String(ch.match_type || '');
+                if (matchTypeStr.includes('Manual Override')) type = 'Manual Override';
+                else if (matchTypeStr.includes('Confirmed Match')) type = 'User Confirmed';
+                else if (matchTypeStr.includes('Exact ID')) type = 'Exact ID Match';
+                else if (matchTypeStr.includes('Normalized ID')) type = 'Normalized ID Match';
+                else if (matchTypeStr.includes('Exact Name')) type = 'Exact Name Match';
+                else if (matchTypeStr.includes('Word-Order')) type = 'Word-Order Match';
+                else if (matchTypeStr.includes('Fuzzy')) type = 'Fuzzy Match';
+                
+                typeBreakdown[type] = (typeBreakdown[type] || 0) + 1;
+            } else {
+                typeBreakdown['Unmatched'] = (typeBreakdown['Unmatched'] || 0) + 1;
+            }
+        }
+        
+        res.json({
+            metrics: {
+                total,
+                matched: matchedCount,
+                unmatched: total - matchedCount,
+                match_rate: total > 0 ? Math.round((matchedCount / total) * 100) : 0
+            },
+            type_breakdown: typeBreakdown,
+            channels: channels.map(ch => ({
+                id: ch.id,
+                name: ch.name,
+                group: ch.group_title,
+                matched_epg_id: ch.matched_epg_id,
+                match_type: ch.match_type,
+                enabled: ch.enabled
+            }))
+        });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -1162,18 +1386,71 @@ app.get('/api/dvr', requireAuth, async (req: any, res: any) => {
 
 app.post('/api/dvr', requireAuth, async (req: any, res: any) => {
     try {
-        const { channel_id, program_title, start_time, end_time, stream_url } = req.body;
+        const {
+            channel_id,
+            channel_name,
+            program_title,
+            start_time,
+            end_time,
+            stream_url,
+            thumbnail,
+            sub_title,
+            episode_num,
+            description,
+            rating,
+            category
+        } = req.body;
 
         await db.execute({
-            sql: `INSERT INTO scheduled_recordings (channel_id, program_title, start_time, end_time, stream_url, status)
-                  VALUES (?, ?, ?, ?, ?, 'scheduled')`,
-            args: [channel_id, program_title, start_time, end_time, stream_url]
+            sql: `INSERT INTO scheduled_recordings (
+                    channel_id, channel_name, program_title, start_time, end_time, stream_url,
+                    thumbnail, sub_title, episode_num, description, rating, category, status
+                  )
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled')`,
+            args: [
+                channel_id,
+                channel_name || null,
+                program_title,
+                start_time,
+                end_time,
+                stream_url,
+                thumbnail || null,
+                sub_title || null,
+                episode_num || null,
+                description || null,
+                rating || null,
+                category || null
+            ]
         });
 
         // Check if we need to start it immediately (scheduler checks every 30s)
         checkScheduledRecordings();
 
         res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// GET /api/recordings/system - Public read-only DVR listing for the watch UI
+app.get('/api/recordings/system', async (req: any, res: any) => {
+    try {
+        const result = await db.execute(`
+            SELECT
+                sr.*,
+                c.name as channel_fallback_name,
+                c.tvg_logo as channel_logo,
+                ep.icon as program_icon
+            FROM scheduled_recordings sr
+            LEFT JOIN channels c ON c.id = sr.channel_id
+            LEFT JOIN manual_overrides mo ON mo.channel_id = sr.channel_id
+            LEFT JOIN epg_programs ep
+                ON ep.channel_id = COALESCE(mo.epg_id, c.matched_epg_id)
+                AND ep.title = sr.program_title
+                AND ep.start = strftime('%Y%m%d%H%M%S', sr.start_time) || ' +0000'
+            ORDER BY sr.start_time DESC
+        `);
+        res.json(result.rows.map((row: any) => mapSystemRecordingRow(row)));
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -1307,9 +1584,17 @@ app.get('/api/search-epg', requireAuth, async (req: any, res: any) => {
         const q = req.query.q as string;
         if (!q || q.length < 2) return res.json([]);
 
-        // Search in the full iptv_org_map table
+        // Search enabled grab-capable EPG source channels.
         const result = await db.execute({
-            sql: `SELECT xmltv_id as id, name as display_name FROM iptv_org_map WHERE name LIKE ? OR xmltv_id LIKE ? LIMIT 50`,
+            sql: `SELECT esc.xmltv_id as id, esc.name as display_name, esc.site, esc.source_key
+                  FROM epg_source_channels esc
+                  JOIN epg_sources es ON es.key = esc.source_key
+                  WHERE es.enabled = 1
+                  AND es.grab_capable = 1
+                  AND (esc.name LIKE ? OR esc.xmltv_id LIKE ?)
+                  GROUP BY esc.xmltv_id, esc.name, esc.site, esc.source_key
+                  ORDER BY es.priority DESC, COALESCE(es.channel_count_estimate, 0) DESC, esc.name
+                  LIMIT 50`,
             args: [`%${q}%`, `%${q}%`]
         });
 
@@ -1703,7 +1988,7 @@ app.get('/api/guide', async (req, res) => {
         // Get enabled channels with stream URLs
         let channelQuery = `
 SELECT
-c.id, c.name, c.group_title, c.url, c.tvg_logo, c.channel_number,
+c.id, c.name, c.group_title, c.url, c.tvg_id, c.tvg_logo, c.channel_number,
     COALESCE(mo.epg_id, c.matched_epg_id) as effective_epg_id
             FROM channels c
             LEFT JOIN manual_overrides mo ON c.id = mo.channel_id
@@ -1727,9 +2012,10 @@ c.id, c.name, c.group_title, c.url, c.tvg_logo, c.channel_number,
         channelQuery += ` ORDER BY c.channel_number ASC, c.name ASC`;
 
         const channelsRes = await db.execute({ sql: channelQuery, args });
+        const displayRows = dedupeChannelsForDisplay(channelsRes.rows as any[]);
 
         // Collect all EPG IDs to fetch programs in one query
-        const epgIds = channelsRes.rows
+        const epgIds = displayRows
             .map(c => c.effective_epg_id)
             .filter(Boolean) as string[];
 
@@ -1765,7 +2051,7 @@ c.id, c.name, c.group_title, c.url, c.tvg_logo, c.channel_number,
         }
 
         // Build response
-        const channels = channelsRes.rows.map(c => {
+        const channels = displayRows.map(c => {
             const epgId = c.effective_epg_id ? String(c.effective_epg_id) : null;
             const programs = epgId ? (programsMap.get(epgId) || []) : [];
             const currentProg = programs.find((p: any) => p.start <= nowStr && p.stop > nowStr);

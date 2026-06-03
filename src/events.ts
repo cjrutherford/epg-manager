@@ -8,8 +8,10 @@ export interface LogMessage {
     timestamp: number;
 }
 
+export type ProgressPhase = 'playlist' | 'metadata' | 'match' | 'grab' | 'enrich' | 'rebuild';
+
 export interface ProgressUpdate {
-    phase: 'match' | 'grab' | 'enrich';
+    phase: ProgressPhase;
     message: string;
     current: number;
     total: number;
@@ -25,17 +27,17 @@ export function emitLog(message: string, type: 'info' | 'success' | 'warning' | 
     // TUI handles all terminal output via eventBus
 }
 
-export function emitProgress(message: string, current: number, total: number, phase: 'match' | 'grab' | 'enrich' = 'grab') {
+export function emitProgress(message: string, current: number, total: number, phase: ProgressPhase = 'grab') {
     eventBus.emit('progress', {
         phase,
         message,
         current,
         total,
-        completed: total > 0 && current >= total
+        completed: false
     } as ProgressUpdate);
 }
 
-export function emitProgressComplete(phase: 'match' | 'grab' | 'enrich', message: string, total: number) {
+export function emitProgressComplete(phase: ProgressPhase, message: string, total: number) {
     eventBus.emit('progress', {
         phase,
         message,
@@ -44,4 +46,3 @@ export function emitProgressComplete(phase: 'match' | 'grab' | 'enrich', message
         completed: true
     } as ProgressUpdate);
 }
-

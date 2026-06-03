@@ -36,6 +36,7 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
 
     stages: SyncStage[] = [
         { id: 'playlist', label: 'Playlist', icon: '📋', status: 'idle' },
+        { id: 'metadata', label: 'Metadata', icon: '🧭', status: 'idle' },
         { id: 'match', label: 'Match', icon: '🔗', status: 'idle' },
         { id: 'grab', label: 'EPG Grab', icon: '📡', status: 'idle' },
         { id: 'enrich', label: 'Enrich', icon: '🎬', status: 'idle' },
@@ -69,10 +70,7 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
                             message: progData.message || progData.label || '',
                             completed: progData.completed || false
                         };
-                        this.setStageActive(phase);
-                        if (progData.completed) {
-                            this.setStageDone(phase);
-                        }
+                        this.applyStageStatus(phase, progData.message || '', progData.completed || false);
                     }
                 }
                 this.cdr.markForCheck();
@@ -131,8 +129,6 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
             }),
             this.sse.progressEvents.subscribe(evt => {
                 const phase = evt.phase;
-                const existing = this.progressBars[phase];
-                if (existing?.completed && !evt.completed) return;
 
                 this.progressBars[phase] = {
                     current: evt.current,
@@ -144,32 +140,12 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
                 this.syncStarted = true;
                 this.progressCollapsed = false;
 
-                if (phase === 'match') {
-                    this.setStageActive('playlist');
-                    this.setStageActive('match');
-                } else if (phase === 'grab') {
-                    this.setStageDone('playlist');
-                    this.setStageDone('match');
-                    this.setStageActive('grab');
-                } else if (phase === 'enrich') {
-                    this.setStageDone('grab');
-                    this.setStageActive('enrich');
-                }
-
-                if (evt.completed) {
-                    this.setStageDone(phase);
-                }
-
-                // Detect sync completion
-                if (evt.phase === 'enrich' && evt.completed) {
-                    this.setStageDone('enrich');
-                    this.setStageActive('rebuild');
-                    setTimeout(() => this.setStageDone('rebuild'), 2000);
-                    setTimeout(() => {
-                        this.syncStarted = false;
-                        this.cdr.markForCheck();
-                    }, 3000);
-                }
+                this.applyStageStatus(phase, evt.message || evt.label || '', evt.completed || false);
+                this.cdr.markForCheck();
+            }),
+            this.sse.reportEvents.subscribe(() => {
+                this.syncStarted = false;
+                this.loadData();
                 this.cdr.markForCheck();
             })
         );
@@ -182,16 +158,19 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
     }
 
     get activePhases(): string[] {
-        const order = ['match', 'grab', 'enrich'];
+        const order = ['playlist', 'metadata', 'match', 'grab', 'enrich', 'rebuild'];
         const keys = Object.keys(this.progressBars);
         return order.filter(p => keys.includes(p)).concat(keys.filter(p => !order.includes(p)));
     }
 
     getPhaseLabel(phase: string): string {
         const labels: Record<string, string> = {
+            playlist: '📋 Playlist',
+            metadata: '🧭 Metadata',
             match: '🔗 Matching',
             grab: '📡 Grabbing EPG',
-            enrich: '🎬 Enriching'
+            enrich: '🎬 Enriching',
+            rebuild: '📦 Rebuilding Files'
         };
         return labels[phase] || phase;
     }
@@ -262,6 +241,7 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
 
     private resetStages(): void {
         this.stages.forEach(s => s.status = 'idle');
+        this.progressBars = {};
     }
 
     private setStageActive(id: string): void {
@@ -272,6 +252,24 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
     private setStageDone(id: string): void {
         const s = this.stages.find(s => s.id === id);
         if (s) s.status = 'done';
+    }
+
+    private setStageError(id: string): void {
+        const s = this.stages.find(s => s.id === id);
+        if (s) s.status = 'error';
+    }
+
+    private applyStageStatus(phase: string, message: string, completed: boolean): void {
+        const stage = this.stages.find(s => s.id === phase);
+        if (!stage) return;
+
+        if (/cancelled|failed|error/i.test(message)) {
+            this.setStageError(phase);
+        } else if (completed) {
+            this.setStageDone(phase);
+        } else {
+            this.setStageActive(phase);
+        }
     }
 
     getStageClass(stage: SyncStage): string {

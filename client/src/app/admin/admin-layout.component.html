@@ -41,6 +41,10 @@
                 <lucide-icon name="disc" class="icon"></lucide-icon>
                 <span>DVR</span>
             </a>
+            <a routerLink="diagnostics" routerLinkActive="active" class="nav-item">
+                <lucide-icon name="activity" class="icon"></lucide-icon>
+                <span>EPG & Matches</span>
+            </a>
             <a routerLink="settings" routerLinkActive="active" class="nav-item">
                 <lucide-icon name="settings" class="icon"></lucide-icon>
                 <span>Settings</span>
@@ -48,6 +52,36 @@
         </nav>
 
         <div class="sidebar-footer">
+            <!-- Theme Picker -->
+            <div class="sidebar-theme-picker">
+                <button class="nav-item" (click)="toggleThemePicker()">
+                    <lucide-icon name="palette" class="icon"></lucide-icon>
+                    <span>Theme</span>
+                    <span class="theme-indicator" [style.background]="themeService.themes[0].primaryColor"
+                        *ngFor="let t of [themeService.themes | keyvalue]; let first = first"
+                        style="display:none"></span>
+                </button>
+                @if (themePickerOpen) {
+                <div class="theme-dropdown">
+                    <div class="theme-dropdown-title">Choose Theme</div>
+                    @for (theme of themeService.getThemes(); track theme.key) {
+                    <button class="theme-option"
+                        [class.active]="themeService.getCurrentThemeKey() === theme.key"
+                        (click)="setTheme(theme.key)">
+                        <span class="theme-swatch-group">
+                            <span class="theme-swatch" [style.background]="theme.primaryColor"></span>
+                            <span class="theme-swatch" [style.background]="theme.bgColor"></span>
+                        </span>
+                        <span class="theme-label">{{ theme.name }}</span>
+                        @if (themeService.getCurrentThemeKey() === theme.key) {
+                        <span class="theme-check">✓</span>
+                        }
+                    </button>
+                    }
+                </div>
+                }
+            </div>
+
             <a routerLink="/watch" class="nav-item nav-item-watch">
                 <lucide-icon name="play" class="icon"></lucide-icon>
                 <span>Watch TV</span>

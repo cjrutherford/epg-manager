@@ -19,16 +19,29 @@
     --color-primary-dim: rgba(var(--color-primary-rgb), 0.15);
     --color-primary-glow: rgba(var(--color-primary-rgb), 0.4);
     --color-secondary: #8b7355;
+    --color-secondary-rgb: 139, 115, 85;
     
-    /* Supporting Colors */
+    /* Supporting Colors — with RGB companions */
     --color-success: #7fb685;
+    --color-success-rgb: 127, 182, 133;
     --color-danger: #c75d5d;
+    --color-danger-rgb: 199, 93, 93;
     --color-warning: #d4a843;
+    --color-warning-rgb: 212, 168, 67;
+    --color-info: #6ba3d6;
+    --color-info-rgb: 107, 163, 214;
     
     /* Text - Warm Whites */
     --text-primary: #f5f2eb;
     --text-secondary: #9a9285;
     --text-muted: #5c554a;
+    
+    /* Semantic Surface & Border tokens (adapt to light/dark) */
+    --bg-surface: rgba(10, 8, 6, 0.5);
+    --bg-surface-hover: rgba(var(--color-primary-rgb), 0.06);
+    --bg-inset: rgba(0, 0, 0, 0.2);
+    --border-subtle: rgba(255, 255, 255, 0.06);
+    --border-medium: rgba(255, 255, 255, 0.1);
     
     /* Glass Effects - Darker, Warmer */
     --bg-glass: rgba(15, 12, 10, 0.75);
@@ -39,6 +52,7 @@
     --font-heading: 'Syne', 'Libre Franklin', sans-serif;
     --font-display: 'Cormorant Garamond', serif;
     --font-body: 'Libre Franklin', sans-serif;
+    --font-sans: 'Libre Franklin', sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
     
     /* Borders & Shadows */
@@ -48,6 +62,7 @@
     --shadow-glass: 0 8px 40px rgba(0, 0, 0, 0.6);
     --shadow-glow: 0 0 30px rgba(var(--color-primary-rgb), 0.15);
     --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 6px 24px rgba(0, 0, 0, 0.35);
     
     /* Blur */
     --backdrop-blur: blur(20px);
@@ -65,90 +80,164 @@
     /* Transitions */
     --ease-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
     --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+    
+    /* Theme texture (overridden per theme) */
+    --theme-texture: none;
+    --theme-texture-opacity: 0;
 }
 
 /* ===========================================
    Theme Custom Overrides
    =========================================== */
 
-/* 1. Neon Cyberpunk */
+/* 1. Neon Cyberpunk — Digital grid, scan-lines, hot neon */
 body.theme-neon-cyberpunk {
     --bg-deep: #0c0614;
     --bg-void: #05020a;
-    --bg-gradient: radial-gradient(ellipse at 30% 0%, rgba(255, 0, 127, 0.22) 0%, var(--bg-deep) 60%),
-                   radial-gradient(ellipse at 70% 100%, rgba(0, 240, 255, 0.18) 0%, var(--bg-deep) 50%),
+    --bg-gradient: radial-gradient(ellipse at 20% 0%, rgba(255, 0, 127, 0.25) 0%, var(--bg-deep) 55%),
+                   radial-gradient(ellipse at 80% 100%, rgba(0, 240, 255, 0.22) 0%, var(--bg-deep) 45%),
+                   radial-gradient(circle at 50% 50%, rgba(100, 0, 255, 0.08) 0%, transparent 70%),
                    linear-gradient(180deg, #0d0615 0%, var(--bg-deep) 100%);
     --color-primary: #00f0ff;
     --color-primary-rgb: 0, 240, 255;
     --color-primary-dark: #00a2ff;
     --color-primary-text: #0c0614;
     --color-primary-dim: rgba(0, 240, 255, 0.15);
-    --color-primary-glow: rgba(0, 240, 255, 0.4);
+    --color-primary-glow: rgba(0, 240, 255, 0.5);
     --color-secondary: #ff007f;
+    --color-secondary-rgb: 255, 0, 127;
+    --color-success: #39ff14;
+    --color-success-rgb: 57, 255, 20;
+    --color-danger: #ff2d55;
+    --color-danger-rgb: 255, 45, 85;
+    --color-warning: #ffe100;
+    --color-warning-rgb: 255, 225, 0;
+    --color-info: #00b4ff;
+    --color-info-rgb: 0, 180, 255;
     --text-primary: #f3e8ff;
     --text-secondary: #a78bfa;
     --text-muted: #6d44b8;
+    --bg-surface: rgba(13, 6, 21, 0.6);
+    --bg-surface-hover: rgba(0, 240, 255, 0.08);
+    --bg-inset: rgba(0, 0, 0, 0.3);
+    --border-subtle: rgba(0, 240, 255, 0.06);
+    --border-medium: rgba(0, 240, 255, 0.12);
     --bg-glass: rgba(13, 6, 21, 0.85);
     --bg-glass-strong: rgba(18, 9, 29, 0.95);
+    --bg-glass-light: rgba(0, 240, 255, 0.03);
     --border-glass: 1px solid rgba(0, 240, 255, 0.15);
     --border-glow: 1px solid rgba(0, 240, 255, 0.5);
-    --shadow-glow: 0 0 30px rgba(0, 240, 255, 0.2);
+    --shadow-glow: 0 0 30px rgba(0, 240, 255, 0.25);
+    --shadow-md: 0 6px 24px rgba(0, 0, 0, 0.5);
+    --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.5);
+    /* Scan-line texture */
+    --theme-texture: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 240, 255, 0.015) 2px,
+        rgba(0, 240, 255, 0.015) 4px
+    );
+    --theme-texture-opacity: 1;
 }
 
-/* 2. Midnight Forest */
+/* 2. Midnight Forest — Deep woodland, organic warmth, bioluminescent */
 body.theme-midnight-forest {
     --bg-deep: #08100c;
     --bg-void: #040806;
-    --bg-gradient: radial-gradient(ellipse at 30% 0%, rgba(60, 208, 112, 0.15) 0%, var(--bg-deep) 60%),
-                   radial-gradient(ellipse at 70% 100%, rgba(20, 40, 30, 0.3) 0%, var(--bg-deep) 50%),
+    --bg-gradient: radial-gradient(ellipse at 25% 10%, rgba(60, 208, 112, 0.18) 0%, var(--bg-deep) 55%),
+                   radial-gradient(ellipse at 75% 90%, rgba(20, 60, 30, 0.25) 0%, var(--bg-deep) 50%),
+                   radial-gradient(circle at 60% 40%, rgba(157, 168, 108, 0.06) 0%, transparent 60%),
                    linear-gradient(180deg, #060c09 0%, var(--bg-deep) 100%);
     --color-primary: #3cd070;
     --color-primary-rgb: 60, 208, 112;
     --color-primary-dark: #1b9a4c;
     --color-primary-text: #08100c;
     --color-primary-dim: rgba(60, 208, 112, 0.15);
-    --color-primary-glow: rgba(60, 208, 112, 0.4);
+    --color-primary-glow: rgba(60, 208, 112, 0.35);
     --color-secondary: #9da86c;
+    --color-secondary-rgb: 157, 168, 108;
+    --color-success: #34d399;
+    --color-success-rgb: 52, 211, 153;
+    --color-danger: #e07070;
+    --color-danger-rgb: 224, 112, 112;
+    --color-warning: #d4a843;
+    --color-warning-rgb: 212, 168, 67;
+    --color-info: #6ee7b7;
+    --color-info-rgb: 110, 231, 183;
     --text-primary: #ecfdf5;
     --text-secondary: #a7f3d0;
     --text-muted: #1e5e43;
+    --bg-surface: rgba(8, 16, 12, 0.5);
+    --bg-surface-hover: rgba(60, 208, 112, 0.06);
+    --bg-inset: rgba(0, 0, 0, 0.2);
+    --border-subtle: rgba(60, 208, 112, 0.06);
+    --border-medium: rgba(60, 208, 112, 0.12);
     --bg-glass: rgba(8, 16, 12, 0.85);
     --bg-glass-strong: rgba(12, 24, 18, 0.95);
+    --bg-glass-light: rgba(60, 208, 112, 0.03);
     --border-glass: 1px solid rgba(60, 208, 112, 0.15);
     --border-glow: 1px solid rgba(60, 208, 112, 0.5);
     --shadow-glow: 0 0 30px rgba(60, 208, 112, 0.2);
+    --shadow-md: 0 6px 24px rgba(0, 0, 0, 0.4);
+    --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.45);
 }
 
-/* 3. Cosmic Purple */
+/* 3. Cosmic Purple — Nebula depths, stellar glow, pink accents */
 body.theme-cosmic-purple {
     --bg-deep: #090514;
     --bg-void: #04020a;
-    --bg-gradient: radial-gradient(ellipse at 30% 0%, rgba(168, 85, 247, 0.2) 0%, var(--bg-deep) 60%),
-                   radial-gradient(ellipse at 70% 100%, rgba(236, 72, 153, 0.15) 0%, var(--bg-deep) 50%),
+    --bg-gradient: radial-gradient(ellipse at 25% 5%, rgba(168, 85, 247, 0.25) 0%, var(--bg-deep) 55%),
+                   radial-gradient(ellipse at 75% 95%, rgba(236, 72, 153, 0.18) 0%, var(--bg-deep) 50%),
+                   radial-gradient(circle at 40% 60%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
                    linear-gradient(180deg, #07040f 0%, var(--bg-deep) 100%);
     --color-primary: #a855f7;
     --color-primary-rgb: 168, 85, 247;
     --color-primary-dark: #7e22ce;
     --color-primary-text: #faf5ff;
     --color-primary-dim: rgba(168, 85, 247, 0.15);
-    --color-primary-glow: rgba(168, 85, 247, 0.4);
+    --color-primary-glow: rgba(168, 85, 247, 0.45);
     --color-secondary: #ec4899;
+    --color-secondary-rgb: 236, 72, 153;
+    --color-success: #a78bfa;
+    --color-success-rgb: 167, 139, 250;
+    --color-danger: #f472b6;
+    --color-danger-rgb: 244, 114, 182;
+    --color-warning: #fbbf24;
+    --color-warning-rgb: 251, 191, 36;
+    --color-info: #818cf8;
+    --color-info-rgb: 129, 140, 248;
     --text-primary: #faf5ff;
     --text-secondary: #d8b4fe;
     --text-muted: #7e3eb8;
+    --bg-surface: rgba(9, 5, 20, 0.5);
+    --bg-surface-hover: rgba(168, 85, 247, 0.08);
+    --bg-inset: rgba(0, 0, 0, 0.25);
+    --border-subtle: rgba(168, 85, 247, 0.06);
+    --border-medium: rgba(168, 85, 247, 0.12);
     --bg-glass: rgba(9, 5, 20, 0.85);
     --bg-glass-strong: rgba(14, 8, 30, 0.95);
+    --bg-glass-light: rgba(168, 85, 247, 0.03);
     --border-glass: 1px solid rgba(168, 85, 247, 0.15);
     --border-glow: 1px solid rgba(168, 85, 247, 0.5);
     --shadow-glow: 0 0 30px rgba(168, 85, 247, 0.2);
+    --shadow-md: 0 6px 24px rgba(0, 0, 0, 0.45);
+    --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.5);
+    /* Subtle star-field dots */
+    --theme-texture: radial-gradient(1px 1px at 20% 30%, rgba(168, 85, 247, 0.3), transparent),
+                     radial-gradient(1px 1px at 60% 70%, rgba(236, 72, 153, 0.2), transparent),
+                     radial-gradient(1px 1px at 80% 20%, rgba(255, 255, 255, 0.15), transparent),
+                     radial-gradient(1px 1px at 40% 80%, rgba(168, 85, 247, 0.2), transparent);
+    --theme-texture-opacity: 1;
 }
 
-/* 4. Arctic Ice (Light Mode) */
+/* 4. Arctic Ice (Light Mode) — Frosted glass, crisp blue, clean shadows */
 body.theme-arctic-ice {
     --bg-deep: #f1f5f9;
     --bg-void: #e2e8f0;
     --bg-gradient: radial-gradient(ellipse at 30% 0%, rgba(37, 99, 235, 0.08) 0%, var(--bg-deep) 60%),
                    radial-gradient(ellipse at 70% 100%, rgba(203, 213, 225, 0.3) 0%, var(--bg-deep) 50%),
+                   radial-gradient(circle at 50% 0%, rgba(147, 197, 253, 0.12) 0%, transparent 50%),
                    linear-gradient(180deg, #f8fafc 0%, var(--bg-deep) 100%);
     --color-primary: #2563eb;
     --color-primary-rgb: 37, 99, 235;
@@ -157,9 +246,23 @@ body.theme-arctic-ice {
     --color-primary-dim: rgba(37, 99, 235, 0.08);
     --color-primary-glow: rgba(37, 99, 235, 0.25);
     --color-secondary: #64748b;
+    --color-secondary-rgb: 100, 116, 139;
+    --color-success: #16a34a;
+    --color-success-rgb: 22, 163, 74;
+    --color-danger: #dc2626;
+    --color-danger-rgb: 220, 38, 38;
+    --color-warning: #d97706;
+    --color-warning-rgb: 217, 119, 6;
+    --color-info: #2563eb;
+    --color-info-rgb: 37, 99, 235;
     --text-primary: #0f172a;
     --text-secondary: #334155;
     --text-muted: #64748b;
+    --bg-surface: rgba(255, 255, 255, 0.6);
+    --bg-surface-hover: rgba(37, 99, 235, 0.04);
+    --bg-inset: rgba(15, 23, 42, 0.04);
+    --border-subtle: rgba(15, 23, 42, 0.08);
+    --border-medium: rgba(15, 23, 42, 0.12);
     --bg-glass: rgba(255, 255, 255, 0.8);
     --bg-glass-strong: rgba(255, 255, 255, 0.95);
     --bg-glass-light: rgba(15, 23, 42, 0.03);
@@ -168,6 +271,8 @@ body.theme-arctic-ice {
     --shadow-glass: 0 8px 30px rgba(15, 23, 42, 0.08);
     --shadow-glow: 0 0 20px rgba(37, 99, 235, 0.08);
     --shadow-card: 0 4px 15px rgba(15, 23, 42, 0.05);
+    --shadow-md: 0 6px 24px rgba(15, 23, 42, 0.08);
+    --theme-texture-opacity: 0;
 }
 
 * {
@@ -190,7 +295,18 @@ body {
     line-height: 1.6;
     min-height: 100vh;
     position: relative;
-    transition: background-color 0.4s var(--ease-smooth), color 0.4s var(--ease-smooth), border-color 0.4s var(--ease-smooth), box-shadow 0.4s var(--ease-smooth);
+    transition: background-color 0.5s var(--ease-smooth),
+               color 0.5s var(--ease-smooth),
+               border-color 0.5s var(--ease-smooth),
+               box-shadow 0.5s var(--ease-smooth),
+               background-image 0.5s var(--ease-smooth);
+}
+
+/* Smooth theme transition on all themed elements */
+body * {
+    transition-property: color, background-color, border-color, box-shadow, fill, stroke;
+    transition-duration: 0.35s;
+    transition-timing-function: var(--ease-smooth);
 }
 
 /* Subtle film grain overlay */
@@ -202,6 +318,18 @@ body::before {
     opacity: 0.03;
     pointer-events: none;
     z-index: 9999;
+}
+
+/* Per-theme texture overlay */
+body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: var(--theme-texture);
+    background-size: 200px 200px;
+    opacity: var(--theme-texture-opacity);
+    pointer-events: none;
+    z-index: 9998;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -239,6 +367,7 @@ code, pre, .mono {
     border-radius: var(--radius-md);
     padding: 28px;
     transition: transform 0.4s var(--ease-smooth), box-shadow 0.4s var(--ease-smooth), border-color 0.4s;
+    will-change: transform;
 }
 
 .glass-card:hover {
@@ -260,6 +389,32 @@ code, pre, .mono {
     position: relative;
     overflow: hidden;
     transition: all 0.35s var(--ease-smooth);
+}
+
+.btn:focus,
+.btn-primary:focus,
+.btn-secondary:focus,
+.icon-btn:focus,
+input:focus,
+select:focus,
+textarea:focus,
+.themed-select:focus,
+.themed-input:focus {
+    outline: none;
+}
+
+.btn:focus-visible,
+.btn-primary:focus-visible,
+.btn-secondary:focus-visible,
+.icon-btn:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+.themed-select:focus-visible,
+.themed-input:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px rgba(var(--color-primary-rgb), 0.15);
 }
 
 .btn::before {
@@ -383,27 +538,33 @@ input::placeholder {
 }
 
 .badge-success {
-    background: rgba(127, 182, 133, 0.12);
+    background: rgba(var(--color-success-rgb), 0.12);
     color: var(--color-success);
-    border: 1px solid rgba(127, 182, 133, 0.25);
+    border: 1px solid rgba(var(--color-success-rgb), 0.25);
 }
 
 .badge-warning {
-    background: rgba(212, 168, 67, 0.12);
+    background: rgba(var(--color-warning-rgb), 0.12);
     color: var(--color-warning);
-    border: 1px solid rgba(212, 168, 67, 0.25);
+    border: 1px solid rgba(var(--color-warning-rgb), 0.25);
 }
 
 .badge-danger {
-    background: rgba(199, 93, 93, 0.12);
+    background: rgba(var(--color-danger-rgb), 0.12);
     color: var(--color-danger);
-    border: 1px solid rgba(199, 93, 93, 0.25);
+    border: 1px solid rgba(var(--color-danger-rgb), 0.25);
 }
 
 .badge-primary {
     background: rgba(var(--color-primary-rgb), 0.12);
     color: var(--color-primary);
     border: 1px solid rgba(var(--color-primary-rgb), 0.25);
+}
+
+.badge-info {
+    background: rgba(var(--color-info-rgb), 0.12);
+    color: var(--color-info);
+    border: 1px solid rgba(var(--color-info-rgb), 0.25);
 }
 
 /* ─── Text Utilities ───────────────────────── */
@@ -414,6 +575,7 @@ input::placeholder {
 .text-secondary { color: var(--text-secondary); }
 
 .hidden { display: none !important; }
+.w-full { width: 100%; }
 
 /* ─── Stats Grid ───────────────────────────── */
 .stats-grid {
@@ -448,6 +610,7 @@ input::placeholder {
     background: linear-gradient(135deg, rgba(var(--color-primary-rgb), 0.06) 0%, rgba(10, 8, 6, 0.5) 100%);
     transform: translateY(-3px);
     border-color: rgba(var(--color-primary-rgb), 0.15);
+    box-shadow: var(--shadow-glow);
 }
 
 .stat-item:hover::before {
@@ -671,4 +834,46 @@ tbody tr:hover {
 
 .animate-fade-up {
     animation: fadeUp 0.5s var(--ease-smooth) forwards;
+}
+
+.stagger-fade-in {
+    animation: fadeUp 0.5s var(--ease-smooth);
+    animation-fill-mode: both;
+    animation-delay: var(--delay, 0s);
+}
+
+/* ─── Screen Reader Only ───────────────────── */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ─── Elegant Gradient Headers for Admin Pages ────────────────── */
+.dashboard h1,
+.channel-manager h1,
+.diagnostics-page h1,
+.dvr-page h1,
+.settings-page h1 {
+    font-size: 1.8rem !important;
+    font-weight: 700;
+    margin: 0 0 24px 0;
+    background: linear-gradient(135deg, var(--text-primary) 0%, rgba(var(--color-primary-rgb), 0.75) 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+}
+
+/* ─── Reduced Motion ───────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation: none !important;
+        transition-duration: 0.01ms !important;
+    }
 }

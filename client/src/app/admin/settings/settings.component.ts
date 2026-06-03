@@ -1,4 +1,4 @@
-import { Component, OnInit, Inject, PLATFORM_ID } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit, Inject, PLATFORM_ID } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
@@ -41,7 +41,12 @@ export class SettingsComponent implements OnInit {
     loading = true;
     private isBrowser: boolean;
 
-    constructor(private api: ApiService, private toast: ToastService, @Inject(PLATFORM_ID) platformId: Object) {
+    constructor(
+        private api: ApiService,
+        private toast: ToastService,
+        private cdr: ChangeDetectorRef,
+        @Inject(PLATFORM_ID) platformId: Object
+    ) {
         this.isBrowser = isPlatformBrowser(platformId);
     }
 
@@ -86,6 +91,7 @@ export class SettingsComponent implements OnInit {
             console.error(e);
         } finally {
             this.loading = false;
+            this.cdr.detectChanges();
         }
     }
 
@@ -99,6 +105,7 @@ export class SettingsComponent implements OnInit {
             this.iptvOrgFiles = [];
         } finally {
             this.iptvOrgLoading = false;
+            this.cdr.detectChanges();
         }
     }
 
@@ -113,6 +120,7 @@ export class SettingsComponent implements OnInit {
             this.toast.show('Failed to sync iptv-org repository. Check terminal logs.', 'error');
         } finally {
             this.iptvOrgSyncing = false;
+            this.cdr.detectChanges();
         }
     }
 
@@ -178,11 +186,6 @@ export class SettingsComponent implements OnInit {
     }
 
     async saveConfig(): Promise<void> {
-        if (this.selectedPlaylists.length === 0) {
-            this.toast.show('Select or enter at least one playlist URL', 'warning');
-            return;
-        }
-
         this.savingConfig = true;
         try {
             const rangesObj: Record<string, number> = {};
@@ -192,14 +195,17 @@ export class SettingsComponent implements OnInit {
 
             await this.api.saveConfig({
                 playlist_urls: this.selectedPlaylists,
-                playlist_url: this.selectedPlaylists[0],
+                playlist_url: this.selectedPlaylists[0] || '',
                 epg_days: this.epgDays,
                 channel_numbering_mode: this.channelNumberingMode,
                 custom_channel_ranges: JSON.stringify(rangesObj)
             }).toPromise();
             this.toast.show('Configuration saved!', 'success');
         } catch { this.toast.show('Save failed', 'error'); }
-        finally { this.savingConfig = false; }
+        finally {
+            this.savingConfig = false;
+            this.cdr.detectChanges();
+        }
     }
 
     addCustomRange(): void {

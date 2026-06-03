@@ -3,13 +3,14 @@ import { db, DB_DIR } from '../db';
 import * as zlib from 'zlib';
 import { promisify } from 'util';
 import Fuse from 'fuse.js';
-import { emitLog, emitProgress, eventBus } from '../events';
+import { emitLog, emitProgress, emitProgressComplete, eventBus } from '../events';
 import { startJob, completeJob } from '../job';
 import * as fs from 'fs';
 import * as path from 'path';
 import sax from 'sax';
 import { StringDecoder } from 'string_decoder';
 import { updateIptvOrgData } from './iptv-org';
+import { dedupeChannelsForDisplay } from './channel-dedup';
 // cliProgress removed
 
 const gunzip = promisify(zlib.gunzip);
@@ -45,16 +46,37 @@ async function ensureIptvOrgCache(): Promise<IptvOrgCache> {
     emitLog('Loading IPTV-ORG matching data into cache...', 'info');
 
     const iptvOrgChannels = (await db.execute(`
-        SELECT xmltv_id, name, site, site_id FROM iptv_org_map 
-        WHERE site IS NOT NULL AND site_id IS NOT NULL
+        SELECT esc.xmltv_id, esc.name, esc.site, esc.site_id, esc.lang, esc.source_key
+        FROM epg_source_channels esc
+        JOIN epg_sources es ON es.key = esc.source_key
+        WHERE es.enabled = 1
+        AND es.grab_capable = 1
+        AND esc.site IS NOT NULL
+        AND esc.site_id IS NOT NULL
     `)).rows;
+    const guideChannels = (await db.execute(`
+        SELECT
+            ec.id as xmltv_id,
+            ec.display_name as name,
+            NULL as site,
+            NULL as site_id,
+            NULL as lang,
+            ec.source as source_key,
+            'guide' as source_type
+        FROM epg_channels ec
+        JOIN epg_sources es ON es.key = ec.source
+        WHERE es.enabled = 1
+        AND ec.id IS NOT NULL
+        AND ec.display_name IS NOT NULL
+    `)).rows;
+    const matchChannels = [...iptvOrgChannels, ...guideChannels];
 
     const idMap = new Map();
     const normalizedIdMap = new Map();
     const nameMap = new Map();
     const nameWordMap = new Map();
 
-    for (const row of iptvOrgChannels) {
+    for (const row of matchChannels) {
         const xmltvId = String(row.xmltv_id);
         idMap.set(xmltvId.toLowerCase(), row);
 
@@ -70,14 +92,14 @@ async function ensureIptvOrgCache(): Promise<IptvOrgCache> {
         }
     }
 
-    const iptvFuse = new Fuse(iptvOrgChannels, {
+    const iptvFuse = new Fuse(matchChannels, {
         keys: ['name', 'xmltv_id'],
         threshold: 0.35,
         includeScore: true
     });
 
     iptvOrgCache = { idMap, normalizedIdMap, nameMap, nameWordMap, iptvFuse, version: iptvOrgCacheVersion };
-    emitLog(`IPTV-ORG cache loaded: ${iptvOrgChannels.length} entries, ${idMap.size} IDs, ${nameMap.size} names.`, 'info');
+    emitLog(`EPG matching cache loaded: ${matchChannels.length} entries (${iptvOrgChannels.length} IPTV-org, ${guideChannels.length} guide), ${idMap.size} IDs, ${nameMap.size} names.`, 'info');
     return iptvOrgCache;
 }
 
@@ -126,10 +148,10 @@ export function getText(val: any): string {
         .replace(/'/g, '&apos;');
 }
 
-export async function processEpg(epgUrls: string[], options: { skipIptvUpdate?: boolean, skipMatching?: boolean } = {}): Promise<Record<string, number>> {
+export async function processEpg(epgUrls: string[], options: { skipIptvUpdate?: boolean, skipMatching?: boolean, skipJob?: boolean } = {}): Promise<Record<string, number>> {
     if (typeof epgUrls === 'string') epgUrls = [epgUrls];
 
-    startJob();
+    if (!options.skipJob) startJob();
     let totalChannelsProcessed = 0;
     let totalProgramsProcessed = 0;
 
@@ -455,22 +477,98 @@ export async function processEpg(epgUrls: string[], options: { skipIptvUpdate?: 
     return programCounts;
 }
 
+export function calculateMatchScore(
+    ch: any,
+    candidate: any,
+    type: string,
+    fuseScore = 1.0
+): { score: number; reason: string } {
+    let score = 0;
+    let reason = "";
+
+    // Base score based on how the candidate was found
+    if (type === 'exact_id') {
+        score += 0.90;
+        reason = "Exact ID Match";
+    } else if (type === 'normalized_id') {
+        score += 0.85;
+        reason = "Normalized ID Match";
+    } else if (type === 'exact_name') {
+        score += 0.80;
+        reason = "Exact Name Match";
+    } else if (type === 'word_order') {
+        score += 0.75;
+        reason = "Word-Order Name Match";
+    } else if (type === 'fuzzy') {
+        const similarity = 1 - fuseScore;
+        score += 0.50 * similarity;
+        reason = `Fuzzy Name Match (${fuseScore.toFixed(2)})`;
+    }
+
+    // Additional signals:
+    
+    // Country / Language Matching
+    const channelNameUpper = String(ch.name || '').toUpperCase();
+    const groupNameUpper = String(ch.group_title || '').toUpperCase();
+    
+    const countries = ['US', 'USA', 'UK', 'GB', 'CA', 'CANADA', 'FR', 'FRANCE', 'DE', 'GERMANY', 'ES', 'SPAIN', 'MX', 'MEXICO', 'IT', 'ITALY'];
+    let streamCountry = '';
+    
+    for (const country of countries) {
+        const regex = new RegExp(`\\b${country}\\b`, 'i');
+        if (regex.test(channelNameUpper) || regex.test(groupNameUpper)) {
+            streamCountry = country;
+            break;
+        }
+    }
+    
+    const xmltvIdUpper = String(candidate.xmltv_id || '').toUpperCase();
+    const candidateLangUpper = String(candidate.lang || '').toUpperCase();
+    
+    if (streamCountry) {
+        let epgCountry = '';
+        for (const country of countries) {
+            if (xmltvIdUpper.endsWith('.' + country) || xmltvIdUpper.includes('_' + country)) {
+                epgCountry = country;
+                break;
+            }
+        }
+        
+        if (epgCountry) {
+            if (epgCountry === streamCountry || 
+                (streamCountry === 'US' && epgCountry === 'USA') ||
+                (streamCountry === 'USA' && epgCountry === 'US') ||
+                (streamCountry === 'UK' && epgCountry === 'GB') ||
+                (streamCountry === 'GB' && epgCountry === 'UK')) {
+                score += 0.25;
+                reason += " + Country Match";
+            } else {
+                score -= 0.40;
+                reason += " - Country Mismatch";
+            }
+        } else {
+            const isLangMatch = (streamCountry === 'US' || streamCountry === 'USA' || streamCountry === 'UK' || streamCountry === 'GB' || streamCountry === 'CA') && candidateLangUpper === 'EN' ||
+                                (streamCountry === 'FR' || streamCountry === 'FRANCE') && candidateLangUpper === 'FR' ||
+                                (streamCountry === 'DE' || streamCountry === 'GERMANY') && candidateLangUpper === 'DE' ||
+                                (streamCountry === 'ES' || streamCountry === 'SPAIN' || streamCountry === 'MX' || streamCountry === 'MEXICO') && candidateLangUpper === 'ES';
+            if (isLangMatch) {
+                score += 0.15;
+                reason += " + Lang Match";
+            }
+        }
+    }
+
+    return { score, reason };
+}
+
 /**
- * Match all channels in the database against IPTV-ORG metadata
- * Priorities: 
- * 1. Exact match on tvg-id vs xmltv-id
- * 2. Exact match on clean name vs iptv name
- * 3. Fuzzy match on name
- * 
- * @param onMatch - Optional callback fired with batches of newly matched xmltv_ids.
- *                  Fires every GRAB_BATCH_SIZE matches so the caller can start
- *                  EPG grabs immediately rather than waiting for all matching to finish.
+ * Match all channels in the database against IPTV-ORG metadata using a weighted scoring model.
  */
 export async function matchChannelsToIptvOrg(
     onMatch?: (newlyMatchedIds: string[]) => void
 ): Promise<number> {
-    emitLog("Starting full channel matching against IPTV-ORG metadata...", "info");
-    const GRAB_BATCH_SIZE = 25; // Fire onMatch callback every N new matches — lower for faster pipeline streaming
+    emitLog("Starting full channel matching against IPTV-ORG metadata (Weighted Scoring Model)...", "info");
+    const GRAB_BATCH_SIZE = 25; // Fire onMatch callback every N new matches
     const UPDATE_BATCH_SIZE = 100; // Batch DB writes to reduce transaction overhead
 
     // 1. Get all channels from our playlist
@@ -479,14 +577,19 @@ export async function matchChannelsToIptvOrg(
         emitLog("No channels found in database to match.", "warning");
         return 0;
     }
+    const matchingChannels = dedupeChannelsForDisplay(dbChannels as any[]);
+    const duplicateCount = dbChannels.length - matchingChannels.length;
+    if (duplicateCount > 0) {
+        emitLog(`Skipping ${duplicateCount} duplicate channel entries during matching.`, "info");
+    }
 
-    // 2. Get IPTV-ORG metadata from cache (loaded once per sync cycle)
+    // 2. Get IPTV-ORG metadata from cache
     const cache = await ensureIptvOrgCache();
     const { idMap, normalizedIdMap, nameMap, nameWordMap, iptvFuse } = cache;
 
     let matchedCount = 0;
     const pendingGrabIds: string[] = [];
-    const total = dbChannels.length;
+    const total = matchingChannels.length;
 
     // Fetch numbering settings
     const settingsRows = (await db.execute("SELECT key, value FROM settings WHERE key IN ('channel_numbering_mode', 'custom_channel_ranges')")).rows;
@@ -524,98 +627,114 @@ export async function matchChannelsToIptvOrg(
 
     emitProgress('Initializing matching...', 0, total, 'match');
 
+    const overridesRes = await db.execute("SELECT * FROM manual_overrides");
+    const overrides = new Map(overridesRes.rows.map(r => [r.channel_id, r.epg_id]));
+
     // Accumulate batch DB writes
     let matchUpdates: { sql: string; args: any[] }[] = [];
     let numberUpdates: { sql: string; args: any[] }[] = [];
 
     for (let i = 0; i < total; i++) {
-        const ch = dbChannels[i];
-        let matched = false;
-        let matchReason = "";
-        let matchedEpgId = "";
-
+        const ch = matchingChannels[i];
+        const tvgId = String(ch.tvg_id || '').toLowerCase();
         const chanName = String(ch.name || '').substring(0, 30);
 
-        // a. Exact tvg-id match (case-insensitive)
-        const tvgId = String(ch.tvg_id || '').toLowerCase();
-        if (tvgId && idMap.has(tvgId)) {
-            const match = idMap.get(tvgId);
-            matchedEpgId = match.xmltv_id;
-            matchReason = "Exact ID Match";
-            matched = true;
+        // Candidates map: xmltv_id -> { candidate, score, reason }
+        const candidates = new Map<string, { candidate: any; score: number; reason: string }>();
+
+        const addCandidate = (candidate: any, type: string, fuseScore = 1.0) => {
+            if (!candidate || !candidate.xmltv_id) return;
+            const res = calculateMatchScore(ch, candidate, type, fuseScore);
+            const existing = candidates.get(candidate.xmltv_id);
+            if (!existing || res.score > existing.score) {
+                candidates.set(candidate.xmltv_id, { candidate, score: res.score, reason: res.reason });
+            }
+        };
+
+        // Manual Override (always gets high priority)
+        if (overrides.has(ch.id)) {
+            const oid = String(overrides.get(ch.id)).toLowerCase();
+            if (idMap.has(oid)) {
+                candidates.set(oid, { candidate: idMap.get(oid), score: 10.0, reason: "Manual Override" });
+            }
         }
 
-        // b. Normalized tvg-id match
-        if (!matched && tvgId) {
+        // Existing Confirmed Match
+        if (ch.matched_epg_id) {
+            const meid = String(ch.matched_epg_id).toLowerCase();
+            if (idMap.has(meid)) {
+                let reason = ch.match_type ? String(ch.match_type) : "Confirmed Match";
+                if (!reason.includes("(Confirmed)")) reason += " (Confirmed)";
+                candidates.set(meid, { candidate: idMap.get(meid), score: 5.0, reason });
+            }
+        }
+
+        // 1. Exact tvg-id match
+        if (tvgId && idMap.has(tvgId)) {
+            addCandidate(idMap.get(tvgId), 'exact_id');
+        }
+
+        // 2. Normalized tvg-id match
+        if (tvgId) {
             const baseId = normalizeId(tvgId);
             if (baseId && normalizedIdMap.has(baseId)) {
-                const match = normalizedIdMap.get(baseId);
-                matchedEpgId = match.xmltv_id;
-                matchReason = "Normalized ID Match";
-                matched = true;
+                addCandidate(normalizedIdMap.get(baseId), 'normalized_id');
             }
         }
 
-        // c. tvg_name match against iptv-org names
-        if (!matched && ch.tvg_name) {
+        // 3. tvg_name match
+        if (ch.tvg_name) {
             const cTvgName = cleanName(String(ch.tvg_name)).toLowerCase();
             if (cTvgName && nameMap.has(cTvgName)) {
-                const match = nameMap.get(cTvgName);
-                matchedEpgId = match.xmltv_id;
-                matchReason = "TVG Name Match";
-                matched = true;
+                addCandidate(nameMap.get(cTvgName), 'exact_name');
             }
-        }
-
-        // c2. Normalized TVG Name Match
-        if (!matched && ch.tvg_name) {
             const baseTvgName = normalizeId(String(ch.tvg_name));
             if (baseTvgName && normalizedIdMap.has(baseTvgName)) {
-                const match = normalizedIdMap.get(baseTvgName);
-                matchedEpgId = match.xmltv_id;
-                matchReason = "Normalized TVG Name Match";
-                matched = true;
+                addCandidate(normalizedIdMap.get(baseTvgName), 'normalized_id');
             }
         }
 
-        // d. Exact Name match
-        if (!matched) {
-            const cName = cleanName(String(ch.name || '')).toLowerCase();
-            if (cName && nameMap.has(cName)) {
-                const match = nameMap.get(cName);
-                matchedEpgId = match.xmltv_id;
-                matchReason = "Exact Name Match";
-                matched = true;
+        // 4. Exact Name match
+        const cName = cleanName(String(ch.name || '')).toLowerCase();
+        if (cName && nameMap.has(cName)) {
+            addCandidate(nameMap.get(cName), 'exact_name');
+        }
+
+        // 5. Word-order agnostic name match
+        if (cName) {
+            const wordKey = cName.split(/\s+/).sort().join(' ');
+            if (nameWordMap.has(wordKey)) {
+                addCandidate(nameWordMap.get(wordKey), 'word_order');
             }
         }
 
-        // e. Word-order agnostic name match
-        if (!matched) {
-            const cName = cleanName(String(ch.name || '')).toLowerCase();
-            if (cName) {
-                const wordKey = cName.split(/\s+/).sort().join(' ');
-                if (nameWordMap.has(wordKey)) {
-                    const match = nameWordMap.get(wordKey);
-                    matchedEpgId = match.xmltv_id;
-                    matchReason = "Word-Order Name Match";
-                    matched = true;
+        // 6. Fuzzy Name match (Fuse.js)
+        const cNameClean = cleanName(String(ch.name || ''));
+        if (cNameClean) {
+            const fuzzyResults = iptvFuse.search(cNameClean);
+            for (const r of fuzzyResults.slice(0, 5)) {
+                if ((r.score as number) <= 0.40) {
+                    addCandidate(r.item, 'fuzzy', r.score as number);
                 }
             }
         }
 
-        // f. Fuzzy Name match
-        if (!matched) {
-            const cName = cleanName(String(ch.name || ''));
-            if (cName) {
-                const results = iptvFuse.search(cName);
-                if (results.length > 0 && (results[0].score as number) <= 0.35) {
-                    const match = results[0].item as any;
-                    matchedEpgId = match.xmltv_id;
-                    matchReason = `Fuzzy Name Match (${results[0].score?.toFixed(2)})`;
-                    matched = true;
-                }
+        // Find the candidate with the highest score
+        let bestMatch: any = null;
+        let bestScore = -999.0;
+        let bestReason = "";
+
+        for (const [xmltvId, item] of candidates.entries()) {
+            if (item.score > bestScore) {
+                bestScore = item.score;
+                bestMatch = item.candidate;
+                bestReason = item.reason;
             }
         }
+
+        const matched = bestMatch && bestScore >= 0.65;
+        const matchedEpgId = matched ? bestMatch.xmltv_id : "";
+        const matchReason = matched ? (bestScore >= 5.0 ? bestReason : `Score: ${bestScore.toFixed(2)} (${bestReason})`) : "";
 
         // Handle auto-numbering
         let channelNumber = ch.channel_number;
@@ -638,7 +757,7 @@ export async function matchChannelsToIptvOrg(
         // Batch DB writes
         if (matched) {
             matchedCount++;
-            if (onMatch && matchedEpgId && matchedEpgId !== ch.matched_epg_id && ch.enabled === 1) {
+            if (onMatch && matchedEpgId && matchedEpgId !== ch.matched_epg_id && ch.enabled === 1 && bestMatch.site && bestMatch.site_id) {
                 pendingGrabIds.push(matchedEpgId);
                 if (pendingGrabIds.length >= GRAB_BATCH_SIZE) {
                     onMatch([...pendingGrabIds]);
@@ -667,11 +786,10 @@ export async function matchChannelsToIptvOrg(
             numberUpdates = [];
         }
 
-        // Progress every 20 channels
+        // Progress updates
         if ((i + 1) % 20 === 0 || i === total - 1) {
             emitProgress(`Matching... (${matchedCount}/${total}) [${chanName}] - ${matchReason || 'no match'}`, i + 1, total, 'match');
         }
-        // Yield to event loop every 5
         if ((i + 1) % 5 === 0) {
             await new Promise(resolve => setTimeout(resolve, 0));
         }
@@ -691,7 +809,7 @@ export async function matchChannelsToIptvOrg(
     clearIptvOrgCache();
 
     emitLog(`Matching complete. ${matchedCount}/${total} channels matched to IPTV-ORG sites.`, "success");
-    emitProgress(`Complete: ${matchedCount}/${total} channels matched ✓`, total, total, 'match');
+    emitProgressComplete('match', `Complete: ${matchedCount}/${total} channels matched ✓`, total);
     return matchedCount;
 }
 

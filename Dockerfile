@@ -65,7 +65,7 @@ COPY --from=client-builder /app/client/node_modules ./client/node_modules
 RUN ln -s /app/client/node_modules /app/client/dist/client/node_modules
 
 # iptv-org EPG data (pre-built)
-COPY --from=epg-builder /tmp/iptv-org-epg ./data/iptv-org-epg
+COPY --chown=epg:epg --from=epg-builder /tmp/iptv-org-epg ./data/iptv-org-epg
 
 # Static assets (served directly)
 COPY src/public ./src/public
@@ -81,7 +81,7 @@ ENV API_PORT=4000
 ENV ADMIN_PASSWORD=admin
 
 RUN mkdir -p /app/data/recordings && \
-    chown -R epg:epg /app/data
+    chown epg:epg /app/data /app/data/recordings
 
 EXPOSE 3000 4000
 

@@ -1,7 +1,7 @@
 import './patch-axios';
 import { db, DB_DIR } from '../db';
 import { fork } from 'child_process';
-import { emitLog, emitProgress } from '../events';
+import { emitLog, emitProgress, emitProgressComplete } from '../events';
 import * as fs from 'fs';
 import * as path from 'path';
 import { EPGGrabber, Channel as GrabberChannel } from 'epg-grabber';
@@ -138,6 +138,34 @@ async function recordChannelGrabResult(xmltvId: string, success: boolean): Promi
     return false;
 }
 
+async function recordChannelSiteResult(xmltvId: string, site: string, success: boolean, programCount: number): Promise<void> {
+    const now = Date.now();
+    try {
+        if (success) {
+            await db.execute({
+                sql: `INSERT INTO channel_site_status (xmltv_id, site, success_count, failure_count, last_program_count, last_attempt)
+                      VALUES (?, ?, 1, 0, ?, ?)
+                      ON CONFLICT(xmltv_id, site) DO UPDATE SET
+                      success_count = success_count + 1,
+                      last_program_count = ?,
+                      last_attempt = ?`,
+                args: [xmltvId, site, programCount, now, programCount, now]
+            });
+        } else {
+            await db.execute({
+                sql: `INSERT INTO channel_site_status (xmltv_id, site, success_count, failure_count, last_program_count, last_attempt)
+                      VALUES (?, ?, 0, 1, 0, ?)
+                      ON CONFLICT(xmltv_id, site) DO UPDATE SET
+                      failure_count = failure_count + 1,
+                      last_attempt = ?`,
+                args: [xmltvId, site, now, now]
+            });
+        }
+    } catch (e: any) {
+        console.error('Failed to record channel site result:', e.message);
+    }
+}
+
 /**
  * Get list of auto-disabled channels
  */
@@ -175,12 +203,12 @@ export async function grabMissingChannels(xmltvIds: string[], force = false) {
     const daysResult = await db.execute("SELECT value FROM settings WHERE key = 'epg_days'");
     const epgDays = daysResult.rows.length > 0 ? String(daysResult.rows[0].value) : '2';
 
-    emitLog(`Starting EPG grab for ${xmltvIds.length} channels (${epgDays} days)...`, "info");
+    emitLog(`Starting failover EPG grab for ${xmltvIds.length} channels (${epgDays} days)...`, "info");
     emitLog(formatMemorySnapshot('grab missing start', process.memoryUsage(), { channels: xmltvIds.length, epgDays, force }), 'info');
     emitProgress(`Mapping sites for EPG grab...`, 0, xmltvIds.length, 'grab');
 
-    // Fetch primary sites for all IDs
-    const siteMap = new Map<string, { xmltvId: string; site_id: string; lang: string }[]>();
+    // Fetch ALL available sites for each channel (no GROUP BY)
+    const channelSites = new Map<string, { site: string; site_id: string; lang: string }[]>();
     
     // Process in chunks to avoid SQLite limits
     const chunkSize = 500;
@@ -189,69 +217,164 @@ export async function grabMissingChannels(xmltvIds: string[], force = false) {
         const placeholders = chunk.map(() => '?').join(',');
         const res = await db.execute({
             sql: `
-                SELECT xmltv_id, site, site_id, lang 
-                FROM iptv_org_map 
-                WHERE xmltv_id IN (${placeholders}) AND site IS NOT NULL 
-                GROUP BY xmltv_id ORDER BY site
+                SELECT esc.xmltv_id, esc.site, esc.site_id, esc.lang
+                FROM epg_source_channels esc
+                JOIN epg_sources es ON es.key = esc.source_key
+                WHERE esc.xmltv_id IN (${placeholders})
+                AND es.enabled = 1
+                AND es.grab_capable = 1
+                AND esc.site IS NOT NULL
+                AND esc.site_id IS NOT NULL
             `,
             args: chunk
         });
         
+        const seenSiteRows = new Set<string>();
         for (let row of res.rows) {
-            const site = String(row.site);
-            if (!siteMap.has(site)) siteMap.set(site, []);
-            siteMap.get(site)!.push({
-                xmltvId: String(row.xmltv_id),
+            const xmltvId = String(row.xmltv_id);
+            const siteKey = `${xmltvId}|${row.site}|${row.site_id}`;
+            if (seenSiteRows.has(siteKey)) continue;
+            seenSiteRows.add(siteKey);
+            if (!channelSites.has(xmltvId)) channelSites.set(xmltvId, []);
+            channelSites.get(xmltvId)!.push({
+                site: String(row.site),
                 site_id: String(row.site_id),
                 lang: String(row.lang || 'en')
             });
         }
     }
 
-    emitLog(`Mapped channels to ${siteMap.size} unique sites.`, "info");
-    
-    let completed = 0;
-    let successful = 0;
-    let failed = 0;
-    const CONCURRENCY_LIMIT = 2; // Run 2 site batches concurrently — reduced to limit peak memory
-    const activePromises = new Set<Promise<void>>();
-    
-    const orderedSites = prioritizeGrabSites(Array.from(siteMap.keys()));
-    const siteEntries = orderedSites.map((site) => [site, siteMap.get(site)!] as [string, { xmltvId: string; site_id: string; lang: string }[]]);
-    let index = 0;
+    // Load channel site performance stats to rank sites
+    const statsRes = await db.execute("SELECT xmltv_id, site, success_count, failure_count, last_program_count FROM channel_site_status");
+    const statsMap = new Map<string, { success_count: number; failure_count: number; last_program_count: number }>();
+    for (const r of statsRes.rows) {
+        statsMap.set(`${r.xmltv_id}|${r.site}`, {
+            success_count: Number(r.success_count) || 0,
+            failure_count: Number(r.failure_count) || 0,
+            last_program_count: Number(r.last_program_count) || 0
+        });
+    }
 
-    emitProgress(`Grabbing: 0/${xmltvIds.length}`, 0, xmltvIds.length, 'grab');
+    // Rank available sites for each channel
+    for (const [xmltvId, sites] of channelSites.entries()) {
+        const ranked = [...sites].sort((a, b) => {
+            const statsA = statsMap.get(`${xmltvId}|${a.site}`) || { success_count: 0, failure_count: 0, last_program_count: 0 };
+            const statsB = statsMap.get(`${xmltvId}|${b.site}`) || { success_count: 0, failure_count: 0, last_program_count: 0 };
 
-    while (index < siteEntries.length || activePromises.size > 0) {
-        while (activePromises.size < CONCURRENCY_LIMIT && index < siteEntries.length) {
-            const [site, channels] = siteEntries[index++];
-            
-            const BATCH_SIZE = getGrabBatchSizeForSite(site);
-            for (let j = 0; j < channels.length; j += BATCH_SIZE) {
-                const batch = channels.slice(j, j + BATCH_SIZE);
-                const p = grabSiteBatch(site, batch, epgDays, force).then(results => {
-                    for (const res of results) {
-                        if (res.success) successful++;
-                        else failed++;
-                        completed++;
-                    }
-                    emitProgress(`Grabbing: ${completed}/${xmltvIds.length} (${successful} ok, ${failed} failed)`, completed, xmltvIds.length, 'grab');
+            const totalA = statsA.success_count + statsA.failure_count;
+            const totalB = statsB.success_count + statsB.failure_count;
+
+            const rateA = totalA > 0 ? statsA.success_count / totalA : 0.5;
+            const rateB = totalB > 0 ? statsB.success_count / totalB : 0.5;
+
+            if (rateA !== rateB) return rateB - rateA;
+            if (statsA.last_program_count !== statsB.last_program_count) return statsB.last_program_count - statsA.last_program_count;
+            return 0;
+        });
+        channelSites.set(xmltvId, ranked);
+    }
+
+    const grabbedSuccessful = new Set<string>();
+    const channelSiteAttempts = new Map<string, number>(); // Tracks the index of the site to try next
+    
+    let round = 1;
+    const MAX_ROUNDS = 3;
+    let completedCount = 0;
+    let successfulCount = 0;
+    let failedCount = 0;
+
+    const CONCURRENCY_LIMIT = 2;
+
+    emitProgress(`Grabbing EPG: 0/${xmltvIds.length}`, 0, xmltvIds.length, 'grab');
+
+    while (round <= MAX_ROUNDS) {
+        // Step 1: Assign active/remaining channels to their next best site
+        const siteMap = new Map<string, { xmltvId: string; site_id: string; lang: string }[]>();
+        let activeChannelsInRound = 0;
+
+        for (const xmltvId of xmltvIds) {
+            if (grabbedSuccessful.has(xmltvId)) continue;
+
+            const sites = channelSites.get(xmltvId) || [];
+            const attemptIdx = channelSiteAttempts.get(xmltvId) || 0;
+
+            if (attemptIdx < sites.length) {
+                const siteInfo = sites[attemptIdx];
+                if (!siteMap.has(siteInfo.site)) siteMap.set(siteInfo.site, []);
+                siteMap.get(siteInfo.site)!.push({
+                    xmltvId,
+                    site_id: siteInfo.site_id,
+                    lang: siteInfo.lang
                 });
-                
-                activePromises.add(p);
-                p.finally(() => activePromises.delete(p));
+                activeChannelsInRound++;
             }
         }
-        if (activePromises.size > 0) {
-            await Promise.race(activePromises);
+
+        if (activeChannelsInRound === 0) {
+            emitLog(`No active channels remaining to grab in round ${round}. Ending grab process.`, 'info');
+            break;
         }
+
+        emitLog(`[Failover] Starting Grab Round ${round}. Queueing ${activeChannelsInRound} channels across ${siteMap.size} sites.`, 'info');
+
+        const activePromises = new Set<Promise<void>>();
+        const orderedSites = prioritizeGrabSites(Array.from(siteMap.keys()));
+        const siteEntries = orderedSites.map((site) => [site, siteMap.get(site)!] as [string, { xmltvId: string; site_id: string; lang: string }[]]);
+        let index = 0;
+
+        while (index < siteEntries.length || activePromises.size > 0) {
+            while (activePromises.size < CONCURRENCY_LIMIT && index < siteEntries.length) {
+                const [site, channels] = siteEntries[index++];
+                const BATCH_SIZE = getGrabBatchSizeForSite(site);
+
+                for (let j = 0; j < channels.length; j += BATCH_SIZE) {
+                    const batch = channels.slice(j, j + BATCH_SIZE);
+                    const p = grabSiteBatch(site, batch, epgDays, force).then(results => {
+                        for (const res of results) {
+                            // Increment attempt count for this channel
+                            const currentAttempt = channelSiteAttempts.get(res.xmltvId) || 0;
+                            channelSiteAttempts.set(res.xmltvId, currentAttempt + 1);
+
+                            if (res.success) {
+                                if (!grabbedSuccessful.has(res.xmltvId)) {
+                                    grabbedSuccessful.add(res.xmltvId);
+                                    successfulCount++;
+                                    completedCount++;
+                                }
+                            }
+                        }
+                        emitProgress(`Grabbing: ${completedCount}/${xmltvIds.length} (${successfulCount} ok)`, completedCount, xmltvIds.length, 'grab');
+                    }).catch(err => {
+                        emitLog(`Batch grab for site ${site} failed: ${err.message}`, 'warning');
+                        // Increment attempt count for all channels in the failed batch
+                        for (const c of batch) {
+                            const currentAttempt = channelSiteAttempts.get(c.xmltvId) || 0;
+                            channelSiteAttempts.set(c.xmltvId, currentAttempt + 1);
+                        }
+                    });
+
+                    activePromises.add(p);
+                    p.finally(() => activePromises.delete(p));
+                }
+            }
+            if (activePromises.size > 0) {
+                await Promise.race(activePromises);
+            }
+        }
+
+        round++;
     }
+
+    // Identify final failed channels (those not in grabbedSuccessful)
+    const finalFailed = xmltvIds.filter(id => !grabbedSuccessful.has(id));
+    failedCount = finalFailed.length;
 
     // Hint GC to reclaim site config modules and XML parse buffers
     if (global.gc) { try { global.gc(); } catch (_) {} }
 
-    emitLog(formatMemorySnapshot('grab missing complete', process.memoryUsage(), { successful, failed, sites: siteMap.size }), 'info');
-    emitLog(`EPG grab complete: ${successful} ok, ${failed} failed.`, "success");
+    emitLog(formatMemorySnapshot('grab missing complete', process.memoryUsage(), { successful: successfulCount, failed: failedCount, sites: channelSites.size }), 'info');
+    emitLog(`EPG grab complete: ${successfulCount} ok, ${failedCount} failed.`, "success");
+    emitProgressComplete('grab', `Complete: ${successfulCount} ok, ${failedCount} failed`, xmltvIds.length);
 }
 
 const defaultConfig = {
@@ -507,9 +630,11 @@ export async function grabSiteBatchInProcess(
                 res.success = true;
                 await recordGrabLog(res.xmltvId, site, true, `Loaded ${count} programs in-process`, count, duration);
                 await recordChannelGrabResult(res.xmltvId, true);
+                await recordChannelSiteResult(res.xmltvId, site, true, count);
             } else {
                 await recordGrabLog(res.xmltvId, site, false, `Site returned 0 programs in-process`, 0, duration);
                 await recordChannelGrabResult(res.xmltvId, false);
+                await recordChannelSiteResult(res.xmltvId, site, false, 0);
             }
         }
         
@@ -524,6 +649,7 @@ export async function grabSiteBatchInProcess(
         for (let res of results) {
             await recordGrabLog(res.xmltvId, site, false, e.message, 0, duration);
             await recordChannelGrabResult(res.xmltvId, false);
+            await recordChannelSiteResult(res.xmltvId, site, false, 0);
         }
     }
 
@@ -600,10 +726,15 @@ export async function grabChannel(xmltvId: string, epgDays: string, force = fals
 export async function grabChannelInProcess(xmltvId: string, epgDays: string, force = false): Promise<boolean> {
     const res = await db.execute({
         sql: `
-            SELECT m.xmltv_id, m.site, m.site_id, m.lang 
-            FROM iptv_org_map m
-            WHERE m.xmltv_id = ? AND m.site IS NOT NULL
-            ORDER BY m.site
+            SELECT m.xmltv_id, m.site, m.site_id, m.lang
+            FROM epg_source_channels m
+            JOIN epg_sources es ON es.key = m.source_key
+            WHERE m.xmltv_id = ?
+            AND es.enabled = 1
+            AND es.grab_capable = 1
+            AND m.site IS NOT NULL
+            AND m.site_id IS NOT NULL
+            ORDER BY es.priority DESC, COALESCE(es.channel_count_estimate, 0) DESC, m.site
         `,
         args: [xmltvId]
     });
@@ -613,7 +744,11 @@ export async function grabChannelInProcess(xmltvId: string, epgDays: string, for
     }
 
     const sites: { site: string; site_id: string; lang: string }[] = [];
+    const seenSites = new Set<string>();
     for (const row of res.rows) {
+        const key = `${row.site}|${row.site_id}`;
+        if (seenSites.has(key)) continue;
+        seenSites.add(key);
         sites.push({
             site: String(row.site),
             site_id: String(row.site_id),
@@ -711,22 +846,24 @@ export async function grabChannelInProcess(xmltvId: string, epgDays: string, for
             }
 
             if (totalForChannel > 0) {
-
                 const duration = Date.now() - startTime;
                 await recordGrabLog(xmltvId, site, true, `Loaded ${totalForChannel} programs in-process`, totalForChannel, duration);
                 await recordSiteAttempt(site, true);
                 await recordChannelGrabResult(xmltvId, true);
+                await recordChannelSiteResult(xmltvId, site, true, totalForChannel);
 
                 return true;
             } else {
                 const duration = Date.now() - startTime;
                 await recordGrabLog(xmltvId, site, false, `Site returned 0 programs in-process`, 0, duration);
                 await recordSiteAttempt(site, false);
+                await recordChannelSiteResult(xmltvId, site, false, 0);
                 lastError = `${site} returned 0 programs`;
             }
         } catch (e: any) {
             lastError = e.message;
             await recordSiteAttempt(site, false);
+            await recordChannelSiteResult(xmltvId, site, false, 0);
         }
     }
 

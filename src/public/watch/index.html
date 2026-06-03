@@ -8,6 +8,16 @@
     <meta name="description" content="Watch live IPTV channels with an interactive program guide">
 
     <link rel="stylesheet" href="style.css">
+    <script>
+        (function() {
+            try {
+                const theme = localStorage.getItem('iptv_theme');
+                if (theme && theme !== 'cinematic-noir') {
+                    document.documentElement.classList.add('theme-' + theme);
+                }
+            } catch (e) {}
+        })();
+    </script>
 </head>
 
 <body>

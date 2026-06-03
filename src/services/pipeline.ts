@@ -67,26 +67,43 @@ export class PipelineQueue {
         for (let i = 0; i < uniqueIds.length; i += chunkSize) {
             const chunk = uniqueIds.slice(i, i + chunkSize);
             const placeholders = chunk.map(() => '?').join(',');
-            // Get the primary site for each channel
+            // Get the best currently enabled grab source for each channel.
             const res = await db.execute({
                 sql: `
-                    SELECT xmltv_id, site, site_id, lang 
-                    FROM iptv_org_map 
-                    WHERE xmltv_id IN (${placeholders}) 
-                    AND site IS NOT NULL 
-                    GROUP BY xmltv_id
-                    ORDER BY site
+                    SELECT esc.xmltv_id, esc.site, esc.site_id, esc.lang
+                    FROM epg_source_channels esc
+                    JOIN epg_sources es ON es.key = esc.source_key
+                    LEFT JOIN channel_site_status css
+                      ON css.xmltv_id = esc.xmltv_id AND css.site = esc.site
+                    WHERE esc.xmltv_id IN (${placeholders})
+                    AND es.enabled = 1
+                    AND es.grab_capable = 1
+                    AND esc.site IS NOT NULL
+                    AND esc.site_id IS NOT NULL
+                    ORDER BY
+                      CASE WHEN (COALESCE(css.success_count, 0) + COALESCE(css.failure_count, 0)) > 0
+                        THEN CAST(COALESCE(css.success_count, 0) AS REAL) / (COALESCE(css.success_count, 0) + COALESCE(css.failure_count, 0))
+                        ELSE 0.5
+                      END DESC,
+                      COALESCE(css.last_program_count, 0) DESC,
+                      es.priority DESC,
+                      COALESCE(es.channel_count_estimate, 0) DESC,
+                      esc.site ASC
                 `,
                 args: chunk
             });
             
+            const selectedXmltvIds = new Set<string>();
             for (let row of res.rows) {
+                const xmltvId = String(row.xmltv_id);
+                if (selectedXmltvIds.has(xmltvId)) continue;
+                selectedXmltvIds.add(xmltvId);
                 const site = String(row.site);
                 if (!this.grabBatches.has(site)) {
                     this.grabBatches.set(site, []);
                 }
                 this.grabBatches.get(site)!.push({
-                    xmltvId: String(row.xmltv_id),
+                    xmltvId,
                     site_id: String(row.site_id),
                     lang: String(row.lang || 'en')
                 });
@@ -290,8 +307,8 @@ export class PipelineQueue {
         }).catch(err => console.error("Error calling cancelAllGrabProcesses:", err));
 
         emitLog("Sync pipeline cancelled by user request.", "warning");
-        emitProgressComplete('grab', `Cancelled`, this.totalToGrab);
-        emitProgressComplete('enrich', `Cancelled`, this.totalToEnrich);
+        emitProgress(`Cancelled`, this.grabsCompleted, this.totalToGrab, 'grab');
+        emitProgress(`Cancelled`, this.enrichesCompleted, this.totalToEnrich, 'enrich');
         this.resolvePipeline();
     }
 }

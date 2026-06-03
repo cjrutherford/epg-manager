@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { AuthService } from './auth.service';
+import { SystemRecording } from './client-recording.types';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -60,6 +61,10 @@ export class ApiService {
 
     getActiveRecordings(): Observable<any[]> {
         return this.http.get<any[]>('/api/recordings/active');
+    }
+
+    getSystemRecordings(): Observable<SystemRecording[]> {
+        return this.http.get<SystemRecording[]>('/api/recordings/system');
     }
 
     scheduleRecording(data: any): Observable<any> {
@@ -227,5 +232,25 @@ export class ApiService {
 
     deleteRecording(filename: string): Observable<any> {
         return this.http.delete(`/api/recordings/${filename}`, { headers: this.authHeaders() });
+    }
+
+    getGrabSources(): Observable<any[]> {
+        return this.http.get<any[]>('/api/grab/sources', { headers: this.authHeaders() });
+    }
+
+    getEpgSources(): Observable<any[]> {
+        return this.http.get<any[]>('/api/epg-sources', { headers: this.authHeaders() });
+    }
+
+    toggleEpgSource(key: string, enabled: boolean): Observable<any> {
+        return this.http.post(`/api/epg-sources/${encodeURIComponent(key)}/toggle`, { enabled }, { headers: this.authHeaders() });
+    }
+
+    syncEpgSources(): Observable<any> {
+        return this.http.post('/api/epg-sources/sync', {}, { headers: this.authHeaders() });
+    }
+
+    getMatchAnalysis(): Observable<any> {
+        return this.http.get<any>('/api/match/analysis', { headers: this.authHeaders() });
     }
 }

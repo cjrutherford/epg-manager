@@ -7,8 +7,10 @@ import { ApiService } from '../services/api.service';
 import { StorageService } from '../services/storage.service';
 import { CastService } from '../services/cast.service';
 import { ThemeService, Theme } from '../services/theme.service';
-import { DvrComponent } from '../admin/dvr/dvr.component';
 import { LucideAngularModule } from 'lucide-angular';
+import { ToastService } from '../services/toast.service';
+import { ClientRecordingService } from '../services/client-recording.service';
+import { ClientRecording, SystemRecording } from '../services/client-recording.types';
 
 interface Channel {
     id: string;
@@ -26,7 +28,7 @@ interface Channel {
 @Component({
     selector: 'app-watch',
     standalone: true,
-    imports: [CommonModule, FormsModule, RouterLink, DvrComponent, LucideAngularModule],
+    imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule],
     schemas: [CUSTOM_ELEMENTS_SCHEMA],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './watch.component.html',
@@ -65,6 +67,12 @@ export class WatchComponent implements OnInit, OnDestroy {
 
     guideOpen = false;
     dvrOpen = false;
+    showWatchScheduleModal = false;
+    watchSchedulePrograms: any[] = [];
+    watchScheduleSelectedProgram: any = null;
+    watchScheduleSearch = '';
+    watchScheduleRecordSeries = false;
+    watchSchedule = { channelId: '', title: '', startTime: '', endTime: '' };
     guideStart: Date | null = null;
     guideHours = 3;
     guideTimeLabel = '';
@@ -76,6 +84,7 @@ export class WatchComponent implements OnInit, OnDestroy {
     // Drag resize state
     private isDraggingGuide = false;
     private dragStartY = 0;
+    private dragStartX = 0;
     private dragStartHeight = 0;
     private boundDragMove: any;
     private boundDragEnd: any;
@@ -85,6 +94,7 @@ export class WatchComponent implements OnInit, OnDestroy {
 
     loading = false;
     error = '';
+    isDocumentHidden = false;
     showInfoOverlay = false;
     showOsd = false;
     osdChannel: Channel | null = null;
@@ -124,6 +134,10 @@ export class WatchComponent implements OnInit, OnDestroy {
     private overlayTimer: any;
     private osdTimer: any;
     private infoTimer: any;
+    private watchdogInterval: any = null;
+    reconnecting = false;
+    reconnectAttempt = 0;
+    maxReconnectAttempts = 3;
 
     // Responsive
     isMobile = false;
@@ -154,9 +168,12 @@ export class WatchComponent implements OnInit, OnDestroy {
         program: null as any
     };
 
-    // DVR recordings — scheduled + active
+    // DVR recordings — local watch recordings + read-only system DVR
     recordings: any[] = [];
+    localRecordings: ClientRecording[] = [];
+    systemRecordings: SystemRecording[] = [];
     recordingsByChannel: Map<string, any[]> = new Map();
+    recordingsTab: 'my' | 'system' = 'my';
 
     get isRecordingCurrentChannel(): boolean {
         const ch = this.channels[this.currentChannelIndex];
@@ -194,6 +211,7 @@ export class WatchComponent implements OnInit, OnDestroy {
     };
     private diagnosticsInterval: any = null;
     private castSub: Subscription | null = null;
+    private recordingsSub: Subscription | null = null;
 
     private isBrowser: boolean;
 
@@ -202,6 +220,8 @@ export class WatchComponent implements OnInit, OnDestroy {
         private storage: StorageService,
         public castService: CastService,
         private themeService: ThemeService,
+        private toast: ToastService,
+        private clientRecordings: ClientRecordingService,
         @Inject(PLATFORM_ID) platformId: Object,
         private cdr: ChangeDetectorRef
     ) {
@@ -237,6 +257,8 @@ export class WatchComponent implements OnInit, OnDestroy {
         this.storage.init().then(() => {
             this.favorites = this.storage.getFavorites();
             this.hiddenChannels = this.storage.getHiddenChannels();
+            this.applyFilters();
+            this.cdr.detectChanges();
         });
         
         this.volume = this.storage.getVolume();
@@ -256,6 +278,13 @@ export class WatchComponent implements OnInit, OnDestroy {
             if (this.isCasting && this.currentChannelIndex >= 0) {
                 this.playStream(this.channels[this.currentChannelIndex].stream_url, true);
             }
+            this.cdr.detectChanges();
+        });
+
+        this.recordingsSub = this.clientRecordings.recordings$.subscribe(recordings => {
+            this.localRecordings = recordings;
+            this.rebuildRecordingMarkers();
+            this.cdr.markForCheck();
         });
 
         this.updateGuideHours();
@@ -284,11 +313,13 @@ export class WatchComponent implements OnInit, OnDestroy {
     ngOnDestroy(): void {
         if (this.hls) { this.hls.destroy(); this.hls = null; }
         if (this.castSub) { this.castSub.unsubscribe(); this.castSub = null; }
+        if (this.recordingsSub) { this.recordingsSub.unsubscribe(); this.recordingsSub = null; }
         clearTimeout(this.overlayTimer);
         clearTimeout(this.osdTimer);
         clearInterval(this.infoTimer);
         clearInterval(this.currentTimeInterval);
         clearInterval(this.diagnosticsInterval);
+        clearInterval(this.watchdogInterval);
         if (this.isBrowser) {
             document.removeEventListener('mousemove', this.boundDragMove);
             document.removeEventListener('mouseup', this.boundDragEnd);
@@ -302,6 +333,13 @@ export class WatchComponent implements OnInit, OnDestroy {
         if (!this.isBrowser) return;
         this.isMobile = window.innerWidth < 768;
         this.updateGuideHours();
+    }
+
+    @HostListener('document:visibilitychange')
+    onVisibilityChange(): void {
+        if (!this.isBrowser) return;
+        this.isDocumentHidden = document.hidden;
+        this.cdr.markForCheck();
     }
 
     @HostListener('window:keydown', ['$event'])
@@ -364,19 +402,19 @@ export class WatchComponent implements OnInit, OnDestroy {
                 const idx = lastId ? this.channels.findIndex(ch => String(ch.id) === String(lastId)) : -1;
                 this.tuneToChannel(idx >= 0 ? idx : 0);
             }
-            this.cdr.markForCheck();
+            this.cdr.detectChanges();
         } catch (e) {
             console.error('Failed to load guide', e);
         } finally {
             this.loading = false;
-            this.cdr.markForCheck();
+            this.cdr.detectChanges();
         }
     }
 
     async loadCategories(): Promise<void> {
         try {
             this.categories = await this.api.getCategories().toPromise() || [];
-            this.cdr.markForCheck();
+            this.cdr.detectChanges();
         } catch { }
     }
 
@@ -403,17 +441,47 @@ export class WatchComponent implements OnInit, OnDestroy {
 
     async loadRecordings(): Promise<void> {
         try {
-            this.recordings = await this.api.getDvrSchedules().toPromise() || [];
-            this.recordingsByChannel.clear();
-            for (const rec of this.recordings) {
-                const chId = String(rec.channel_id);
-                if (!this.recordingsByChannel.has(chId)) {
-                    this.recordingsByChannel.set(chId, []);
-                }
-                this.recordingsByChannel.get(chId)!.push(rec);
-            }
+            this.systemRecordings = await this.api.getSystemRecordings().toPromise() || [];
+            await this.clientRecordings.refresh();
+            this.rebuildRecordingMarkers();
         } catch (e) {
-            this.recordings = [];
+            this.systemRecordings = [];
+            this.rebuildRecordingMarkers();
+        }
+    }
+
+    private rebuildRecordingMarkers(): void {
+        const localMarkers = this.localRecordings.map(rec => ({
+            ...rec,
+            source: 'local',
+            channel_id: rec.channelId,
+            channel_name: rec.channelName,
+            program_title: rec.programTitle,
+            start_time: rec.startTime,
+            end_time: rec.endTime,
+            file_size: rec.sizeBytes,
+            thumbnail: rec.thumbnail,
+            sub_title: rec.subTitle,
+            episode_num: rec.episodeNum,
+            error_message: rec.errorMessage
+        }));
+        const systemMarkers = this.systemRecordings.map(rec => ({
+            ...rec,
+            source: 'system',
+            channelId: rec.channel_id,
+            channelName: rec.channel_name,
+            programTitle: rec.program_title,
+            startTime: rec.start_time,
+            endTime: rec.end_time
+        }));
+        this.recordings = [...localMarkers, ...systemMarkers];
+        this.recordingsByChannel.clear();
+        for (const rec of this.recordings.filter(r => ['queued', 'scheduled', 'recording', 'completed'].includes(r.status))) {
+            const chId = String(rec.channel_id);
+            if (!this.recordingsByChannel.has(chId)) {
+                this.recordingsByChannel.set(chId, []);
+            }
+            this.recordingsByChannel.get(chId)!.push(rec);
         }
     }
 
@@ -433,23 +501,22 @@ export class WatchComponent implements OnInit, OnDestroy {
     scheduleRecording(channelId: string, programTitle: string, startTime: string, endTime: string): void {
         const ch = this.channels.find(c => c.id === channelId);
         if (!ch) return;
-        this.api.scheduleRecording({
-            channel_id: channelId,
-            program_title: programTitle,
-            start_time: startTime,
-            end_time: endTime,
-            stream_url: ch.stream_url
-        }).subscribe({
-            next: () => this.loadRecordings(),
-            error: () => {}
-        });
+        this.clientRecordings.schedule({
+            channelId,
+            channelName: ch.name,
+            channelLogo: ch.logo,
+            programTitle,
+            startTime,
+            endTime,
+            streamUrl: ch.stream_url
+        }).then(() => this.loadRecordings()).catch(() => {});
     }
 
-    cancelSchedule(recordingId: number): void {
-        this.api.cancelRecording(recordingId).subscribe({
-            next: () => this.loadRecordings(),
-            error: () => {}
-        });
+    cancelSchedule(recordingId: string | number): void {
+        const rec = this.recordings.find(r => r.id === recordingId);
+        if (rec?.source === 'local') {
+            this.clientRecordings.cancel(String(recordingId)).then(() => this.loadRecordings()).catch(() => {});
+        }
     }
 
     // ── Filtering ───────────────────────────────
@@ -550,7 +617,7 @@ export class WatchComponent implements OnInit, OnDestroy {
         this.visibleOtherChannels = this.cachedOtherChannels.slice(startIndex, endIndex);
         this.virtualPaddingTop = startIndex * this.rowHeight;
         this.virtualPaddingBottom = Math.max(0, (this.cachedOtherChannels.length - endIndex) * this.rowHeight);
-        this.cdr.markForCheck();
+        this.cdr.detectChanges();
     }
 
     onSearchChange(): void {
@@ -614,6 +681,13 @@ export class WatchComponent implements OnInit, OnDestroy {
 
         this.loading = !!url && !this.isCasting;
         this.error = '';
+        this.reconnecting = false;
+        this.reconnectAttempt = 0;
+
+        if (this.watchdogInterval) {
+            clearInterval(this.watchdogInterval);
+            this.watchdogInterval = null;
+        }
 
         if (this.hls) {
             this.hls.destroy();
@@ -623,6 +697,7 @@ export class WatchComponent implements OnInit, OnDestroy {
         if (this.videoRef?.nativeElement) {
             this.videoRef.nativeElement.pause();
             this.videoRef.nativeElement.removeAttribute('src');
+            this.videoRef.nativeElement.onplaying = null;
             this.videoRef.nativeElement.load();
         }
 
@@ -638,10 +713,10 @@ export class WatchComponent implements OnInit, OnDestroy {
             const ch = this.currentChannel;
             if (ch) {
                 this.castService.loadMedia(
-                    resolvedUrl,
-                    ch.name,
-                    ch.current_program?.title || ch.group_title,
-                    this.resolveUrl(ch.logo)
+                     resolvedUrl,
+                     ch.name,
+                     ch.current_program?.title || ch.group_title,
+                     this.resolveUrl(ch.logo)
                 );
             }
             return;
@@ -678,32 +753,452 @@ export class WatchComponent implements OnInit, OnDestroy {
             });
             hls.loadSource(url);
             hls.attachMedia(video);
+            
+            let networkRetryCount = 0;
+            let mediaRetryCount = 0;
+            const maxRetries = 3;
+
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
                 this.loading = false;
+                this.reconnecting = false;
+                this.reconnectAttempt = 0;
+                networkRetryCount = 0;
+                mediaRetryCount = 0;
+                this.cdr.detectChanges();
                 video.play().catch(() => { });
             });
+
+            video.onplaying = () => {
+                this.loading = false;
+                this.reconnecting = false;
+                this.reconnectAttempt = 0;
+                this.cdr.detectChanges();
+            };
+            
             hls.on(Hls.Events.ERROR, (_: any, data: any) => {
                 if (data.fatal) {
+                    console.warn(`HLS fatal error: ${data.type} - ${data.details}`);
+                    this.reconnecting = true;
+                    this.loading = true;
+
                     if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-                        hls.startLoad();
+                        networkRetryCount++;
+                        this.reconnectAttempt = networkRetryCount;
+                        this.cdr.detectChanges();
+
+                        if (networkRetryCount <= maxRetries) {
+                            console.log(`Retrying network connection (${networkRetryCount}/${maxRetries})...`);
+                            setTimeout(() => {
+                                if (this.hls === hls) {
+                                    hls.startLoad();
+                                }
+                            }, 2000);
+                        } else {
+                            console.error('Max network retries exceeded. Performing full stream reload...');
+                            networkRetryCount = 0;
+                            this.reconnectAttempt = 0;
+                            this.cdr.detectChanges();
+                            setTimeout(() => {
+                                if (this.hls === hls) {
+                                    hls.loadSource(url);
+                                    hls.startLoad();
+                                }
+                            }, 2000);
+                        }
                     } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-                        hls.recoverMediaError();
+                        mediaRetryCount++;
+                        this.reconnectAttempt = mediaRetryCount;
+                        this.cdr.detectChanges();
+
+                        if (mediaRetryCount <= 1) {
+                            console.log('Attempting to recover media error...');
+                            hls.recoverMediaError();
+                        } else if (mediaRetryCount === 2) {
+                            console.log('Second media recovery attempt - swapping audio codec...');
+                            hls.swapAudioCodec();
+                            hls.recoverMediaError();
+                        } else {
+                            console.error('Max media recovery retries exceeded. Reloading stream...');
+                            mediaRetryCount = 0;
+                            this.reconnectAttempt = 0;
+                            this.cdr.detectChanges();
+                            setTimeout(() => {
+                                if (this.hls === hls) {
+                                    hls.loadSource(url);
+                                    hls.startLoad();
+                                }
+                            }, 1000);
+                        }
                     } else {
                         this.error = 'Stream playback failed';
                         this.loading = false;
+                        this.reconnecting = false;
                         hls.destroy();
+                        this.cdr.detectChanges();
                     }
                 }
             });
+
+            // Watchdog Stall Checker
+            let lastCurrentTime = -1;
+            let lastTimeChanged = Date.now();
+            if (this.watchdogInterval) {
+                clearInterval(this.watchdogInterval);
+            }
+
+            this.watchdogInterval = setInterval(() => {
+                if (video.paused || video.ended || this.loading || this.reconnecting) {
+                    lastTimeChanged = Date.now();
+                    if (video.currentTime !== lastCurrentTime) {
+                        lastCurrentTime = video.currentTime;
+                    }
+                    return;
+                }
+
+                if (video.currentTime === lastCurrentTime) {
+                    const stallDuration = Date.now() - lastTimeChanged;
+                    if (stallDuration > 5000) {
+                        console.warn('Playback watchdog: Stalled stream detected!');
+                        this.reconnecting = true;
+                        this.loading = true;
+                        networkRetryCount++;
+                        this.reconnectAttempt = networkRetryCount;
+                        this.cdr.detectChanges();
+
+                        lastTimeChanged = Date.now();
+
+                        if (networkRetryCount <= maxRetries) {
+                            console.log(`Watchdog: Recovering via network reload (${networkRetryCount}/${maxRetries})...`);
+                            if (this.hls === hls) {
+                                hls.startLoad();
+                                hls.recoverMediaError();
+                            }
+                        } else {
+                            console.error('Watchdog: Max retries exceeded. Doing full stream reload...');
+                            networkRetryCount = 0;
+                            this.reconnectAttempt = 0;
+                            this.cdr.detectChanges();
+                            if (this.hls === hls) {
+                                hls.loadSource(url);
+                                hls.startLoad();
+                            }
+                        }
+                    }
+                } else {
+                    lastCurrentTime = video.currentTime;
+                    lastTimeChanged = Date.now();
+                }
+            }, 1000);
+
             this.hls = hls;
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
             video.src = url;
-            video.addEventListener('loadedmetadata', () => { this.loading = false; video.play().catch(() => { }); }, { once: true });
-            video.addEventListener('error', () => { this.error = 'Playback failed'; this.loading = false; }, { once: true });
+            let nativeRetryCount = 0;
+
+            if (this.watchdogInterval) {
+                clearInterval(this.watchdogInterval);
+            }
+
+            video.addEventListener('loadedmetadata', () => { 
+                this.loading = false; 
+                this.reconnecting = false;
+                this.reconnectAttempt = 0;
+                nativeRetryCount = 0;
+                this.cdr.detectChanges();
+                video.play().catch(() => { }); 
+            }, { once: true });
+            
+            const handleNativeError = () => {
+                nativeRetryCount++;
+                this.reconnectAttempt = nativeRetryCount;
+                this.reconnecting = true;
+                this.loading = true;
+                this.cdr.detectChanges();
+
+                console.warn(`Native playback error (retry ${nativeRetryCount}/3)`);
+                if (nativeRetryCount <= 3) {
+                    setTimeout(() => {
+                        video.load();
+                        video.play().catch(() => { });
+                    }, 2000);
+                } else {
+                    this.error = 'Playback failed';
+                    this.loading = false;
+                    this.reconnecting = false;
+                    this.cdr.detectChanges();
+                }
+            };
+            video.addEventListener('error', handleNativeError);
+
+            // Native watchdog
+            let lastCurrentTime = -1;
+            let lastTimeChanged = Date.now();
+            this.watchdogInterval = setInterval(() => {
+                if (video.paused || video.ended || this.loading || this.reconnecting) {
+                    lastTimeChanged = Date.now();
+                    if (video.currentTime !== lastCurrentTime) {
+                        lastCurrentTime = video.currentTime;
+                    }
+                    return;
+                }
+
+                if (video.currentTime === lastCurrentTime) {
+                    const stallDuration = Date.now() - lastTimeChanged;
+                    if (stallDuration > 5000) {
+                        console.warn('Native playback watchdog: Stalled stream detected!');
+                        this.reconnecting = true;
+                        this.loading = true;
+                        nativeRetryCount++;
+                        this.reconnectAttempt = nativeRetryCount;
+                        this.cdr.detectChanges();
+
+                        lastTimeChanged = Date.now();
+
+                        if (nativeRetryCount <= 3) {
+                            video.load();
+                            video.play().catch(() => { });
+                        } else {
+                            console.error('Native watchdog: Max retries exceeded.');
+                            this.error = 'Playback stalled';
+                            this.loading = false;
+                            this.reconnecting = false;
+                            this.cdr.detectChanges();
+                        }
+                    }
+                } else {
+                    lastCurrentTime = video.currentTime;
+                    lastTimeChanged = Date.now();
+                }
+            }, 1000);
         } else {
             this.error = 'HLS not supported';
             this.loading = false;
         }
+    }
+
+    async playLocalRecording(rec: ClientRecording): Promise<void> {
+        const url = await this.clientRecordings.createPlaybackUrl(rec.id);
+        if (!url) {
+            this.toast.show('No captured video segments are available for this recording', 'warning');
+            return;
+        }
+        this.dvrOpen = false;
+        this.playStream(url);
+    }
+
+    playSystemRecording(rec: SystemRecording): void {
+        if (!rec.url || !this.videoRef?.nativeElement) return;
+        if (this.hls) {
+            this.hls.destroy();
+            this.hls = null;
+        }
+        if (this.watchdogInterval) {
+            clearInterval(this.watchdogInterval);
+            this.watchdogInterval = null;
+        }
+        this.dvrOpen = false;
+        this.loading = false;
+        this.error = '';
+        const video = this.videoRef.nativeElement;
+        video.pause();
+        video.src = this.resolveUrl(rec.url);
+        video.volume = this.volume;
+        video.muted = this.muted;
+        video.load();
+        video.play().catch(() => {});
+    }
+
+    async downloadLocalRecording(rec: ClientRecording): Promise<void> {
+        await this.clientRecordings.download(rec.id);
+    }
+
+    async cancelLocalRecording(rec: ClientRecording): Promise<void> {
+        await this.clientRecordings.cancel(rec.id);
+        await this.loadRecordings();
+    }
+
+    async deleteLocalRecording(rec: ClientRecording): Promise<void> {
+        if (!confirm(`Delete '${rec.programTitle}' from My Recordings?`)) return;
+        await this.clientRecordings.delete(rec.id);
+        await this.loadRecordings();
+    }
+
+    async openWatchScheduleModal(): Promise<void> {
+        const now = new Date();
+        const end = new Date(now.getTime() + 60 * 60 * 1000);
+        this.watchSchedule = {
+            channelId: this.currentChannel?.id || '',
+            title: this.currentChannel?.current_program?.title || '',
+            startTime: new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16),
+            endTime: new Date(end.getTime() - end.getTimezoneOffset() * 60000).toISOString().slice(0, 16),
+        };
+        this.watchSchedulePrograms = [];
+        this.watchScheduleSelectedProgram = null;
+        this.watchScheduleSearch = '';
+        this.watchScheduleRecordSeries = false;
+        this.showWatchScheduleModal = true;
+        if (this.watchSchedule.channelId) {
+            await this.onWatchScheduleChannelSelect();
+        }
+        this.cdr.markForCheck();
+    }
+
+    async onWatchScheduleChannelSelect(): Promise<void> {
+        this.watchSchedulePrograms = [];
+        this.watchScheduleSelectedProgram = null;
+        this.watchScheduleSearch = '';
+        this.watchScheduleRecordSeries = false;
+        if (!this.watchSchedule.channelId) return;
+        const channel = this.channels.find(ch => ch.id === this.watchSchedule.channelId);
+        if (channel?.programs?.length) {
+            this.watchSchedulePrograms = channel.programs;
+        } else {
+            try {
+                const response = await this.api.getChannelPrograms(this.watchSchedule.channelId).toPromise();
+                this.watchSchedulePrograms = response?.programs || [];
+            } catch {
+                this.watchSchedulePrograms = [];
+            }
+        }
+        this.cdr.markForCheck();
+    }
+
+    get filteredWatchSchedulePrograms(): any[] {
+        const query = this.watchScheduleSearch.trim().toLowerCase();
+        if (!query) return this.watchSchedulePrograms;
+        return this.watchSchedulePrograms.filter(program => (program.title || '').toLowerCase().includes(query));
+    }
+
+    selectWatchScheduleProgram(program: any): void {
+        this.watchScheduleSelectedProgram = program;
+        this.watchScheduleRecordSeries = this.watchScheduleRecordSeries && this.isSeriesCandidate(program, this.watchSchedulePrograms);
+        this.watchSchedule.title = program.title || '';
+        const start = this.parseEpgTime(program.start);
+        const stop = this.parseEpgTime(program.stop);
+        if (start && stop) {
+            this.watchSchedule.startTime = new Date(start.getTime() - start.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+            this.watchSchedule.endTime = new Date(stop.getTime() - stop.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+        }
+    }
+
+    async submitWatchSchedule(): Promise<void> {
+        const channel = this.channels.find(ch => ch.id === this.watchSchedule.channelId);
+        if (!channel || !this.watchSchedule.title || !this.watchSchedule.startTime || !this.watchSchedule.endTime) {
+            this.toast.show('Channel, title, start, and end are required', 'warning');
+            return;
+        }
+
+        try {
+            const canRecordSeries = this.isSeriesCandidate(this.watchScheduleSelectedProgram, this.watchSchedulePrograms);
+            if (this.watchScheduleRecordSeries && this.watchScheduleSelectedProgram && canRecordSeries) {
+                const matchingPrograms = this.watchSchedulePrograms.filter(program => program.title === this.watchScheduleSelectedProgram.title);
+                let count = 0;
+                for (const program of matchingPrograms) {
+                    if (this.getRecordingForProgram(channel.id, program.start, program.stop)) continue;
+                    const start = this.parseEpgTime(program.start);
+                    const stop = this.parseEpgTime(program.stop);
+                    if (!start || !stop || stop.getTime() < Date.now()) continue;
+                    await this.clientRecordings.schedule({
+                        channelId: channel.id,
+                        channelName: channel.name,
+                        channelLogo: channel.logo,
+                        programTitle: program.title,
+                        subTitle: program.sub_title,
+                        episodeNum: program.episode_num,
+                        description: program.description,
+                        thumbnail: program.icon || channel.logo,
+                        category: program.category,
+                        rating: program.rating,
+                        startTime: start.toISOString(),
+                        endTime: stop.toISOString(),
+                        streamUrl: channel.stream_url
+                    });
+                    count++;
+                }
+                this.toast.show(`Scheduled ${count} local recordings`, 'success');
+            } else {
+                await this.clientRecordings.schedule({
+                    channelId: channel.id,
+                    channelName: channel.name,
+                    channelLogo: channel.logo,
+                    programTitle: this.watchSchedule.title,
+                    subTitle: this.watchScheduleSelectedProgram?.sub_title,
+                    episodeNum: this.watchScheduleSelectedProgram?.episode_num,
+                    description: this.watchScheduleSelectedProgram?.description,
+                    thumbnail: this.watchScheduleSelectedProgram?.icon || channel.logo,
+                    category: this.watchScheduleSelectedProgram?.category,
+                    rating: this.watchScheduleSelectedProgram?.rating,
+                    startTime: new Date(this.watchSchedule.startTime).toISOString(),
+                    endTime: new Date(this.watchSchedule.endTime).toISOString(),
+                    streamUrl: channel.stream_url
+                });
+                this.toast.show('Local recording scheduled', 'success');
+            }
+            this.showWatchScheduleModal = false;
+            await this.loadRecordings();
+        } catch (error) {
+            console.error('Failed to schedule local recording', error);
+            this.toast.show('Failed to schedule local recording', 'error');
+        }
+    }
+
+    recordingTitle(rec: ClientRecording | SystemRecording): string {
+        return 'programTitle' in rec ? rec.programTitle : rec.program_title;
+    }
+
+    isSeriesCandidate(program: any, programs: any[] = []): boolean {
+        if (!program?.title) return false;
+        if (program.episode_num || program.sub_title) return true;
+
+        const category = String(program.category || '').toLowerCase();
+        const blockedCategories = ['movie', 'film', 'sports', 'news', 'event', 'special', 'shopping'];
+        if (blockedCategories.some(blocked => category.includes(blocked))) return false;
+
+        const showCategories = ['series', 'show', 'entertainment', 'comedy', 'drama', 'animation', 'kids', 'documentary'];
+        const title = String(program.title).trim().toLowerCase();
+        const repeatCount = programs.filter(candidate => String(candidate?.title || '').trim().toLowerCase() === title).length;
+        return repeatCount > 1 && showCategories.some(showCategory => category.includes(showCategory));
+    }
+
+    recordingChannel(rec: ClientRecording | SystemRecording): string {
+        return 'channelName' in rec ? rec.channelName : rec.channel_name;
+    }
+
+    recordingThumbnail(rec: ClientRecording | SystemRecording): string | null {
+        return 'thumbnail' in rec ? rec.thumbnail : null;
+    }
+
+    recordingStart(rec: ClientRecording | SystemRecording): string {
+        return 'startTime' in rec ? rec.startTime : rec.start_time;
+    }
+
+    recordingEnd(rec: ClientRecording | SystemRecording): string {
+        return 'endTime' in rec ? rec.endTime : rec.end_time;
+    }
+
+    recordingEpisode(rec: ClientRecording | SystemRecording): string {
+        const subTitle = 'subTitle' in rec ? rec.subTitle : rec.sub_title;
+        const episode = 'episodeNum' in rec ? rec.episodeNum : rec.episode_num;
+        return [episode, subTitle].filter(Boolean).join(' - ');
+    }
+
+    recordingSize(rec: ClientRecording | SystemRecording): number {
+        return 'sizeBytes' in rec ? rec.sizeBytes : (rec.file_size || 0);
+    }
+
+    fmtRecordingTime(start: string, end: string): string {
+        const s = new Date(start);
+        const e = new Date(end);
+        if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return '';
+        return `${s.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${this.fmtTime(s)} - ${this.fmtTime(e)}`;
+    }
+
+    fmtBytes(bytes: number): string {
+        if (!bytes) return '0 B';
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+        return (bytes / 1024 / 1024 / 1024).toFixed(1) + ' GB';
     }
 
     // ── Volume ──────────────────────────────────
@@ -830,15 +1325,15 @@ export class WatchComponent implements OnInit, OnDestroy {
 
     getCategoryIcon(name: string): string {
         const icons: Record<string, string> = {
-            news: '📰', sports: '⚽', entertainment: '🎭', movies: '🎬',
-            music: '🎵', kids: '🧒', education: '📚', documentary: '🎥',
-            science: '🔬', travel: '✈️', food: '🍳', comedy: '😂',
-            drama: '🎭', lifestyle: '🏠', weather: '🌤️', business: '💼',
-            religious: '🙏', animation: '✨', general: '📡', family: '👨‍👩‍👧‍👦',
-            gaming: '🎮'
+            news: 'newspaper', sports: 'trophy', entertainment: 'monitor', movies: 'film',
+            music: 'music', kids: 'baby', education: 'globe', documentary: 'video',
+            science: 'globe', travel: 'globe', food: 'globe', comedy: 'monitor',
+            drama: 'monitor', lifestyle: 'heart-pulse', weather: 'globe', business: 'globe',
+            religious: 'radio', animation: 'film', general: 'monitor', family: 'heart-pulse',
+            gaming: 'radio'
         };
-        if (!name) return '📁';
-        return icons[name.toLowerCase()] || '📁';
+        if (!name) return 'folder-tree';
+        return icons[name.toLowerCase()] || 'folder-tree';
     }
 
     get favChannels(): Channel[] {
@@ -855,6 +1350,7 @@ export class WatchComponent implements OnInit, OnDestroy {
         event.preventDefault();
         this.isDraggingGuide = true;
         this.dragStartY = 'touches' in event ? event.touches[0].clientY : event.clientY;
+        this.dragStartX = 'touches' in event ? event.touches[0].clientX : event.clientX;
         this.dragStartHeight = this.guideHeight;
         document.addEventListener('mousemove', this.boundDragMove);
         document.addEventListener('mouseup', this.boundDragEnd);
@@ -865,9 +1361,19 @@ export class WatchComponent implements OnInit, OnDestroy {
     private onGuideDragMove(event: MouseEvent | TouchEvent): void {
         if (!this.isDraggingGuide || !this.isBrowser) return;
         const clientY = 'touches' in event ? (event as TouchEvent).touches[0].clientY : (event as MouseEvent).clientY;
-        const delta = this.dragStartY - clientY; // dragging up = increase height
-        const newHeight = Math.max(200, Math.min(window.innerHeight * 0.8, this.dragStartHeight + delta));
-        this.guideHeight = newHeight;
+        const clientX = 'touches' in event ? (event as TouchEvent).touches[0].clientX : (event as MouseEvent).clientX;
+
+        if (this.guideLayout === 'side') {
+            const deltaX = this.dragStartX - clientX; // dragging left = increase width
+            const startWidth = this.dragStartHeight * 1.6;
+            const newWidth = Math.max(200, Math.min(window.innerWidth * 0.8, startWidth + deltaX));
+            this.guideHeight = newWidth / 1.6;
+        } else {
+            const delta = this.dragStartY - clientY; // dragging up = increase height
+            const newHeight = Math.max(200, Math.min(window.innerHeight * 0.8, this.dragStartHeight + delta));
+            this.guideHeight = newHeight;
+        }
+        this.cdr.detectChanges();
     }
 
     private onGuideDragEnd(): void {
@@ -939,38 +1445,124 @@ export class WatchComponent implements OnInit, OnDestroy {
         this.contextMenu.visible = false;
         this.cdr.markForCheck();
         try {
+            const start = this.parseEpgTime(program.start);
+            const stop = this.parseEpgTime(program.stop);
             const data = {
-                channel_id: channel.id,
-                channel_name: channel.name,
-                program_title: program.title,
-                start_time: program.start,
-                end_time: program.stop,
-                stream_url: channel.stream_url
+                channelId: channel.id,
+                channelName: channel.name,
+                channelLogo: channel.logo,
+                programTitle: program.title,
+                subTitle: program.sub_title,
+                episodeNum: program.episode_num,
+                description: program.description,
+                thumbnail: program.icon || channel.logo,
+                category: program.category,
+                rating: program.rating,
+                startTime: start ? start.toISOString() : program.start,
+                endTime: stop ? stop.toISOString() : program.stop,
+                streamUrl: channel.stream_url
             };
-            await this.api.scheduleRecording(data).toPromise();
+            await this.clientRecordings.schedule(data);
             await this.loadRecordings();
+            this.toast.show(`Scheduled recording for '${program.title}'`, 'success');
         } catch (e) {
             console.error('Failed to schedule recording', e);
+            this.toast.show('Failed to schedule recording', 'error');
         }
+    }
+
+    async recordSeries(channel: Channel, program: any) {
+        this.contextMenu.visible = false;
+        this.cdr.markForCheck();
+        if (!this.isSeriesCandidate(program, channel.programs || [])) {
+            this.toast.show('Series recording is only available for shows with episode metadata', 'warning');
+            return;
+        }
+        try {
+            const matchingPrograms = (channel.programs || []).filter((p: any) => p.title === program.title);
+            let count = 0;
+            for (const p of matchingPrograms) {
+                if (this.getRecordingForProgram(channel.id, p.start, p.stop)) {
+                    continue;
+                }
+                const start = this.parseEpgTime(p.start);
+                const stop = this.parseEpgTime(p.stop);
+                const data = {
+                    channelId: channel.id,
+                    channelName: channel.name,
+                    channelLogo: channel.logo,
+                    programTitle: p.title,
+                    subTitle: p.sub_title,
+                    episodeNum: p.episode_num,
+                    description: p.description,
+                    thumbnail: p.icon || channel.logo,
+                    category: p.category,
+                    rating: p.rating,
+                    startTime: start ? start.toISOString() : p.start,
+                    endTime: stop ? stop.toISOString() : p.stop,
+                    streamUrl: channel.stream_url
+                };
+                await this.clientRecordings.schedule(data);
+                count++;
+            }
+            await this.loadRecordings();
+            this.toast.show(`Scheduled series: ${count} episodes of '${program.title}'`, 'success');
+        } catch (e) {
+            console.error('Failed to schedule series', e);
+            this.toast.show('Failed to schedule series', 'error');
+        }
+    }
+
+    getRecordingForProgram(channelId: string | undefined, programStart: string, programEnd: string): any | null {
+        if (!channelId) return null;
+        const recs = this.recordingsByChannel.get(channelId) || [];
+        const pStart = this.parseEpgTime(programStart)?.getTime() || 0;
+        const pEnd = this.parseEpgTime(programEnd)?.getTime() || 0;
+        if (!pStart || !pEnd) return null;
+        return recs.find(r => {
+            const rStart = new Date(r.start_time).getTime();
+            const rEnd = new Date(r.end_time).getTime();
+            return rStart < pEnd && rEnd > pStart;
+        }) || null;
     }
 
     async cancelRecordingFromMenu(channel: Channel, program: any) {
         this.contextMenu.visible = false;
         this.cdr.markForCheck();
         const recs = this.recordingsByChannel.get(channel.id) || [];
-        const pStart = new Date(program.start).getTime();
-        const pEnd = new Date(program.stop).getTime();
+        const parsedStart = this.parseEpgTime(program.start);
+        const parsedEnd = this.parseEpgTime(program.stop);
+        const pStart = parsedStart ? parsedStart.getTime() : new Date(program.start).getTime();
+        const pEnd = parsedEnd ? parsedEnd.getTime() : new Date(program.stop).getTime();
         const toCancel = recs.filter(r => {
             const rStart = new Date(r.start_time).getTime();
             const rEnd = new Date(r.end_time).getTime();
             return rStart < pEnd && rEnd > pStart;
         });
-        for (const r of toCancel) {
-            try {
-                await this.api.cancelRecording(r.id).toPromise();
-            } catch (_) {}
+
+        if (toCancel.length > 0) {
+            const rec = toCancel[0];
+            if (rec.source === 'system') {
+                this.toast.show('System recordings are managed from the admin DVR page', 'info');
+                return;
+            }
+            const actionText = (rec.status === 'queued' || rec.status === 'recording') ? 'cancel this recording' : 'delete this recording';
+            if (!confirm(`Are you sure you want to ${actionText}?`)) return;
+
+            for (const r of toCancel) {
+                try {
+                    if (r.status === 'queued' || r.status === 'recording') {
+                        await this.clientRecordings.cancel(String(r.id));
+                    } else {
+                        await this.clientRecordings.delete(String(r.id));
+                    }
+                } catch (e) {
+                    console.error('Failed to cancel recording', e);
+                }
+            }
+            await this.loadRecordings();
+            this.toast.show((rec.status === 'queued' || rec.status === 'recording') ? 'Recording cancelled' : 'Recording deleted', 'success');
         }
-        await this.loadRecordings();
     }
 
     resolveUrl(url: string): string {

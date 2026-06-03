@@ -7,24 +7,23 @@
 :root {
     /* Colors - Mapped to Theme */
     --bg-primary: var(--bg-dark);
-    --bg-gradient: radial-gradient(circle at top right, #1a2c42, #050a10 80%);
-    --bg-overlay: rgba(5, 10, 16, 0.85);
+    --bg-gradient: var(--bg-gradient);
+    --bg-overlay: rgba(var(--color-primary-rgb), 0.05);
 
     /* Glass */
-    --glass-blur: blur(20px);
-    --glass-bg: rgba(20, 30, 48, 0.7);
-    --glass-border: 1px solid rgba(255, 255, 255, 0.08);
-    --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    --glass-blur: var(--backdrop-blur);
+    --glass-bg: var(--bg-glass);
+    --glass-border: var(--border-glass);
+    --glass-shadow: var(--shadow-glass);
 
     /* Accents */
     --accent: var(--color-primary);
-    /* #00d4ff */
-    --accent-glow: 0 0 15px rgba(0, 212, 255, 0.4);
+    --accent-glow: var(--shadow-glow);
     --accent-text: #fff;
 
     /* Typography */
-    --font-ui: 'Outfit', sans-serif;
-    --font-mono: 'JetBrains Mono', monospace;
+    --font-ui: var(--font-heading);
+    --font-mono: var(--font-mono);
 
     /* Spacing */
     --topbar-height: 70px;
@@ -102,7 +101,7 @@ body {
     font-weight: 700;
     font-size: 1.2rem;
     color: #fff;
-    text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+    text-shadow: 0 0 10px rgba(232, 168, 84, 0.5);
     letter-spacing: -0.02em;
 }
 
@@ -167,10 +166,10 @@ body {
 }
 
 .icon-btn.active {
-    background: rgba(0, 212, 255, 0.15);
+    background: rgba(232, 168, 84, 0.15);
     border-color: var(--accent);
     color: var(--accent);
-    box-shadow: 0 0 10px rgba(0, 212, 255, 0.2);
+    box-shadow: 0 0 10px rgba(232, 168, 84, 0.2);
 }
 
 google-cast-launcher {
@@ -227,7 +226,7 @@ google-cast-launcher:hover {
     border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 1s linear infinite;
-    box-shadow: 0 0 15px rgba(0, 212, 255, 0.2);
+    box-shadow: 0 0 15px rgba(232, 168, 84, 0.2);
 }
 
 @keyframes spin {
@@ -269,7 +268,7 @@ google-cast-launcher:hover {
 }
 
 .ch-btn:hover {
-    background: rgba(0, 212, 255, 0.2);
+    background: rgba(232, 168, 84, 0.2);
     border-color: var(--accent);
     transform: scale(1.05);
     box-shadow: var(--accent-glow);
@@ -469,7 +468,7 @@ google-cast-launcher:hover {
 }
 
 .info-category {
-    background: rgba(0, 212, 255, 0.15);
+    background: rgba(232, 168, 84, 0.15);
     color: var(--accent);
     padding: 2px 8px;
     border-radius: 4px;
@@ -617,7 +616,7 @@ body.guide-visible .guide-panel {
 }
 
 .guide-row.active {
-    background: rgba(0, 212, 255, 0.08);
+    background: rgba(232, 168, 84, 0.08);
 }
 
 .guide-channel {
@@ -887,7 +886,7 @@ body.guide-visible .guide-panel {
 }
 
 .rec-action-btn.download {
-    background: rgba(0, 212, 255, 0.1);
+    background: rgba(232, 168, 84, 0.1);
     color: var(--accent);
 }
 

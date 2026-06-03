@@ -40,6 +40,151 @@
     overflow-x: auto;
 }
 
+.dvr-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 18px;
+}
+
+.dvr-tabs button {
+    border: 1px solid rgba(var(--color-primary-rgb), 0.16);
+    background: rgba(255,255,255,0.04);
+    color: var(--text-secondary);
+    border-radius: var(--radius-sm);
+    padding: 11px 14px;
+    cursor: pointer;
+    font-weight: 700;
+}
+
+.dvr-tabs button.active {
+    color: var(--text-primary);
+    background: rgba(var(--color-primary-rgb), 0.18);
+    border-color: rgba(var(--color-primary-rgb), 0.45);
+}
+
+.dvr-tabs span {
+    display: inline-flex;
+    min-width: 22px;
+    height: 22px;
+    align-items: center;
+    justify-content: center;
+    margin-left: 8px;
+    border-radius: 999px;
+    background: rgba(0,0,0,0.28);
+}
+
+.recording-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+    gap: 16px;
+}
+
+.recording-card {
+    display: grid;
+    grid-template-columns: 126px 1fr;
+    gap: 14px;
+    padding: 12px;
+    border: 1px solid rgba(var(--color-primary-rgb), 0.14);
+}
+
+.recording-card.recording-active {
+    border-color: rgba(var(--color-danger-rgb), 0.5);
+    box-shadow: 0 0 0 1px rgba(var(--color-danger-rgb), 0.18);
+}
+
+.recording-thumb {
+    position: relative;
+    min-height: 102px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: linear-gradient(135deg, rgba(var(--color-primary-rgb), 0.2), rgba(255,255,255,0.04));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.recording-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.recording-fallback {
+    color: var(--color-primary);
+    font-weight: 800;
+    letter-spacing: 0.08em;
+}
+
+.recording-source {
+    position: absolute;
+    left: 8px;
+    bottom: 8px;
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: rgba(0,0,0,0.62);
+    color: var(--text-primary);
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.recording-body {
+    min-width: 0;
+}
+
+.recording-row,
+.recording-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.recording-row {
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.recording-body h3 {
+    margin: 0 0 4px;
+    color: var(--text-primary);
+    font-size: 1rem;
+    line-height: 1.2;
+}
+
+.recording-channel,
+.recording-episode,
+.recording-time,
+.recording-description,
+.recording-size {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+}
+
+.recording-description {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-top: 6px;
+}
+
+.recording-error {
+    margin: 6px 0 0;
+    color: var(--color-danger);
+    font-size: 0.82rem;
+}
+
+.recording-actions {
+    margin-top: 12px;
+}
+
+.recording-actions .danger {
+    color: var(--color-danger);
+}
+
 .empty-state {
     text-align: center;
     padding: 60px 40px;
@@ -109,7 +254,7 @@
 }
 .ring-bg {
     fill: none;
-    stroke: rgba(255,255,255,0.06);
+    stroke: var(--border-subtle);
     stroke-width: 3.8;
 }
 .ring-fill {
