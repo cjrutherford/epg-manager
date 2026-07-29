@@ -126,13 +126,18 @@ export function normalizeId(id: string): string {
 
 export function cleanName(name: string): string {
     return name
-        .replace(/\(.*\)/g, '')
-        .replace(/\[.*\]/g, '')
+        // Strip bracketed and parenthesized tags
+        .replace(/\([^)]*\)/g, '')
+        .replace(/\[[^\]]*\]/g, '')
+        // Strip regional prefixes at start when followed by colon/separator (e.g. US:, UK:, CA:, | US |)
+        .replace(/^(?:US|UK|CA|AU|ES|MX|FR|DE|IT|FRANCE|USA)\s*[:|│-]\s*/i, '')
+        .replace(/^[|│]\s*(?:US|UK|CA|AU|ES|MX|FR|DE|IT)\s*[|│]\s*/i, '')
         // Replace separators with spaces FIRST to avoid merging words
-        .replace(/[-_.]/g, ' ')
-        .replace(/\b\d{3,4}p\b/g, '')
-        .replace(/\b(HD|FHD|SD|4K|HEVC|UHD)\b/gi, '')
-        .replace(/\b(US|UK|CA|AU|ES|MX|FR|DE|IT|FRANCE|USA):/gi, '')
+        .replace(/[-_.:│|]/g, ' ')
+        // Strip stream quality, codec, and feed tags as standalone words
+        .replace(/\b\d{3,4}p\b/gi, '')
+        .replace(/\b(HD|FHD|SD|4K|HEVC|H264|H265|UHD|RAW|VIP|AUTO|FPS|1080|720)\b/gi, '')
+        .replace(/\b(EAST|WEST|FEED)\b/gi, '')
         .replace(/[^a-zA-Z0-9\s]/g, '')
         .replace(/\s+/g, ' ')
         .trim();
@@ -493,6 +498,9 @@ export function calculateMatchScore(
     } else if (type === 'normalized_id') {
         score += 0.85;
         reason = "Normalized ID Match";
+    } else if (type === 'fast_provider') {
+        score += 0.85;
+        reason = "FAST Provider Match";
     } else if (type === 'exact_name') {
         score += 0.80;
         reason = "Exact Name Match";
@@ -501,7 +509,7 @@ export function calculateMatchScore(
         reason = "Word-Order Name Match";
     } else if (type === 'fuzzy') {
         const similarity = 1 - fuseScore;
-        score += 0.50 * similarity;
+        score += 0.75 * similarity;
         reason = `Fuzzy Name Match (${fuseScore.toFixed(2)})`;
     }
 
@@ -593,7 +601,7 @@ export async function matchChannelsToIptvOrg(
 
     // Fetch numbering settings
     const settingsRows = (await db.execute("SELECT key, value FROM settings WHERE key IN ('channel_numbering_mode', 'custom_channel_ranges')")).rows;
-    let numberingMode = 'list';
+    let numberingMode = 'auto-group';
     let customRanges: Record<string, number> = {};
     for (const row of settingsRows) {
         if (row.key === 'channel_numbering_mode') numberingMode = String(row.value);
@@ -708,13 +716,20 @@ export async function matchChannelsToIptvOrg(
             }
         }
 
-        // 6. Fuzzy Name match (Fuse.js)
-        const cNameClean = cleanName(String(ch.name || ''));
-        if (cNameClean) {
-            const fuzzyResults = iptvFuse.search(cNameClean);
-            for (const r of fuzzyResults.slice(0, 5)) {
-                if ((r.score as number) <= 0.40) {
-                    addCandidate(r.item, 'fuzzy', r.score as number);
+        // 6. Fuzzy Name match (Fuse.js) — only if no high-confidence match (score >= 0.80) found yet
+        let currentBest = 0;
+        for (const c of candidates.values()) {
+            if (c.score > currentBest) currentBest = c.score;
+        }
+
+        if (currentBest < 0.80) {
+            const cNameClean = cleanName(String(ch.name || ''));
+            if (cNameClean) {
+                const fuzzyResults = iptvFuse.search(cNameClean);
+                for (const r of fuzzyResults.slice(0, 3)) {
+                    if ((r.score as number) <= 0.40) {
+                        addCandidate(r.item, 'fuzzy', r.score as number);
+                    }
                 }
             }
         }
@@ -732,7 +747,7 @@ export async function matchChannelsToIptvOrg(
             }
         }
 
-        const matched = bestMatch && bestScore >= 0.65;
+        const matched = bestMatch && bestScore >= 0.58;
         const matchedEpgId = matched ? bestMatch.xmltv_id : "";
         const matchReason = matched ? (bestScore >= 5.0 ? bestReason : `Score: ${bestScore.toFixed(2)} (${bestReason})`) : "";
 
@@ -757,7 +772,7 @@ export async function matchChannelsToIptvOrg(
         // Batch DB writes
         if (matched) {
             matchedCount++;
-            if (onMatch && matchedEpgId && matchedEpgId !== ch.matched_epg_id && ch.enabled === 1 && bestMatch.site && bestMatch.site_id) {
+            if (onMatch && matchedEpgId && ch.enabled === 1 && bestMatch.site && bestMatch.site_id) {
                 pendingGrabIds.push(matchedEpgId);
                 if (pendingGrabIds.length >= GRAB_BATCH_SIZE) {
                     onMatch([...pendingGrabIds]);
@@ -788,7 +803,8 @@ export async function matchChannelsToIptvOrg(
 
         // Progress updates
         if ((i + 1) % 20 === 0 || i === total - 1) {
-            emitProgress(`Matching... (${matchedCount}/${total}) [${chanName}] - ${matchReason || 'no match'}`, i + 1, total, 'match');
+            const unmatchedCount = (i + 1) - matchedCount;
+            emitProgress(`Matching... ${matchedCount} matched, ${unmatchedCount} unmatched (${i + 1}/${total}) [${chanName}] - ${matchReason || 'no match'}`, i + 1, total, 'match');
         }
         if ((i + 1) % 5 === 0) {
             await new Promise(resolve => setTimeout(resolve, 0));
@@ -808,8 +824,9 @@ export async function matchChannelsToIptvOrg(
     categoryNextNumber.clear();
     clearIptvOrgCache();
 
-    emitLog(`Matching complete. ${matchedCount}/${total} channels matched to IPTV-ORG sites.`, "success");
-    emitProgressComplete('match', `Complete: ${matchedCount}/${total} channels matched ✓`, total);
+    const finalUnmatched = total - matchedCount;
+    emitLog(`Full channel matching complete: ${matchedCount} matched, ${finalUnmatched} unmatched of ${total} total channels.`, "success");
+    emitProgressComplete('match', `Matching complete: ${matchedCount} matched, ${finalUnmatched} unmatched (${total}/${total})`, total);
     return matchedCount;
 }
 

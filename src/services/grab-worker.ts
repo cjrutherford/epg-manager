@@ -1,3 +1,4 @@
+import './patch-axios';
 import { initDb } from '../db';
 import { grabSiteBatchInProcess, grabChannelInProcess } from './grabber';
 

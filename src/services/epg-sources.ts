@@ -30,10 +30,45 @@ const FEATURED_IPTV_ORG_SOURCES: Record<string, FeaturedIptvOrgSource> = {
     label: 'EPGShare 01',
     priority: 100,
     notes: 'Featured global grab-capable source'
+  },
+  'pluto.tv': {
+    label: 'Pluto TV',
+    priority: 95,
+    notes: 'Featured FAST channel guide source'
+  },
+  'samsung.com': {
+    label: 'Samsung TV Plus',
+    priority: 95,
+    notes: 'Featured FAST channel guide source'
+  },
+  'therokuchannel.com': {
+    label: 'Roku Channel',
+    priority: 95,
+    notes: 'Featured FAST channel guide source'
+  },
+  'plex.tv': {
+    label: 'Plex TV',
+    priority: 90,
+    notes: 'Featured FAST channel guide source'
+  },
+  'tubitv.com': {
+    label: 'Tubi TV',
+    priority: 90,
+    notes: 'Featured FAST channel guide source'
+  },
+  'distro.tv': {
+    label: 'DistroTV',
+    priority: 90,
+    notes: 'Featured FAST channel guide source'
+  },
+  'i.mjh.nz': {
+    label: 'MJH NZ (Pluto/Samsung)',
+    priority: 95,
+    notes: 'Featured Pluto & Samsung guide feed source'
   }
 };
 
-const EPGSHARE01_TAGS = ['US1', 'CA1', 'UK1', 'PLEX1', 'SAMSUNG1', 'DISTROTV1'];
+const EPGSHARE01_TAGS = ['US1', 'CA1', 'UK1', 'PLUTO1', 'ROKU1', 'SAMSUNG1', 'PLEX1', 'TUBI1', 'DISTROTV1', 'STIRR1'];
 
 const BUILT_IN_GUIDE_SOURCES: BuiltInGuideSource[] = [
   {

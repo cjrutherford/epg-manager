@@ -47,22 +47,21 @@ export class StreamManager {
             fs.mkdirSync(strDir, { recursive: true });
 
             // FFmpeg args:
-            //   -reconnect flags:   survive brief upstream hiccups
+            //   -headers:           pass browser User-Agent & Accept headers to survive provider checks
+            //   -reconnect flags:   reconnect on network drops AND EOF
             //   -fflags +genpts:    fix missing/bad PTS so HLS segments are well-formed
             //   -analyzeduration / -probesize: faster startup
             //   -c copy:            no transcode — low CPU
             //   -hls_time 4:        4-second segments
             //   -hls_list_size 10:  keep 10 segments in the playlist (40s sliding window)
-            //   -hls_flags ...:     independent segments + do NOT delete old segments
-            //                       (append_list keeps growing so seek-back works; omit
-            //                        delete_segments so hls.js always finds the segment it wants)
+            //   -hls_flags ...:     independent segments + append_list (keeps playlist stable)
             //   -max_muxing_queue_size 2048: handles interleaved streams without dropping
             const ffmpeg = spawn('ffmpeg', [
                 '-y',
+                '-user_agent',          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
                 '-reconnect',          '1',
-                '-reconnect_at_eof',   '0',
                 '-reconnect_streamed', '1',
-                '-reconnect_delay_max','5',
+                '-reconnect_delay_max','10',
                 '-fflags',             '+genpts+discardcorrupt',
                 '-analyzeduration',    '2000000',
                 '-probesize',          '2000000',
@@ -97,7 +96,10 @@ export class StreamManager {
                 const stream = activeStreams.get(id);
                 if (stream && stream.process === ffmpeg) {
                     activeStreams.delete(id);
-                    try { fs.rmSync(stream.dir, { recursive: true, force: true }); } catch (_) { }
+                    // Only remove dir if stream was actually abandoned (no access in last 20s)
+                    if (Date.now() - stream.lastAccess > 20000) {
+                        try { fs.rmSync(stream.dir, { recursive: true, force: true }); } catch (_) { }
+                    }
                 }
             });
 
@@ -106,9 +108,7 @@ export class StreamManager {
             });
         }
 
-        // Wait until at least 3 .ts segments exist before handing off the URL.
-        // This ensures the client always has ~12s of look-ahead buffer and never
-        // immediately stalls at the live edge.
+        // Wait until at least 1 .ts segment exists before handing off the URL.
         const strDir = path.join(this.streamsDir, id);
         const m3u8Path = path.join(strDir, 'index.m3u8');
         let attempts = 0;
@@ -150,16 +150,31 @@ export class StreamManager {
         }
     }
 
+    static stopAll() {
+        for (const [id, stream] of activeStreams.entries()) {
+            try {
+                stream.process.kill('SIGKILL');
+            } catch (_) {}
+            activeStreams.delete(id);
+            try { fs.rmSync(stream.dir, { recursive: true, force: true }); } catch (_) { }
+        }
+    }
+
     static cleanup() {
         const now = Date.now();
         for (const [id, stream] of activeStreams.entries()) {
-            // Stop stream if no access in last 30 seconds
-            if (now - stream.lastAccess > 30000) {
+            // Stop stream if no access in last 60 seconds
+            if (now - stream.lastAccess > 60000) {
                 this.stopStream(id);
             }
         }
     }
 }
+
+// Register process shutdown signal traps to kill all active FFmpeg processes
+process.on('SIGTERM', () => StreamManager.stopAll());
+process.on('SIGINT', () => StreamManager.stopAll());
+process.on('exit', () => StreamManager.stopAll());
 
 // Check for abandoned streams every 10 seconds
 setInterval(() => StreamManager.cleanup(), 10000);

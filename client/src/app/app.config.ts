@@ -3,11 +3,24 @@ import { provideRouter } from '@angular/router';
 import { provideHttpClient, withInterceptors, HttpInterceptorFn } from '@angular/common/http';
 import { routes } from './app.routes';
 import { provideClientHydration } from '@angular/platform-browser';
-import { LucideAngularModule, GripHorizontal, Columns2, SquareMenu, PlaySquare, Cast, Maximize, Volume2, VolumeX, Menu, Search, X, Heart, Settings, ShieldAlert, MonitorPlay, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Info, AlertTriangle, ArrowUp, ArrowDown, Clock, HelpCircle, Film, Newspaper, Trophy, Music, Monitor, Radio, Baby, Globe, HeartPulse, List, FolderTree, ArrowRight, LayoutDashboard, LogOut, Play, Disc, Video, CalendarDays, Eye, EyeOff, Palette, Activity, Server } from 'lucide-angular';
+import { LucideAngularModule, GripHorizontal, Columns2, SquareMenu, PlaySquare, Cast, Maximize, Minimize, PictureInPicture2, PictureInPicture, Volume2, VolumeX, Menu, Search, X, Heart, Settings, ShieldAlert, MonitorPlay, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Info, AlertTriangle, ArrowUp, ArrowDown, Clock, HelpCircle, Film, Newspaper, Trophy, Music, Monitor, Radio, Baby, Globe, HeartPulse, List, FolderTree, ArrowRight, LayoutDashboard, LogOut, Play, Disc, Video, CalendarDays, Eye, EyeOff, Palette, Activity, Server } from 'lucide-angular';
 
 const serverUrlInterceptor: HttpInterceptorFn = (req, next) => {
   if (typeof window !== 'undefined') {
-    const serverUrl = localStorage.getItem('iptv_server_url');
+    let serverUrl = localStorage.getItem('iptv_server_url');
+    if (!serverUrl) {
+      const origin = window.location.origin || '';
+      if (origin.startsWith('capacitor:') || 
+          origin === 'http://localhost' || 
+          origin === 'https://localhost' || 
+          origin.startsWith('file:')) {
+        serverUrl = 'http://teevee.christopherrutherford.net';
+      } else if (origin.includes(':4200')) {
+        serverUrl = 'http://localhost:3000';
+      } else {
+        serverUrl = origin;
+      }
+    }
     if (serverUrl && req.url.startsWith('/api/')) {
       const base = serverUrl.replace(/\/+$/, '');
       const clone = req.clone({
@@ -25,7 +38,7 @@ export const appConfig: ApplicationConfig = {
     provideHttpClient(withInterceptors([serverUrlInterceptor])), 
     provideClientHydration(),
     importProvidersFrom(LucideAngularModule.pick({
-        GripHorizontal, Columns2, SquareMenu, PlaySquare, Cast, Maximize, Volume2, VolumeX, Menu, Search, X, Heart, Settings, ShieldAlert, MonitorPlay, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Info, AlertTriangle, ArrowUp, ArrowDown, Clock, HelpCircle, Film, Newspaper, Trophy, Music, Monitor, Radio, Baby, Globe, HeartPulse, List, FolderTree, ArrowRight, LayoutDashboard, LogOut, Play, Disc, Video, CalendarDays, Eye, EyeOff, Palette, Activity, Server
+        GripHorizontal, Columns2, SquareMenu, PlaySquare, Cast, Maximize, Minimize, PictureInPicture2, PictureInPicture, Volume2, VolumeX, Menu, Search, X, Heart, Settings, ShieldAlert, MonitorPlay, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Info, AlertTriangle, ArrowUp, ArrowDown, Clock, HelpCircle, Film, Newspaper, Trophy, Music, Monitor, Radio, Baby, Globe, HeartPulse, List, FolderTree, ArrowRight, LayoutDashboard, LogOut, Play, Disc, Video, CalendarDays, Eye, EyeOff, Palette, Activity, Server
     }))
   ]
 };

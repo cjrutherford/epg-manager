@@ -84,9 +84,13 @@ describe('epg source helpers', () => {
           'https://epgshare01.online/epgshare01/epg_ripper_US1.xml.gz',
           'https://epgshare01.online/epgshare01/epg_ripper_CA1.xml.gz',
           'https://epgshare01.online/epgshare01/epg_ripper_UK1.xml.gz',
-          'https://epgshare01.online/epgshare01/epg_ripper_PLEX1.xml.gz',
+          'https://epgshare01.online/epgshare01/epg_ripper_PLUTO1.xml.gz',
+          'https://epgshare01.online/epgshare01/epg_ripper_ROKU1.xml.gz',
           'https://epgshare01.online/epgshare01/epg_ripper_SAMSUNG1.xml.gz',
-          'https://epgshare01.online/epgshare01/epg_ripper_DISTROTV1.xml.gz'
+          'https://epgshare01.online/epgshare01/epg_ripper_PLEX1.xml.gz',
+          'https://epgshare01.online/epgshare01/epg_ripper_TUBI1.xml.gz',
+          'https://epgshare01.online/epgshare01/epg_ripper_DISTROTV1.xml.gz',
+          'https://epgshare01.online/epgshare01/epg_ripper_STIRR1.xml.gz'
         ]
       }
     ]);

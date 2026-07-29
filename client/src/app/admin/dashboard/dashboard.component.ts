@@ -246,7 +246,7 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
 
     private setStageActive(id: string): void {
         const s = this.stages.find(s => s.id === id);
-        if (s && s.status !== 'done') s.status = 'active';
+        if (s) s.status = 'active';
     }
 
     private setStageDone(id: string): void {

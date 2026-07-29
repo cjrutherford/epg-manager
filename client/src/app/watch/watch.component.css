@@ -9,6 +9,211 @@
     overflow: hidden;
 }
 
+/* ── Popout Standalone Video Mode ─────────── */
+.popout-container {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    z-index: 99999;
+}
+.popout-container video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+/* ── Popout Minimalist Overlay Controls ───── */
+.popout-overlay-controls {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 16px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.7) 0%, transparent 25%, transparent 75%, rgba(0,0,0,0.8) 100%);
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    z-index: 100;
+}
+
+.popout-topbar,
+.popout-bottombar {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.popout-bottombar {
+    gap: 12px;
+}
+
+.popout-channel-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.popout-logo {
+    max-height: 28px;
+    object-fit: contain;
+}
+
+.popout-title-block {
+    display: flex;
+    flex-direction: column;
+}
+
+.popout-ch-name {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+.popout-prog-title {
+    font-size: 0.76rem;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.popout-icon-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 50%;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.popout-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.25);
+}
+
+.popout-volume-slider {
+    flex: 1;
+    max-width: 120px;
+    accent-color: var(--color-primary);
+}
+
+/* ── Floating Minimized Sync Pill ───────── */
+.sync-minimized-pill {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    border-radius: 20px;
+    background: rgba(0, 0, 0, 0.75);
+    border: 1px solid rgba(var(--color-primary-rgb), 0.3);
+    color: var(--text-primary);
+    font-size: 0.78rem;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    transition: transform 0.2s, background 0.2s;
+}
+
+.sync-minimized-pill:hover {
+    transform: scale(1.03);
+    background: rgba(0, 0, 0, 0.85);
+}
+
+.pill-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.pill-expand-btn {
+    background: none;
+    border: none;
+    color: var(--color-primary);
+    font-size: 1rem;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.standby-minimize-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #fff;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background 0.2s;
+}
+
+.standby-minimize-btn:hover {
+    background: rgba(255, 255, 255, 0.25);
+}
+
+/* ── Fullscreen Mode (Video Only) ────────── */
+.player-area:fullscreen,
+video:fullscreen {
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+    object-fit: contain;
+    background: #000;
+}
+
+/* ── UI Auto-Hide Transitions ──────────────── */
+.topbar,
+.channel-controls,
+.volume-bar,
+.channel-info-block {
+    transition: opacity 0.4s ease, transform 0.4s ease, visibility 0.4s;
+}
+
+.topbar.ui-hidden {
+    opacity: 0;
+    transform: translateY(-100%);
+    pointer-events: none;
+    visibility: hidden;
+}
+
+.channel-controls.ui-hidden {
+    opacity: 0;
+    transform: translateX(40px);
+    pointer-events: none;
+    visibility: hidden;
+}
+
+.volume-bar.ui-hidden {
+    opacity: 0;
+    transform: translateX(-40px);
+    pointer-events: none;
+    visibility: hidden;
+}
+
+.channel-info-block.ui-hidden {
+    opacity: 0;
+    transform: translateY(100%);
+    pointer-events: none;
+    visibility: hidden;
+}
+
 /* ── Top Bar ─────────────────────────────────── */
 .topbar {
     height: var(--topbar-height, 56px);
@@ -382,7 +587,7 @@
     min-height: 0;
 }
 
-/* ── OVERLAY mode: video fills all; guide overlays bottom ── */
+/* ── OVERLAY mode: video fills remaining space; guide pushes content up ── */
 .content-area.layout-overlay {
     flex-direction: column;
     position: relative;
@@ -402,9 +607,9 @@
     pointer-events: auto;
     z-index: 20;
 }
+/* Guide is in the normal flow — video resizes, no overlap */
 .layout-overlay .guide-panel {
-    position: absolute;
-    left: 0; right: 0; bottom: 0;
+    flex-shrink: 0;
     z-index: 95;
 }
 
@@ -437,6 +642,7 @@
     flex-direction: column;
     border-left: 1px solid rgba(var(--color-primary-rgb),0.15);
     overflow: hidden;
+    max-width: 50vw;
     /* width controlled by inline style */
 }
 /* Drag handle becomes a vertical left edge in side mode */
@@ -1457,4 +1663,102 @@ google-cast-launcher.cast-btn::part(button) {
         opacity: 1;
         transform: translateY(0);
     }
+}
+
+/* ── Standby & Stay Tuned Player Overlays ── */
+.player-standby-overlay,
+.player-stay-tuned-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 25;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(8px);
+}
+
+.standby-card,
+.stay-tuned-card {
+    text-align: center;
+    padding: 24px 32px;
+    border-radius: 12px;
+    max-width: 400px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+}
+
+.standby-badge,
+.stay-tuned-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    background: rgba(var(--color-primary-rgb), 0.2);
+    color: var(--color-primary);
+    border: 1px solid rgba(var(--color-primary-rgb), 0.4);
+}
+
+.stay-tuned-badge {
+    background: rgba(255, 180, 0, 0.15);
+    color: #ffb400;
+    border-color: rgba(255, 180, 0, 0.4);
+}
+
+.stay-tuned-logo {
+    max-height: 48px;
+    object-fit: contain;
+}
+
+.stay-tuned-channel {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+.stay-tuned-msg {
+    font-size: 0.84rem;
+    color: rgba(255, 255, 255, 0.7);
+    margin: 0;
+}
+
+.test-pattern-backdrop {
+    position: absolute;
+    inset: 0;
+    opacity: 0.15;
+    background: repeating-linear-gradient(
+        90deg,
+        #fff 0, #fff 14.28%,
+        #ff0 14.28%, #ff0 28.56%,
+        #0ff 28.56%, #0ff 42.84%,
+        #0f0 42.84%, #0f0 57.12%,
+        #f0f 57.12%, #f0f 71.4%,
+        #f00 71.4%, #f00 85.68%,
+        #00f 85.68%, #00f 100%
+    );
+}
+
+.standby-spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid rgba(255, 255, 255, 0.1);
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-top: 6px;
+}
+
+/* ── Placeholder EPG Program Blocks ─────── */
+.guide-program.placeholder-prog {
+    background: rgba(255, 255, 255, 0.03) !important;
+    border: 1px dashed rgba(255, 255, 255, 0.08) !important;
+    opacity: 0.6;
+}
+.guide-program.placeholder-prog .prog-title {
+    font-style: italic;
+    color: rgba(255, 255, 255, 0.5);
 }

@@ -114,13 +114,33 @@ export class PipelineQueue {
         this.emitGrabProgress();
     }
 
-    public setMatchingComplete(totalScanned: number, totalMatched: number) {
+    private hasEnrichedExistingChannels = false;
+
+    public async setMatchingComplete(totalScanned: number, totalMatched: number, totalUnmatched?: number) {
         this.isMatchingComplete = true;
         this.totalMatched = totalMatched;
         this.matchProgress = totalScanned;
-        emitProgressComplete('match', `Complete: ${totalMatched}/${totalScanned} channels matched ✓`, totalScanned);
 
-        this.enrichAllExistingChannels();
+        // Ensure ALL matched and enabled channels across all sources (including FAST presets) are queued for EPG grab
+        try {
+            const allMatchedRes = await db.execute(`
+                SELECT DISTINCT COALESCE(mo.epg_id, c.matched_epg_id, c.tvg_id) as xmltv_id
+                FROM channels c
+                LEFT JOIN manual_overrides mo ON c.id = mo.channel_id
+                WHERE c.enabled = 1 AND (c.matched_epg_id IS NOT NULL AND c.matched_epg_id != '' OR mo.epg_id IS NOT NULL AND mo.epg_id != '' OR c.tvg_id IS NOT NULL AND c.tvg_id != '')
+            `);
+            const allMatchedIds = allMatchedRes.rows.map(r => String(r.xmltv_id)).filter(Boolean);
+            if (allMatchedIds.length > 0) {
+                await this.enqueueMatched(allMatchedIds);
+            }
+        } catch (e: any) {
+            console.error('[Pipeline] Error auto-queuing all matched channels for grab:', e.message);
+        }
+
+        const unmatched = totalUnmatched !== undefined ? totalUnmatched : Math.max(0, totalScanned - totalMatched);
+        emitProgressComplete('match', `Matching complete: ${totalMatched} matched, ${unmatched} unmatched (${totalScanned}/${totalScanned})`, totalScanned);
+
+        this.emitGrabProgress();
         this.checkPipelineComplete();
     }
 
@@ -179,6 +199,7 @@ export class PipelineQueue {
                 }
 
                 this.activeGrabs++;
+                this.emitGrabProgress();
 
                 emitLog(`[Pipeline] Grabbing EPG batch for site ${nextSite} (${batch.length} channels)`, 'info');
                 emitLog(formatMemorySnapshot('pipeline site batch start', process.memoryUsage(), {
@@ -239,9 +260,15 @@ export class PipelineQueue {
     }
 
     private emitGrabProgress() {
-        if (this.totalToGrab === 0) return;
+        if (this.totalToGrab === 0) {
+            if (this.isMatchingComplete) {
+                emitProgressComplete('grab', 'Complete: No EPG grab required ✓', 0);
+            }
+            return;
+        }
 
-        if (this.grabsCompleted >= this.totalToGrab && this.isMatchingComplete) {
+        const isFullyDone = this.isMatchingComplete && this.activeGrabs === 0 && this.grabBatches.size === 0 && this.grabsCompleted >= this.totalToGrab;
+        if (isFullyDone) {
             emitProgressComplete('grab', `Complete: ${this.grabsSuccessful} ok, ${this.grabsFailed} failed ✓`, this.totalToGrab);
         } else {
             const msg = `Grabbing: ${this.grabsCompleted}/${this.totalToGrab} (${this.grabsSuccessful} ok, ${this.grabsFailed} failed)`;
@@ -251,14 +278,13 @@ export class PipelineQueue {
 
     private processEnrichQueue() {
         if (this.isCancelled) return;
+        if (this.totalToEnrich > 0) {
+            emitProgress(`Enriching: ${this.enrichesCompleted}/${this.totalToEnrich} channels`, this.enrichesCompleted, this.totalToEnrich, 'enrich');
+        }
+
         while (!this.isCancelled && this.activeEnriches < this.MAX_CONCURRENT_ENRICHES && this.enrichQueue.length > 0) {
             const xmltvId = this.enrichQueue.shift()!;
             this.activeEnriches++;
-            
-            // Only emit every 10th item or if it's the last few to avoid UI flooding
-            if (this.enrichesCompleted % 10 === 0) {
-                emitProgress(`Enriching: [${xmltvId}] ${this.enrichesCompleted}/${this.totalToEnrich}`, this.enrichesCompleted, this.totalToEnrich, 'enrich');
-            }
 
             enrichProgramsWithMetadata(xmltvId).then((stats) => {
                 if (this.isCancelled) return;
@@ -269,6 +295,9 @@ export class PipelineQueue {
             }).finally(() => {
                 this.enrichesCompleted++;
                 this.activeEnriches--;
+                if (this.totalToEnrich > 0) {
+                    emitProgress(`Enriching: ${this.enrichesCompleted}/${this.totalToEnrich} channels`, this.enrichesCompleted, this.totalToEnrich, 'enrich');
+                }
                 this.processEnrichQueue();
                 this.checkPipelineComplete();
             });
@@ -279,20 +308,29 @@ export class PipelineQueue {
         if (
             this.isMatchingComplete &&
             this.grabBatches.size === 0 &&
-            this.activeGrabs === 0 &&
-            this.enrichQueue.length === 0 &&
-            this.activeEnriches === 0
+            this.activeGrabs === 0
         ) {
-            if (this.totalToEnrich > 0) {
-                emitProgressComplete('enrich', `Complete: Enriched programs for ${this.enrichesCompleted} channels ✓`, this.totalToEnrich);
+            // Once all grabs finish, check if there are any remaining existing channels needing enrichment
+            if (!this.hasEnrichedExistingChannels) {
+                this.hasEnrichedExistingChannels = true;
+                this.enrichAllExistingChannels();
             }
-            emitLog(formatMemorySnapshot('pipeline complete', process.memoryUsage(), {
-                grabsCompleted: this.grabsCompleted,
-                enrichesCompleted: this.enrichesCompleted,
-                uniqueGrabIds: this.queuedGrabIds.size,
-                uniqueEnrichIds: this.queuedEnrichIds.size
-            }), 'info');
-            this.resolvePipeline();
+
+            if (this.enrichQueue.length === 0 && this.activeEnriches === 0) {
+                this.emitGrabProgress();
+                if (this.totalToEnrich > 0) {
+                    emitProgressComplete('enrich', `Complete: Enriched programs for ${this.enrichesCompleted}/${this.totalToEnrich} channels ✓`, this.totalToEnrich);
+                } else {
+                    emitProgressComplete('enrich', 'Complete: No pending programs to enrich ✓', 0);
+                }
+                emitLog(formatMemorySnapshot('pipeline complete', process.memoryUsage(), {
+                    grabsCompleted: this.grabsCompleted,
+                    enrichesCompleted: this.enrichesCompleted,
+                    uniqueGrabIds: this.queuedGrabIds.size,
+                    uniqueEnrichIds: this.queuedEnrichIds.size
+                }), 'info');
+                this.resolvePipeline();
+            }
         }
     }
 

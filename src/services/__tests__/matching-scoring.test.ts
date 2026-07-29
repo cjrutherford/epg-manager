@@ -31,8 +31,8 @@ describe('calculateMatchScore', () => {
         const ch = { name: 'Discovery Channel' };
         const candidate = { xmltv_id: 'discovery', name: 'Discovery', lang: 'en' };
         const res = calculateMatchScore(ch, candidate, 'fuzzy', 0.20);
-        // Base score for fuzzy is 0.50 * (1 - 0.20) = 0.40
-        expect(res.score).toBeCloseTo(0.40);
+        // Base score for fuzzy is 0.75 * (1 - 0.20) = 0.60
+        expect(res.score).toBeCloseTo(0.60);
         expect(res.reason).toContain('Fuzzy Name Match');
     });
 });

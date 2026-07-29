@@ -36,6 +36,46 @@
         </div>
         }
 
+        <!-- FAST Platform Presets Section -->
+        <div class="fast-presets-container">
+            <div class="presets-header">
+                <span class="presets-title">⚡ FAST Channel Presets</span>
+                <span class="presets-desc">Click any provider to add free, legal live channel playlists instantly:</span>
+            </div>
+            <div class="preset-buttons-grid">
+                <button type="button" class="preset-card-btn" [class.added]="isPlaylistSelected('https://i.mjh.nz/PlutoTV/all.m3u8')" (click)="addPresetPlaylist('https://i.mjh.nz/PlutoTV/all.m3u8')">
+                    <span class="preset-name">📺 Pluto TV</span>
+                    <span class="preset-count">~350 channels</span>
+                    <span class="preset-status">{{ isPlaylistSelected('https://i.mjh.nz/PlutoTV/all.m3u8') ? '✓ Added' : '+ Add Playlist' }}</span>
+                </button>
+                <button type="button" class="preset-card-btn" [class.added]="isPlaylistSelected('https://i.mjh.nz/SamsungTVPlus/all.m3u8')" (click)="addPresetPlaylist('https://i.mjh.nz/SamsungTVPlus/all.m3u8')">
+                    <span class="preset-name">📱 Samsung TV Plus</span>
+                    <span class="preset-count">~280 channels</span>
+                    <span class="preset-status">{{ isPlaylistSelected('https://i.mjh.nz/SamsungTVPlus/all.m3u8') ? '✓ Added' : '+ Add Playlist' }}</span>
+                </button>
+                <button type="button" class="preset-card-btn" [class.added]="isPlaylistSelected('https://i.mjh.nz/Roku/all.m3u8')" (click)="addPresetPlaylist('https://i.mjh.nz/Roku/all.m3u8')">
+                    <span class="preset-name">🟣 Roku Channel</span>
+                    <span class="preset-count">~300 channels</span>
+                    <span class="preset-status">{{ isPlaylistSelected('https://i.mjh.nz/Roku/all.m3u8') ? '✓ Added' : '+ Add Playlist' }}</span>
+                </button>
+                <button type="button" class="preset-card-btn" [class.added]="isPlaylistSelected('https://i.mjh.nz/Plex/all.m3u8')" (click)="addPresetPlaylist('https://i.mjh.nz/Plex/all.m3u8')">
+                    <span class="preset-name">⚡ Plex TV</span>
+                    <span class="preset-count">~250 channels</span>
+                    <span class="preset-status">{{ isPlaylistSelected('https://i.mjh.nz/Plex/all.m3u8') ? '✓ Added' : '+ Add Playlist' }}</span>
+                </button>
+                <button type="button" class="preset-card-btn" [class.added]="isPlaylistSelected('https://i.mjh.nz/PBS/all.m3u8')" (click)="addPresetPlaylist('https://i.mjh.nz/PBS/all.m3u8')">
+                    <span class="preset-name">🏛 PBS Live</span>
+                    <span class="preset-count">~120 channels</span>
+                    <span class="preset-status">{{ isPlaylistSelected('https://i.mjh.nz/PBS/all.m3u8') ? '✓ Added' : '+ Add Playlist' }}</span>
+                </button>
+                <button type="button" class="preset-card-btn" [class.added]="isPlaylistSelected('https://i.mjh.nz/Stirr/all.m3u8')" (click)="addPresetPlaylist('https://i.mjh.nz/Stirr/all.m3u8')">
+                    <span class="preset-name">⭐ Stirr TV</span>
+                    <span class="preset-count">~100 channels</span>
+                    <span class="preset-status">{{ isPlaylistSelected('https://i.mjh.nz/Stirr/all.m3u8') ? '✓ Added' : '+ Add Playlist' }}</span>
+                </button>
+            </div>
+        </div>
+
         <!-- Custom URL -->
         <div class="form-group">
             <label>Custom Playlist URL</label>
@@ -50,10 +90,10 @@
 
         <!-- iptv-org Browser -->
         <div class="form-group">
-            <label>Or select from iptv-org</label>
+            <label>Or select from iptv-org & FAST lists</label>
             <div class="custom-url-row">
                 <button class="btn btn-secondary" (click)="loadIptvOrgPlaylists()" [disabled]="iptvOrgLoading">
-                    {{ iptvOrgLoading ? 'Loading...' : iptvOrgFiles.length ? 'Refresh List' : 'Browse iptv-org Playlists' }}
+                    {{ iptvOrgLoading ? 'Loading...' : iptvOrgFiles.length ? 'Refresh List' : 'Browse iptv-org & FAST Playlists' }}
                 </button>
                 <button class="btn btn-secondary" style="margin-left: 10px" (click)="syncIptvOrgRepo()" [disabled]="iptvOrgSyncing">
                     {{ iptvOrgSyncing ? 'Synchronizing Repo...' : 'Sync iptv-org Repo' }}
@@ -69,6 +109,7 @@
                 <select class="themed-input" [(ngModel)]="iptvOrgCategoryFilter">
                     <option value="all">All Sources</option>
                     <option value="selected">Selected</option>
+                    <option value="fast">FAST Platforms (Pluto, Samsung, Roku, Plex)</option>
                     <option value="countries">Countries</option>
                     <option value="categories">Categories</option>
                     <option value="languages">Languages</option>

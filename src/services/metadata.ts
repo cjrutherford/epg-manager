@@ -68,7 +68,7 @@ export function normalizeTitle(title: string): string {
  */
 export async function isEnrichmentEnabled(): Promise<boolean> {
     const enabled = await getSetting('metadata_enrichment_enabled');
-    return enabled === 'true';
+    return enabled !== 'false';
 }
 
 /**
@@ -397,9 +397,8 @@ export async function enrichProgramsWithMetadata(channelId?: string): Promise<{
             }
             
             processedCount++;
-            if (processedCount % 10 === 0 || processedCount === titles.length) {
-                const prefix = channelId ? `[Channel ${channelId}] ` : '';
-                emitProgress(`${prefix}Enriching: ${processedCount}/${titles.length} programs`, processedCount, titles.length, 'enrich');
+            if (!channelId && (processedCount % 10 === 0 || processedCount === titles.length)) {
+                emitProgress(`Enriching: ${processedCount}/${titles.length} programs`, processedCount, titles.length, 'enrich');
             }
         }
 

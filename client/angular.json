@@ -86,7 +86,8 @@
               "extractLicenses": true,
               "sourceMap": false,
               "ssr": false,
-              "prerender": false
+              "prerender": false,
+              "outputMode": "static"
             }
           },
           "defaultConfiguration": "production"

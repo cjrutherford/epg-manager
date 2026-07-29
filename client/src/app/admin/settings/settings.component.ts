@@ -77,7 +77,7 @@ export class SettingsComponent implements OnInit {
             this.epgDays = config?.epg_days || 2;
             
             // Channel Numbering
-            this.channelNumberingMode = config?.channel_numbering_mode || 'list';
+            this.channelNumberingMode = config?.channel_numbering_mode || 'auto-group';
             try {
                 const ranges = JSON.parse(config?.custom_channel_ranges || '{}');
                 this.customRangesArray = Object.keys(ranges).map(k => ({ category: k, startNum: ranges[k] }));
@@ -85,7 +85,7 @@ export class SettingsComponent implements OnInit {
                 this.customRangesArray = [];
             }
 
-            this.metadataEnabled = metaConfig?.enabled || false;
+            this.metadataEnabled = metaConfig?.enabled ?? true;
             if (this.metadataEnabled) this.loadMetadataStats();
         } catch (e) {
             console.error(e);
@@ -159,6 +159,17 @@ export class SettingsComponent implements OnInit {
         }
         this.selectedPlaylists.push(url);
         this.customPlaylistUrl = '';
+    }
+
+    addPresetPlaylist(url: string): void {
+        if (!url) return;
+        if (!this.selectedPlaylists.includes(url)) {
+            this.selectedPlaylists.push(url);
+            this.toast.show(`Added preset playlist: ${url}`, 'success');
+        } else {
+            this.toast.show(`Playlist already added`, 'info');
+        }
+        this.cdr.markForCheck();
     }
 
     removePlaylist(url: string): void {

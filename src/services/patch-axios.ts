@@ -8,9 +8,11 @@ import { DB_DIR } from '../db';
 const CACHE_DIR = path.join(DB_DIR, 'http-cache');
 
 // Ensure cache directory exists
-if (!fs.existsSync(CACHE_DIR)) {
-  fs.mkdirSync(CACHE_DIR, { recursive: true });
-}
+try {
+  if (!fs.existsSync(CACHE_DIR)) {
+    fs.mkdirSync(CACHE_DIR, { recursive: true });
+  }
+} catch (err) {}
 
 // Build a custom disk storage using buildStorage from axios-cache-interceptor
 export const diskStorage = buildStorage({
@@ -66,6 +68,47 @@ export const diskStorage = buildStorage({
   }
 });
 
+// Helper function to identify transient network / rate-limit HTTP errors
+export function isTransientError(error: any): boolean {
+  if (!error) return false;
+  const status = error.response?.status;
+  if (status === 429 || (status >= 500 && status <= 509)) {
+    return true;
+  }
+  const code = error.code;
+  if (code && ['ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ERR_NETWORK'].includes(code)) {
+    return true;
+  }
+  if (error.message && (error.message.includes('timeout') || error.message.includes('network error'))) {
+    return true;
+  }
+  return false;
+}
+
+// Attach retry interceptor with exponential backoff and jitter
+export function attachRetryInterceptor(instance: any) {
+  if (!instance?.interceptors?.response) return;
+  instance.interceptors.response.use(
+    (response: any) => response,
+    async (error: any) => {
+      const config = error?.config;
+      if (!config) return Promise.reject(error);
+
+      const maxRetries = config.maxRetries ?? 3;
+      config._retryCount = config._retryCount ?? 0;
+
+      if (config._retryCount < maxRetries && isTransientError(error)) {
+        config._retryCount++;
+        const backoffMs = Math.pow(2, config._retryCount) * 500 + Math.floor(Math.random() * 250);
+        console.warn(`[AxiosRetry] Transient error (${error.response?.status || error.code || error.message}) requesting ${config.url}. Retrying in ${backoffMs}ms (attempt ${config._retryCount}/${maxRetries})...`);
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+        return instance(config);
+      }
+      return Promise.reject(error);
+    }
+  );
+}
+
 // Set global storage for ESM version to access
 (globalThis as any).__diskStorage = diskStorage;
 
@@ -91,8 +134,13 @@ axios.create = function(config?: any) {
     return reqConfig;
   });
 
+  attachRetryInterceptor(instance);
+
   return instance;
 };
+
+// Also attach retry interceptor to global axios instance
+attachRetryInterceptor(axios);
 
 // 2. Monkeypatch ESM axios.js on disk (which is loaded by ESM packages like epg-grabber)
 try {
@@ -103,7 +151,7 @@ try {
     if (!content.includes('__diskStorage')) {
       console.log(`[DiskCache] Patching ESM axios entrypoint on disk: ${esmIndexPath}`);
       const patch = `
-// --- AXIOS CACHE PATCH ---
+// --- AXIOS CACHE & RETRY PATCH ---
 const originalCreate = axios.create;
 axios.create = function(config) {
   const instance = originalCreate.call(this, config);
@@ -124,9 +172,35 @@ axios.create = function(config) {
   });
   
   instance.interceptors.request.use((reqConfig) => {
-    console.log('[DiskCache ESM] Axios Request - URL: ' + reqConfig.url + ', cache option: ' + JSON.stringify(reqConfig.cache));
+    reqConfig.headers = reqConfig.headers || {};
+    if (!reqConfig.headers['User-Agent'] && !reqConfig.headers['user-agent']) {
+      reqConfig.headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+    }
+    if (!reqConfig.headers['Accept'] && !reqConfig.headers['accept']) {
+      reqConfig.headers['Accept'] = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8';
+    }
     return reqConfig;
   });
+
+  instance.interceptors.response.use(
+    (res) => res,
+    async (err) => {
+      const cfg = err?.config;
+      if (!cfg) return Promise.reject(err);
+      const maxRetries = cfg.maxRetries ?? 3;
+      cfg._retryCount = cfg._retryCount ?? 0;
+      const status = err.response?.status;
+      const isTransient = status === 429 || (status >= 500 && status <= 509) || (err.code && ['ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND'].includes(err.code));
+      if (cfg._retryCount < maxRetries && isTransient) {
+        cfg._retryCount++;
+        const backoffMs = Math.pow(2, cfg._retryCount) * 500 + Math.floor(Math.random() * 250);
+        console.warn('[AxiosRetry ESM] Transient error retrying ' + cfg.url + ' in ' + backoffMs + 'ms');
+        await new Promise(r => setTimeout(r, backoffMs));
+        return instance(cfg);
+      }
+      return Promise.reject(err);
+    }
+  );
   
   return instance;
 };
@@ -144,4 +218,5 @@ axios.create = function(config) {
   console.error('[DiskCache] Failed to patch ESM axios entrypoint:', err);
 }
 
-console.log('[DiskCache] Axios disk cache patch initialized.');
+console.log('[DiskCache] Axios disk cache and retry patch initialized.');
+

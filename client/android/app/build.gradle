@@ -16,6 +16,19 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    flavorDimensions "device"
+    productFlavors {
+        mobile {
+            dimension "device"
+            applicationId "com.epg.manager.mobile"
+            versionNameSuffix "-mobile"
+        }
+        tv {
+            dimension "device"
+            applicationId "com.epg.manager.tv"
+            versionNameSuffix "-tv"
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false

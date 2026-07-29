@@ -11,7 +11,7 @@ import { grabMissingChannels, getAutoDisabledChannels, reEnableChannels } from '
 import { updateIptvOrgPlaylists } from './services/iptv-org-playlists';
 import { enrichProgramsWithMetadata, getEnrichmentStats, clearMetadataCache, isEnrichmentEnabled, refreshImdbData, searchTVMaze, searchTVMazeShows, normalizeTitle } from './services/metadata';
 import { PipelineQueue } from './services/pipeline';
-import { getJobStatus, startJob, completeJob, requestJobCancel } from './job';
+import { getJobStatus, startJob, completeJob, requestJobCancel, loadLastJobStateOnBoot } from './job';
 import { eventBus, emitLog, emitProgress, emitProgressComplete } from './events';
 import { startRecordingScheduler, cancelRecording as cancelRec, getRecordingFilePath, checkScheduledRecordings, startRecording, stopRecording } from './recorder';
 import { StreamManager } from './services/stream';
@@ -118,14 +118,25 @@ export let activePipeline: PipelineQueue | null = null;
  * 4. Custom grab missing guide data
  * 5. Generate final M3U and XML files
  */
+let hasPendingScheduledSync = false;
+
+/**
+ * Perform a full automation cycle:
+ * 1. Refresh playlist from source
+ * 2. Download and parse selected EPG sources
+ * 3. Update IPTV-ORG metadata and match channels
+ * 4. Custom grab missing guide data
+ * 5. Generate final M3U and XML files
+ */
 export async function runFullSync() {
     const status = getJobStatus();
     if (status.running) {
-        emitLog("Sync already in progress, skipping...", "warning");
+        emitLog("Sync already in progress. Queuing delayed sync...", "warning");
+        hasPendingScheduledSync = true;
         return;
     }
 
-    startJob();
+    await startJob('full_sync');
     try {
         if (getJobStatus().cancelRequested) throw new Error("Sync cancelled by user");
         emitLog("Starting full automation cycle...", "info");
@@ -190,30 +201,19 @@ export async function runFullSync() {
         const pipeline = new PipelineQueue(epgDays);
         activePipeline = pipeline;
 
-        const enqueuePromises: Promise<void>[] = [];
+        // Run matching for channels; matched IDs stream into grabber as they match
         const matchedCount = await matchChannelsToIptvOrg((newIds) => {
             if (newIds.length === 0) return;
-            emitLog(`[Pipeline] Queuing batch of ${newIds.length} newly matched channels for EPG grab...`, "info");
-            enqueuePromises.push(pipeline.enqueueMatched(newIds));
+            emitLog(`[Pipeline] Queuing batch of ${newIds.length} matched channels for EPG grab...`, "info");
+            pipeline.enqueueMatched(newIds);
         });
-        await Promise.all(enqueuePromises);
-        emitLog(`Matching complete. Total matched: ${matchedCount}`, "success");
-
-        // 3. Also grab any channels that were already matched before this run
-        const alreadyMatched = await db.execute(`
-            SELECT DISTINCT COALESCE(mo.epg_id, c.matched_epg_id) as xmltv_id
-            FROM channels c
-            LEFT JOIN manual_overrides mo ON c.id = mo.channel_id
-            WHERE (c.matched_epg_id IS NOT NULL OR mo.epg_id IS NOT NULL)
-            AND c.enabled = 1
-        `);
-        const allIds = alreadyMatched.rows.map(r => String(r.xmltv_id)).filter(Boolean);
-
-        // Let the pipeline queue process everything that was already matched
-        await pipeline.enqueueMatched(allIds);
+        // Get total enabled channel count from channels table
+        const totalChannelsRes = await db.execute("SELECT COUNT(*) as c FROM channels WHERE enabled = 1");
+        const totalChannelsCount = Number(totalChannelsRes.rows[0]?.c || matchedCount);
+        const unmatchedCount = Math.max(0, totalChannelsCount - matchedCount);
 
         // Tell the pipeline no more matches are coming
-        pipeline.setMatchingComplete(matchedCount, matchedCount);
+        await pipeline.setMatchingComplete(totalChannelsCount, matchedCount, unmatchedCount);
 
         // Wait for all grab batches (streaming + full pass) AND enrichment to finish
         emitLog(`Waiting for background EPG grabs and metadata enrichment to finish...`, "info");
@@ -245,22 +245,29 @@ export async function runFullSync() {
             channelsMatched: result.playlistCount,
             totalChannels: Number(totalChannels.rows[0].c),
             filesGenerated: ['playlist.m3u', 'epg.xml'],
-            customGrabCount: allIds.length
+            customGrabCount: matchedCount
         };
         if (enrichmentStats) {
             stats.enrichment = enrichmentStats;
         }
-        completeJob(stats);
+        await completeJob(stats);
         eventBus.emit('report', stats);
         emitLog(`Automation cycle complete! ${result.playlistCount} channels matched and exported.`, "success");
 
     } catch (e: any) {
         emitLog(`Automation failed: ${e.message} `, "error");
         console.error("Full sync error:", e);
-        completeJob(null);
+        await completeJob(null, e.message);
         eventBus.emit('report', { error: e.message });
     } finally {
         activePipeline = null;
+        if (hasPendingScheduledSync) {
+            hasPendingScheduledSync = false;
+            emitLog("Processing queued pending sync job...", "info");
+            setTimeout(() => {
+                runFullSync().catch(err => console.error("Queued sync failed:", err));
+            }, 1000);
+        }
     }
 }
 
@@ -277,6 +284,12 @@ app.get('/api/settings', requireAuth, async (req: any, res: any) => {
         const settings: any = {};
         for (const row of result.rows) {
             settings[row.key as string] = row.value;
+        }
+        if (!settings.channel_numbering_mode) {
+            settings.channel_numbering_mode = 'auto-group';
+        }
+        if (!settings.metadata_enrichment_enabled) {
+            settings.metadata_enrichment_enabled = 'true';
         }
         // Legacy field ignored
         settings.epg_urls = [];
@@ -461,27 +474,41 @@ app.post('/api/grab', requireAuth, async (req: any, res: any) => {
         if (status.running) {
             return res.json({ success: false, message: "Sync already in progress." });
         }
-        // Trigger grab for all pre-matched channels that are currently missing guide data
-        const missing = await db.execute(`
+        // Trigger grab for all matched and enabled channels
+        const matched = await db.execute(`
             SELECT DISTINCT COALESCE(mo.epg_id, c.matched_epg_id) as xmltv_id 
             FROM channels c
             LEFT JOIN manual_overrides mo ON c.id = mo.channel_id
-            LEFT JOIN epg_programs p ON COALESCE(mo.epg_id, c.matched_epg_id) = p.channel_id
-WHERE(c.matched_epg_id IS NOT NULL OR mo.epg_id IS NOT NULL)
-            AND p.channel_id IS NULL
+            WHERE (c.matched_epg_id IS NOT NULL OR mo.epg_id IS NOT NULL)
             AND c.enabled = 1
-    `);
-        const ids = missing.rows.map(r => String(r.xmltv_id));
+        `);
+        const ids = matched.rows.map(r => String(r.xmltv_id)).filter(Boolean);
         if (ids.length === 0) {
-            return res.json({ success: true, message: "No missing guide data found for matched channels." });
+            return res.json({ success: true, message: "No matched and enabled channels found to grab." });
         }
 
-        // Run in background but return success that it started
+        // Run in background using PipelineQueue so grabs stream into enrichment
         (async () => {
             startJob();
             try {
-                await grabMissingChannels(ids, true);
-                const stats = {
+                const daysResult = await db.execute("SELECT value FROM settings WHERE key = 'epg_days'");
+                const epgDays = daysResult.rows.length > 0 ? String(daysResult.rows[0].value) : '2';
+
+                const pipeline = new PipelineQueue(epgDays);
+                activePipeline = pipeline;
+
+                emitProgressComplete('match', `Match stage skipped (using ${ids.length} existing channel matches)`, ids.length);
+                await pipeline.enqueueMatched(ids);
+                await pipeline.setMatchingComplete(ids.length, ids.length, 0);
+
+                await pipeline.waitForCompletion();
+
+                let enrichmentStats = null;
+                if (await isEnrichmentEnabled()) {
+                    enrichmentStats = await getEnrichmentStats();
+                }
+
+                const stats: any = {
                     channelsProcessed: 0,
                     programsProcessed: 0,
                     channelsMatched: 0,
@@ -489,12 +516,17 @@ WHERE(c.matched_epg_id IS NOT NULL OR mo.epg_id IS NOT NULL)
                     filesGenerated: [],
                     customGrabCount: ids.length
                 };
+                if (enrichmentStats) {
+                    stats.enrichment = enrichmentStats;
+                }
                 completeJob(stats);
                 eventBus.emit('report', stats);
             } catch (err: any) {
                 console.error("Grab failed:", err);
-                emitLog(`Grab failed: ${err.message} `, "error");
+                emitLog(`Grab failed: ${err.message}`, "error");
                 completeJob(null);
+            } finally {
+                activePipeline = null;
             }
         })();
         res.json({ success: true, count: ids.length });
@@ -777,6 +809,7 @@ app.get('/epg.xml', async (req, res) => {
 async function startServer() {
     emitLog("Initializing database...", "info");
     await initDb();
+    await loadLastJobStateOnBoot();
 
     // Initialize TUI
     tui.init();
@@ -1206,7 +1239,19 @@ app.get('/api/iptv-org/playlists', requireAuth, async (req: any, res: any) => {
             await updateIptvOrgPlaylists();
         }
         
-        const playlists: any[] = [];
+        const FAST_PRESETS = [
+            { name: 'Pluto TV (All Channels)', url: 'https://i.mjh.nz/PlutoTV/all.m3u8', category: 'fast', provider: 'plutotv', label: 'Pluto TV', channelCountEstimate: 350 },
+            { name: 'Samsung TV Plus (All Channels)', url: 'https://i.mjh.nz/SamsungTVPlus/all.m3u8', category: 'fast', provider: 'samsung', label: 'Samsung TV Plus', channelCountEstimate: 280 },
+            { name: 'Roku Channel (All Channels)', url: 'https://i.mjh.nz/Roku/all.m3u8', category: 'fast', provider: 'roku', label: 'Roku Channel', channelCountEstimate: 300 },
+            { name: 'Plex TV (All Channels)', url: 'https://i.mjh.nz/Plex/all.m3u8', category: 'fast', provider: 'plex', label: 'Plex TV', channelCountEstimate: 250 },
+            { name: 'PBS (All Channels)', url: 'https://i.mjh.nz/PBS/all.m3u8', category: 'fast', provider: 'pbs', label: 'PBS', channelCountEstimate: 120 },
+            { name: 'Stirr TV (All Channels)', url: 'https://i.mjh.nz/Stirr/all.m3u8', category: 'fast', provider: 'stirr', label: 'Stirr TV', channelCountEstimate: 100 }
+        ];
+
+        const playlists: any[] = FAST_PRESETS.map(preset => ({
+            ...describePlaylist(preset.url),
+            ...preset
+        }));
         const folders = ['countries', 'categories', 'languages', 'regions'];
         
         for (const folder of folders) {

@@ -313,3 +313,83 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* FAST Platform Presets Grid */
+.fast-presets-container {
+    margin-bottom: 20px;
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+}
+
+.presets-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 12px;
+}
+
+.presets-title {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.presets-desc {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+
+.preset-buttons-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 10px;
+}
+
+.preset-card-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: left;
+}
+
+.preset-card-btn:hover {
+    background: rgba(var(--color-primary-rgb), 0.12);
+    border-color: rgba(var(--color-primary-rgb), 0.3);
+    transform: translateY(-1px);
+}
+
+.preset-card-btn.added {
+    background: rgba(var(--color-success-rgb), 0.12);
+    border-color: rgba(var(--color-success-rgb), 0.4);
+}
+
+.preset-card-btn .preset-name {
+    font-size: 0.86rem;
+    font-weight: 600;
+}
+
+.preset-card-btn .preset-count {
+    font-size: 0.74rem;
+    color: var(--text-secondary);
+}
+
+.preset-card-btn .preset-status {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--color-primary);
+    margin-top: 2px;
+}
+
+.preset-card-btn.added .preset-status {
+    color: var(--color-success);
+}

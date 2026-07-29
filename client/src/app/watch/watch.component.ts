@@ -66,6 +66,11 @@ export class WatchComponent implements OnInit, OnDestroy {
     hiddenChannels = new Set<string>();
 
     guideOpen = false;
+
+    // UI auto-hide idle state
+    userActive = true;
+    private idleTimer: any = null;
+    private readonly IDLE_TIMEOUT = 3000;
     dvrOpen = false;
     showWatchScheduleModal = false;
     watchSchedulePrograms: any[] = [];
@@ -88,6 +93,7 @@ export class WatchComponent implements OnInit, OnDestroy {
     private dragStartHeight = 0;
     private boundDragMove: any;
     private boundDragEnd: any;
+    private boundOnUserActivity: any;
 
     volume = 0.8;
     muted = false;
@@ -141,6 +147,14 @@ export class WatchComponent implements OnInit, OnDestroy {
 
     // Responsive
     isMobile = false;
+
+    // Popout standalone video mode
+    isPopoutMode = false;
+
+    // Server Sync / Standby state
+    isSyncing = false;
+    serverStandby = false;
+    syncMessageMinimized = false;
 
     // Cast State
     isCasting = false;
@@ -237,6 +251,15 @@ export class WatchComponent implements OnInit, OnDestroy {
             return;
         }
 
+        const urlParams = new URLSearchParams(window.location.search);
+        this.isPopoutMode = urlParams.get('popout') === 'true';
+
+        // Idle detection: hide UI controls after inactivity
+        this.boundOnUserActivity = this.onUserActivity.bind(this);
+        document.addEventListener('mousemove', this.boundOnUserActivity);
+        document.addEventListener('click', this.boundOnUserActivity);
+        this.resetIdleTimer();
+
         this.isMobile = window.innerWidth < 768;
         this.serverUrl = this.getServerUrl();
 
@@ -269,6 +292,16 @@ export class WatchComponent implements OnInit, OnDestroy {
             this.currentTimeMs = Date.now();
             this.cdr.markForCheck();
         }, 60000);
+
+        this.api.getJobStatus().subscribe(status => {
+            this.isSyncing = !!status?.running;
+            if (this.isSyncing && this.channels.length === 0) {
+                this.serverStandby = true;
+            } else {
+                this.serverStandby = false;
+            }
+            this.cdr.markForCheck();
+        });
 
         this.castSub = this.castService.castState$.subscribe(state => {
             this.isCasting = state.isCasting;
@@ -316,6 +349,7 @@ export class WatchComponent implements OnInit, OnDestroy {
         if (this.recordingsSub) { this.recordingsSub.unsubscribe(); this.recordingsSub = null; }
         clearTimeout(this.overlayTimer);
         clearTimeout(this.osdTimer);
+        clearTimeout(this.idleTimer);
         clearInterval(this.infoTimer);
         clearInterval(this.currentTimeInterval);
         clearInterval(this.diagnosticsInterval);
@@ -325,6 +359,8 @@ export class WatchComponent implements OnInit, OnDestroy {
             document.removeEventListener('mouseup', this.boundDragEnd);
             document.removeEventListener('touchmove', this.boundDragMove);
             document.removeEventListener('touchend', this.boundDragEnd);
+            document.removeEventListener('mousemove', this.boundOnUserActivity);
+            document.removeEventListener('click', this.boundOnUserActivity);
         }
     }
 
@@ -348,20 +384,41 @@ export class WatchComponent implements OnInit, OnDestroy {
         if ((event.target as HTMLElement).tagName === 'INPUT') return;
 
         switch (event.key) {
-            case 'ArrowUp':
-                if (!this.guideOpen) {
-                    this.channelUp();
+            case ' ':
+            case 'k':
+            case 'K':
+                if (this.videoRef?.nativeElement) {
+                    const video = this.videoRef.nativeElement;
+                    if (video.paused) video.play().catch(() => {});
+                    else video.pause();
                     event.preventDefault();
                 }
                 break;
-            case 'ArrowDown':
-                if (!this.guideOpen) {
-                    this.channelDown();
-                    event.preventDefault();
-                }
+            case 'PageUp': case 'ChannelUp':
+                this.channelUp();
+                event.preventDefault();
+                break;
+            case 'PageDown': case 'ChannelDown':
+                this.channelDown();
+                event.preventDefault();
+                break;
+            case '+': case '=':
+                this.setVolume(Math.min(1, this.volume + 0.1));
+                event.preventDefault();
+                break;
+            case '-': case '_':
+                this.setVolume(Math.max(0, this.volume - 0.1));
+                event.preventDefault();
                 break;
             case 'g': case 'G': this.toggleGuide(); break;
             case 'm': case 'M': this.toggleMute(); break;
+            case 'f': case 'F': this.toggleFullscreen(); break;
+            case 'p': case 'P': this.togglePictureInPicture(); break;
+            case 'Escape':
+                if (this.serverSettingsOpen) this.serverSettingsOpen = false;
+                else if (this.dvrOpen) this.dvrOpen = false;
+                else if (this.guideOpen) this.toggleGuide();
+                break;
             case 'Enter':
                 if (!this.guideOpen && document.activeElement === document.body) {
                     this.toggleGuide();
@@ -396,10 +453,18 @@ export class WatchComponent implements OnInit, OnDestroy {
 
             this.applyFilters();
 
-            // Auto-tune to last channel or first
+            // Auto-tune to popout channel, last channel, or first
             if (this.currentChannelIndex < 0 && this.channels.length > 0) {
-                const lastId = this.storage.getLastChannel();
-                const idx = lastId ? this.channels.findIndex(ch => String(ch.id) === String(lastId)) : -1;
+                const urlParams = new URLSearchParams(window.location.search);
+                const popoutChannelId = urlParams.get('channel');
+                let idx = -1;
+                if (popoutChannelId) {
+                    idx = this.channels.findIndex(ch => String(ch.id) === String(popoutChannelId));
+                }
+                if (idx < 0) {
+                    const lastId = this.storage.getLastChannel();
+                    idx = lastId ? this.channels.findIndex(ch => String(ch.id) === String(lastId)) : -1;
+                }
                 this.tuneToChannel(idx >= 0 ? idx : 0);
             }
             this.cdr.detectChanges();
@@ -554,10 +619,10 @@ export class WatchComponent implements OnInit, OnDestroy {
         this.cachedOtherChannels = others;
         this.updateVirtualScroll();
 
-        // Pre-compute program positions to avoid template binding recalcs
+        // Pre-compute program positions and fill unguided gaps
         const pxPerMs = 200 / (30 * 60 * 1000);
         for (const ch of this.filteredChannels) {
-            if (!ch.programs) continue;
+            ch.programs = this.fillProgramGaps(ch.programs || [], this.guideStartMs, this.guideEndMs);
             for (const prog of ch.programs) {
                 const start = this.parseEpgTime(prog.start);
                 const stop = this.parseEpgTime(prog.stop);
@@ -579,6 +644,58 @@ export class WatchComponent implements OnInit, OnDestroy {
 
         // Cache timeline slots
         this.timelineSlots = this._computeTimelineSlots();
+    }
+
+    private fillProgramGaps(programs: any[], guideStartMs: number, guideEndMs: number): any[] {
+        if (!guideStartMs || !guideEndMs) return programs || [];
+        
+        const validProgs = (programs || [])
+            .map(p => {
+                const s = this.parseEpgTime(p.start);
+                const e = this.parseEpgTime(p.stop);
+                return {
+                    ...p,
+                    _startMs: s ? s.getTime() : 0,
+                    _stopMs: e ? e.getTime() : 0
+                };
+            })
+            .filter(p => p._startMs && p._stopMs && p._startMs < guideEndMs && p._stopMs > guideStartMs)
+            .sort((a, b) => a._startMs - b._startMs);
+
+        const filled: any[] = [];
+        let cursor = guideStartMs;
+
+        for (const prog of validProgs) {
+            if (prog._startMs - cursor > 60000) {
+                filled.push({
+                    title: 'No Program Data',
+                    sub_title: 'To Be Announced',
+                    category: 'No Data',
+                    start: new Date(cursor).toISOString(),
+                    stop: new Date(prog._startMs).toISOString(),
+                    isPlaceholder: true,
+                    _startMs: cursor,
+                    _stopMs: prog._startMs
+                });
+            }
+            filled.push(prog);
+            cursor = Math.max(cursor, prog._stopMs);
+        }
+
+        if (guideEndMs - cursor > 60000) {
+            filled.push({
+                title: 'No Program Data',
+                sub_title: 'To Be Announced',
+                category: 'No Data',
+                start: new Date(cursor).toISOString(),
+                stop: new Date(guideEndMs).toISOString(),
+                isPlaceholder: true,
+                _startMs: cursor,
+                _stopMs: guideEndMs
+            });
+        }
+
+        return filled;
     }
 
     onGuideScroll(event: Event): void {
@@ -1366,11 +1483,21 @@ export class WatchComponent implements OnInit, OnDestroy {
         if (this.guideLayout === 'side') {
             const deltaX = this.dragStartX - clientX; // dragging left = increase width
             const startWidth = this.dragStartHeight * 1.6;
-            const newWidth = Math.max(200, Math.min(window.innerWidth * 0.8, startWidth + deltaX));
+            const maxSideWidth = window.innerWidth * 0.5; // max 50% of viewport
+            const newWidth = Math.max(200, Math.min(maxSideWidth, startWidth + deltaX));
+            // If at max width, auto-transition to guide-only layout
+            if (newWidth >= maxSideWidth) {
+                this.guideLayout = 'guide-only';
+            }
             this.guideHeight = newWidth / 1.6;
         } else {
             const delta = this.dragStartY - clientY; // dragging up = increase height
-            const newHeight = Math.max(200, Math.min(window.innerHeight * 0.8, this.dragStartHeight + delta));
+            const maxOverlayHeight = window.innerHeight * 0.5; // max 50% of viewport
+            const newHeight = Math.max(200, Math.min(maxOverlayHeight, this.dragStartHeight + delta));
+            // If at max height, auto-transition to guide-only layout
+            if (newHeight >= maxOverlayHeight) {
+                this.guideLayout = 'guide-only';
+            }
             this.guideHeight = newHeight;
         }
         this.cdr.detectChanges();
@@ -1384,6 +1511,96 @@ export class WatchComponent implements OnInit, OnDestroy {
             document.removeEventListener('touchmove', this.boundDragMove);
             document.removeEventListener('touchend', this.boundDragEnd);
         }
+    }
+
+    // ── UI Idle Auto-Hide ───────────────────────
+    onUserActivity(): void {
+        if (!this.userActive) {
+            this.userActive = true;
+            this.cdr.markForCheck();
+        }
+        this.resetIdleTimer();
+    }
+
+    private resetIdleTimer(): void {
+        clearTimeout(this.idleTimer);
+        this.idleTimer = setTimeout(() => {
+            // Only hide if NOT interacting with guide/overlays
+            if (!this.guideOpen && !this.dvrOpen && !this.serverSettingsOpen && !this.themePickerOpen && !this.diagnosticsOpen) {
+                this.userActive = false;
+                this.cdr.markForCheck();
+            }
+        }, this.IDLE_TIMEOUT);
+    }
+
+    // ── Fullscreen & Popout / PiP Controls ──────
+    isFullscreen = false;
+
+    toggleFullscreen(): void {
+        if (!this.isBrowser) return;
+        const playerElem = (this.videoRef?.nativeElement as HTMLElement) || document.querySelector('.player-area');
+        if (!playerElem) return;
+
+        if (!document.fullscreenElement) {
+            if (playerElem.requestFullscreen) {
+                playerElem.requestFullscreen().catch(() => {});
+            } else if ((playerElem as any).webkitRequestFullscreen) {
+                (playerElem as any).webkitRequestFullscreen();
+            }
+            this.isFullscreen = true;
+        } else {
+            if (document.exitFullscreen) {
+                document.exitFullscreen().catch(() => {});
+            } else if ((document as any).webkitExitFullscreen) {
+                (document as any).webkitExitFullscreen();
+            }
+            this.isFullscreen = false;
+        }
+        this.cdr.markForCheck();
+    }
+
+    @HostListener('document:fullscreenchange')
+    onFullscreenChange(): void {
+        if (!this.isBrowser) return;
+        this.isFullscreen = !!document.fullscreenElement;
+        this.cdr.markForCheck();
+    }
+
+    async togglePictureInPicture(): Promise<void> {
+        if (!this.isBrowser || !this.videoRef) return;
+        const video = this.videoRef.nativeElement;
+        try {
+            if (document.pictureInPictureElement) {
+                await document.exitPictureInPicture();
+            } else if (document.pictureInPictureEnabled && video) {
+                await video.requestPictureInPicture();
+            } else {
+                this.popoutWindow();
+            }
+        } catch (e) {
+            this.popoutWindow();
+        }
+    }
+
+    popoutWindow(): void {
+        if (!this.isBrowser) return;
+        const ch = this.channels[this.currentChannelIndex];
+        window.open(
+            `/watch?popout=true${ch ? '&channel=' + ch.id : ''}`,
+            'IPTV_Popout',
+            'width=854,height=480,resizable=yes,status=no,location=no,toolbar=no,menubar=no'
+        );
+    }
+
+    closePopout(): void {
+        if (this.isBrowser) {
+            window.close();
+        }
+    }
+
+    toggleSyncMessageMinimization(): void {
+        this.syncMessageMinimized = !this.syncMessageMinimized;
+        this.cdr.markForCheck();
     }
 
     onProgramHover(event: MouseEvent, channel: Channel, program: any) {
@@ -1578,7 +1795,21 @@ export class WatchComponent implements OnInit, OnDestroy {
 
     getServerUrl(): string {
         if (!this.isBrowser) return '';
-        return localStorage.getItem('iptv_server_url') || '';
+        let serverUrl = localStorage.getItem('iptv_server_url');
+        if (!serverUrl) {
+            const origin = window.location.origin || '';
+            if (origin.startsWith('capacitor:') || 
+                origin === 'http://localhost' || 
+                origin === 'https://localhost' || 
+                origin.startsWith('file:')) {
+                serverUrl = 'http://teevee.christopherrutherford.net';
+            } else if (origin.includes(':4200')) {
+                serverUrl = 'http://localhost:3000';
+            } else {
+                serverUrl = origin;
+            }
+        }
+        return serverUrl;
     }
 
     saveServerUrl(): void {

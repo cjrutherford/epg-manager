@@ -337,17 +337,67 @@ export async function initDb() {
     )
   `);
 
-  // Reset site lockout and re-enable auto-disabled channels on startup
+  // Persistent sync job history table
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS sync_jobs (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      status TEXT NOT NULL,
+      cancel_requested INTEGER DEFAULT 0,
+      start_time INTEGER,
+      end_time INTEGER,
+      stats_json TEXT,
+      progress_json TEXT,
+      error_message TEXT,
+      created_at INTEGER DEFAULT (unixepoch())
+    )
+  `);
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_sync_jobs_status ON sync_jobs(status)");
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_sync_jobs_start ON sync_jobs(start_time)");
+
+  // Clean up any stale/running jobs interrupted by server reboot
   try {
+    const now = Date.now();
+    await db.execute({
+      sql: `UPDATE sync_jobs 
+            SET status = 'interrupted', end_time = ?, error_message = 'Interrupted by server restart' 
+            WHERE status = 'running'`,
+      args: [now]
+    });
+  } catch (e) {
+    console.error("Failed to clean up interrupted sync jobs on startup:", e);
+  }
+
+  // Apply failure count decay on boot to preserve failure history while allowing temporary failures to recover
+  try {
+    const dayAgo = Date.now() - (24 * 60 * 60 * 1000);
+    // Decrease failure counts by 1 for records older than 24 hours
+    await db.execute({
+      sql: `UPDATE channel_grab_status 
+            SET consecutive_failures = MAX(0, consecutive_failures - 1)
+            WHERE last_failure IS NULL OR last_failure < ?`,
+      args: [dayAgo]
+    });
+
+    // Re-enable channels whose failure count dropped below 5
+    await db.execute(`
+      UPDATE channel_grab_status SET auto_disabled = 0 WHERE consecutive_failures < 5 AND auto_disabled = 1
+    `);
     await db.execute(`
       UPDATE channels SET enabled = 1 WHERE matched_epg_id IN (
-        SELECT xmltv_id FROM channel_grab_status WHERE auto_disabled = 1
-      )
+        SELECT xmltv_id FROM channel_grab_status WHERE auto_disabled = 0
+      ) AND enabled = 0
     `);
-    await db.execute("UPDATE channel_grab_status SET consecutive_failures = 0, auto_disabled = 0");
-    await db.execute("DELETE FROM site_status");
+
+    // Clean up site_status failure counts older than 24 hours (decay failure count by 1)
+    await db.execute({
+      sql: `UPDATE site_status 
+            SET failure_count = MAX(0, failure_count - 1)
+            WHERE last_attempt IS NULL OR last_attempt < ?`,
+      args: [dayAgo]
+    });
   } catch (e) {
-    console.error("Failed to reset site/channel statuses at startup:", e);
+    console.error("Failed to apply failure count decay at startup:", e);
   }
 
   // File system cleanup

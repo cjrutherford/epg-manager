@@ -78,7 +78,6 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 ENV DB_DIR=/app/data
 ENV PORT=3000
 ENV API_PORT=4000
-ENV ADMIN_PASSWORD=admin
 
 RUN mkdir -p /app/data/recordings && \
     chown epg:epg /app/data /app/data/recordings

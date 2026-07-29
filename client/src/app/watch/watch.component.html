@@ -1,5 +1,40 @@
+@if (isPopoutMode) {
+<div class="popout-container" (mousemove)="onUserActivity()">
+    <video #videoPlayer crossorigin="anonymous" autoplay playsinline controls [style.display]="isCasting ? 'none' : 'block'"></video>
+
+    <!-- Popout Minimalist Overlay Controls (auto-hides on inactivity) -->
+    <div class="popout-overlay-controls" [class.ui-hidden]="!userActive">
+        <div class="popout-topbar">
+            <div class="popout-channel-info">
+                @if (currentChannel?.logo) { <img [src]="resolveUrl(currentChannel!.logo)" class="popout-logo" alt=""> }
+                <div class="popout-title-block">
+                    <span class="popout-ch-name">{{ currentChannel?.name || 'Live Stream' }}</span>
+                    <span class="popout-prog-title">{{ currentChannel?.current_program?.title || 'Live' }}</span>
+                </div>
+            </div>
+            <button class="popout-icon-btn" (click)="closePopout()" title="Close Popout">✕</button>
+        </div>
+
+        <div class="popout-bottombar">
+            <button class="popout-icon-btn" (click)="channelDown()" title="Previous Channel">
+                <lucide-icon name="chevron-down" class="icon"></lucide-icon>
+            </button>
+            <button class="popout-icon-btn" (click)="channelUp()" title="Next Channel">
+                <lucide-icon name="chevron-up" class="icon"></lucide-icon>
+            </button>
+            <button class="popout-icon-btn" (click)="toggleMute()" title="Mute / Unmute">
+                <lucide-icon [name]="muted || volume === 0 ? 'volume-x' : 'volume-2'" class="icon"></lucide-icon>
+            </button>
+            <input type="range" class="popout-volume-slider" min="0" max="100" [value]="volume * 100" (input)="onVolumeSlider($event)">
+            <button class="popout-icon-btn" (click)="toggleFullscreen()" title="Fullscreen">
+                <lucide-icon [name]="isFullscreen ? 'minimize' : 'maximize'" class="icon"></lucide-icon>
+            </button>
+        </div>
+    </div>
+</div>
+} @else {
 <!-- Top Bar -->
-<header class="topbar">
+<header class="topbar" [class.ui-hidden]="!userActive && !guideOpen">
     <div class="topbar-left">
         <div class="logo">
             <lucide-icon name="monitor-play" class="icon"></lucide-icon>
@@ -34,6 +69,13 @@
         </button>
         <button class="icon-btn" [class.active]="serverSettingsOpen" (click)="serverSettingsOpen = !serverSettingsOpen" title="Server Connection">
             <lucide-icon name="server" class="icon"></lucide-icon>
+        </button>
+        <!-- Popout & Fullscreen -->
+        <button class="icon-btn" (click)="togglePictureInPicture()" title="Popout / Picture-in-Picture">
+            <lucide-icon name="picture-in-picture-2" class="icon"></lucide-icon>
+        </button>
+        <button class="icon-btn" (click)="toggleFullscreen()" title="Fullscreen">
+            <lucide-icon [name]="isFullscreen ? 'minimize' : 'maximize'" class="icon"></lucide-icon>
         </button>
 
         <!-- Theme Picker -->
@@ -332,7 +374,7 @@
             }
 
             <!-- Channel Controls -->
-            <div class="channel-controls">
+            <div class="channel-controls" [class.ui-hidden]="!userActive && !guideOpen">
                 <button class="ch-btn" (click)="channelUp()" title="Channel Up">
                     <lucide-icon name="chevron-up" class="icon"></lucide-icon>
                 </button>
@@ -342,7 +384,7 @@
             </div>
 
             <!-- Volume -->
-            <div class="volume-bar">
+            <div class="volume-bar" [class.ui-hidden]="!userActive && !guideOpen">
                 <button class="vol-btn" (click)="toggleMute()">
                     @if (!muted && volume > 0) {
                     <lucide-icon name="volume-2" class="icon"></lucide-icon>
@@ -357,6 +399,13 @@
                 <!-- Diagnostics Panel Toggle -->
                 <button class="diag-toggle-btn vol-btn" [class.active]="diagnosticsOpen" (click)="toggleDiagnostics()" title="Stream Diagnostics">
                     <lucide-icon name="activity" class="icon"></lucide-icon>
+                </button>
+                <!-- Popout & Fullscreen -->
+                <button class="vol-btn" (click)="togglePictureInPicture()" title="Popout / Picture-in-Picture">
+                    <lucide-icon name="picture-in-picture-2" class="icon"></lucide-icon>
+                </button>
+                <button class="vol-btn" (click)="toggleFullscreen()" title="Fullscreen">
+                    <lucide-icon [name]="isFullscreen ? 'minimize' : 'maximize'" class="icon"></lucide-icon>
                 </button>
             </div>
 
@@ -413,6 +462,57 @@
             </div>
             }
 
+            <!-- Server Sync / Standby Mode -->
+            @if (serverStandby || isSyncing) {
+                @if (syncMessageMinimized && channels.length > 0) {
+                <!-- Floating Minimized Sync Pill -->
+                <div class="sync-minimized-pill glass-card" (click)="toggleSyncMessageMinimization()" title="Expand Sync Status">
+                    <span class="pill-spinner"></span>
+                    <span class="pill-text">Syncing Guide Data...</span>
+                    <button class="pill-expand-btn">⤢</button>
+                </div>
+                } @else {
+                <!-- Full Standby Overlay -->
+                <div class="player-standby-overlay">
+                    <div class="standby-card glass-card">
+                        <div class="standby-header-row" style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+                            <div class="standby-badge">📡 STANDBY</div>
+                            @if (channels.length > 0) {
+                            <button class="standby-minimize-btn" (click)="toggleSyncMessageMinimization()" title="Minimize to Watch TV">─</button>
+                            }
+                        </div>
+                        <h3>Server Sync in Progress</h3>
+                        <p>Channel matching and guide grabbing are currently running on the server.</p>
+                        @if (channels.length > 0) {
+                        <p class="standby-hint" style="font-size:0.78rem; opacity:0.8; margin: 4px 0;">Channels are ready in the guide. You can minimize this message to watch TV.</p>
+                        }
+                        <div class="standby-action-row" style="display:flex; gap:12px; align-items:center; margin-top:8px;">
+                            <div class="standby-spinner"></div>
+                            @if (channels.length > 0) {
+                            <button class="btn btn-secondary small-btn" (click)="toggleSyncMessageMinimization()">Watch TV (Minimize)</button>
+                            }
+                        </div>
+                    </div>
+                </div>
+                }
+            }
+
+            <!-- Stay Tuned Offline / Error Overlay -->
+            @if (error && !loading && !serverStandby) {
+            <div class="player-stay-tuned-overlay">
+                <div class="test-pattern-backdrop"></div>
+                <div class="stay-tuned-card glass-card">
+                    @if (currentChannel?.logo) {
+                    <img [src]="resolveUrl(currentChannel!.logo)" class="stay-tuned-logo" alt="">
+                    }
+                    <div class="stay-tuned-channel">{{ currentChannel?.name || 'Channel Offline' }}</div>
+                    <div class="stay-tuned-badge">📺 STAY TUNED</div>
+                    <p class="stay-tuned-msg">Stream is temporarily offline or unavailable.</p>
+                    <button class="btn btn-secondary small-btn" (click)="tuneToChannel(currentChannelIndex)">Retry Connection</button>
+                </div>
+            </div>
+            }
+
             <!-- Player Diagnostics Overlay -->
             @if (diagnosticsOpen) {
             <div class="player-diagnostics glass-card">
@@ -456,7 +556,7 @@
 
         <!-- Channel Info Card (top-right in expanded layouts) -->
         @if (currentChannel) {
-        <div class="channel-info-block glass">
+        <div class="channel-info-block glass" [class.ui-hidden]="!userActive && !guideOpen">
             <div class="cib-left">
                 @if (currentChannel.logo) {
                 <img [src]="resolveUrl(currentChannel.logo)" class="cib-logo" alt="">
@@ -511,7 +611,8 @@
     @if (guideOpen) {
     <section class="guide-panel"
              [style.height.px]="guideLayout === 'overlay' ? guideHeight : null"
-             [style.width.px]="guideLayout === 'side' ? guideHeight * 1.6 : null">
+             [style.width.px]="guideLayout === 'side' ? guideHeight * 1.6 : null"
+             [style.max-width]="guideLayout === 'side' ? '50vw' : null">
 
         <!-- Drag Handle (overlay = top edge; side = left edge) -->
         <div class="guide-drag-handle"
@@ -587,7 +688,7 @@
                     </div>
                     <div class="guide-programs">
                         @for (prog of ch.programs; track prog.start) {
-                        <div class="guide-program" [style.left]="prog._left" [style.width]="prog._width"
+                        <div class="guide-program" [class.placeholder-prog]="prog.isPlaceholder" [style.left]="prog._left" [style.width]="prog._width"
                             [title]="prog.title" (mouseenter)="onProgramHover($event, ch, prog)"
                             (mouseleave)="hideProgramTooltip()"
                             (contextmenu)="onProgramContextMenu($event, ch, prog)">
@@ -629,7 +730,7 @@
                     </div>
                     <div class="guide-programs">
                         @for (prog of ch.programs; track prog.start) {
-                        <div class="guide-program" [style.left]="prog._left" [style.width]="prog._width"
+                        <div class="guide-program" [class.placeholder-prog]="prog.isPlaceholder" [style.left]="prog._left" [style.width]="prog._width"
                             [title]="prog.title" (mouseenter)="onProgramHover($event, ch, prog)"
                             (mouseleave)="hideProgramTooltip()"
                             (contextmenu)="onProgramContextMenu($event, ch, prog)">
@@ -724,4 +825,5 @@
         </div>
     </div>
 </div>
+}
 }

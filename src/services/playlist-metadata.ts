@@ -85,10 +85,31 @@ export function describePlaylist(url: string, importedCount = 0): PlaylistMetada
     };
   }
 
+  // FAST Platform presets check (e.g. PlutoTV, SamsungTVPlus, Roku, Plex, PBS, Stirr)
+  const lowerUrl = url.toLowerCase();
+  if (lowerUrl.includes('plutotv')) {
+    return { url, name: 'Pluto TV (All Channels)', label: 'Pluto TV', slug: 'pluto-tv', category: 'fast', sourceType: 'remote', host: 'i.mjh.nz', pathSummary: 'PlutoTV/all.m3u8', channelCountEstimate: 350, importedCount };
+  }
+  if (lowerUrl.includes('samsungtvplus')) {
+    return { url, name: 'Samsung TV Plus (All Channels)', label: 'Samsung TV Plus', slug: 'samsung-tv-plus', category: 'fast', sourceType: 'remote', host: 'i.mjh.nz', pathSummary: 'SamsungTVPlus/all.m3u8', channelCountEstimate: 280, importedCount };
+  }
+  if (lowerUrl.includes('roku')) {
+    return { url, name: 'Roku Channel (All Channels)', label: 'Roku Channel', slug: 'roku-channel', category: 'fast', sourceType: 'remote', host: 'i.mjh.nz', pathSummary: 'Roku/all.m3u8', channelCountEstimate: 300, importedCount };
+  }
+  if (lowerUrl.includes('/plex/') || lowerUrl.includes('plex.m3u')) {
+    return { url, name: 'Plex TV (All Channels)', label: 'Plex TV', slug: 'plex-tv', category: 'fast', sourceType: 'remote', host: 'i.mjh.nz', pathSummary: 'Plex/all.m3u8', channelCountEstimate: 250, importedCount };
+  }
+  if (lowerUrl.includes('/pbs/')) {
+    return { url, name: 'PBS Live (All Channels)', label: 'PBS Live', slug: 'pbs-live', category: 'fast', sourceType: 'remote', host: 'i.mjh.nz', pathSummary: 'PBS/all.m3u8', channelCountEstimate: 120, importedCount };
+  }
+  if (lowerUrl.includes('/stirr/')) {
+    return { url, name: 'Stirr TV (All Channels)', label: 'Stirr TV', slug: 'stirr-tv', category: 'fast', sourceType: 'remote', host: 'i.mjh.nz', pathSummary: 'Stirr/all.m3u8', channelCountEstimate: 100, importedCount };
+  }
+
   try {
     const parsed = new URL(url);
     const rawName = parsed.pathname.split('/').pop() || parsed.hostname;
-    const label = rawName.replace(/\.m3u$/i, '') || parsed.hostname;
+    const label = rawName.replace(/\.m3u8?$/i, '') || parsed.hostname;
     return {
       url,
       name: rawName,
