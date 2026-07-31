@@ -1,190 +1,168 @@
-# EPG Manager
+# Tuner Daemon
 
-A self-hosted EPG (Electronic Program Guide) management system that matches IPTV playlists with guide data from multiple sources.
+A self-hosted, high-performance IPTV Playlist & EPG Management System featuring an automated DVR recording engine, live HLS stream proxying, intelligent channel matching, TVMaze metadata enrichment, and a modern Angular TV Watch client interface.
 
-## Demo
+![Tuner Daemon Demo](demo-assets/epg-manager-demo.webp)
 
-![EPG Manager Demo](demo-assets/epg-manager-demo.webp)
+_Full workflow: Configure playlist & EPG sources → Real-time pipeline processing → Interactive channel mapping & overrides → High-performance TV Watch interface & DVR Manager_
 
-_Full workflow: Configure playlist → Start processing → View channel matching progress → Browse channel mapping_
+---
 
-## Features
+## Key Features
 
-- **Multi-Source EPG Processing**: Fetch guide data from IPTV-ORG site scrapers with automatic fallback
-- **Intelligent Channel Matching**: Uses IPTV-ORG metadata, fuzzy matching, and manual overrides
-- **Custom Grabber Integration**: Automatically fetches guide data for channels from 1000+ sites
-- **TVMaze Metadata Enrichment**: Enhance EPG data with ratings and genres (no API key required!)
-- **Auto-Disable Failing Channels**: Channels with consistent grab failures are automatically disabled
-- **Channel Numbering**: Channels are numbered starting at 700 for easy organization
-- **Automated Updates**: Scheduled cron job updates playlists and EPG data daily at 2 AM
-- **Web UI**: Configuration interface for playlist/EPG source selection and channel mapping
+### 📺 Live TV & Watch Interface
+- **Modern Angular TV Player**: Premium dark mode TV watch interface built with fluid typography, custom themes, and glassmorphism styling.
+- **High-Performance Virtualized EPG**: Sub-millisecond virtualized guide grid supporting 1,000+ channels and week-long EPG schedules without DOM lag.
+- **Bulletproof HLS Streaming Engine**: Features a 5-minute stream keepalive engine, automated client heartbeat pings, HLS.js live sync, and watchdog stall auto-jump recovery.
+- **Unified Lower-Third OSD Deck**: Cinematic bottom deck with live progress bar, episode metadata, category accents, and mascot branding.
+- **Multiple Layout Modes**: Seamlessly toggle between Overlay, Side-by-Side, and Guide-Only popout views.
+
+### 📹 DVR Recording System
+- **FFmpeg Server-Side Recording Engine**: Record live streams to `.mp4` files with automatic multi-segment concatenating and error recovery.
+- **Persistent Series Pass Rules**: Create `Series Rules` (`dvr_series_rules`) to automatically schedule upcoming episodes as new EPG data arrives.
+- **Partial File Recovery**: Rebooting or interrupting the server automatically stitches existing `.part` files into playable partial video files rather than failing with 0 bytes.
+- **Dynamic Stream URL Resolution**: Captures resolve live stream URLs from the database at execution time, preventing failures due to rotated token URLs.
+- **Enabled Channel Protection**: Strict validation prevents scheduling recordings on disabled (`enabled = 0`) or hidden channels.
+- **In-Browser Video Playback**: Stream and play completed server recordings directly inside the web browser or download them for offline viewing.
+- **Browser Local Recordings**: Optional client-side Web Worker + IndexedDB recording for browser-only captures.
+
+### ⚙️ EPG Processing & Playlist Management
+- **Multi-Source EPG Processing**: Ingest guide data from IPTV-ORG site scrapers and global providers with priority ranking and automatic fallback.
+- **Intelligent Channel Matching**: Combines exact TVG IDs, normalized string heuristics, fuzzy name matching, and manual XMLTV overrides.
+- **TVMaze & TMDb Metadata Enrichment**: Real-time enrichment adding genres, ratings, episode numbers, descriptions, and high-resolution posters (cached for 7 days, no API key required!).
+- **Failure Count Decay & Auto-Disabling**: Channels with 5 consecutive grab failures auto-disable, while server failure counters gracefully decay over 24-hour windows.
+- **Persistent Background Jobs**: Background sync jobs (`sync_jobs`) log step progress via Server-Sent Events (SSE) and persist across server reboots.
+
+---
 
 ## Quick Start
 
 ### Using Docker (Recommended)
 
 ```bash
-docker build -t epg-manager .
-docker run -d -p 3000:3000 -v $(pwd)/data:/app/data --name epg-manager epg-manager
+# Build the Docker image
+docker build -t tuner-daemon .
+
+# Run container (exposing web client on 3000 and API on 4000)
+docker run -d \
+  -p 3000:3000 \
+  -p 4000:4000 \
+  -v $(pwd)/data:/app/data \
+  --name tuner-daemon \
+  tuner-daemon
+```
+
+Or using **Docker Compose**:
+
+```bash
+docker compose up --build -d
 ```
 
 ### Manual Setup
 
 ```bash
-npm install
-npm run build
-npm start
-```
-
-## Configuration
-
-1. Open `http://localhost:3000` in your browser
-2. Select a playlist source (e.g., IPTV-ORG country lists)
-3. Configure preferred language and EPG duration (days)
-4. Click "Save Configuration" to begin processing
-
-### TVMaze Metadata Enrichment
-
-Enhance your EPG with ratings and genres from TVMaze - **no API key required!**
-
-1. In the EPG Manager web UI, enable "Metadata Enrichment"
-2. That's it! The system will query TVMaze API in real-time for each unique show title
-
-The enrichment process will:
-
-- Match program titles to TVMaze shows
-- Add ratings and genres to programs
-- Cache results for 7 days to minimize API calls
-- Rate limit requests to respect TVMaze's API
-
-## API Endpoints
-
-### Core Endpoints
-
-| Endpoint               | Method | Description                       |
-| ---------------------- | ------ | --------------------------------- |
-| `/api/config`          | GET    | Get current configuration         |
-| `/api/config`          | POST   | Save configuration                |
-| `/api/playlists`       | GET    | List available playlist sources   |
-| `/api/mapping`         | GET    | Get channel mapping status        |
-| `/api/override`        | POST   | Set manual EPG override           |
-| `/api/channels/toggle` | POST   | Enable/disable channels           |
-| `/api/select-epg`      | POST   | Trigger full sync                 |
-| `/api/grab`            | POST   | Trigger grab for missing channels |
-| `/api/rebuild-files`   | POST   | Regenerate M3U and XML files      |
-
-### Production Endpoints
-
-| Endpoint                      | Method | Description                         |
-| ----------------------------- | ------ | ----------------------------------- |
-| `/api/health`                 | GET    | Health check with uptime and counts |
-| `/api/stats`                  | GET    | Comprehensive statistics            |
-| `/api/channels/auto-disabled` | GET    | View auto-disabled channels         |
-| `/api/channels/re-enable`     | POST   | Re-enable auto-disabled channels    |
-
-### Metadata Endpoints
-
-| Endpoint                    | Method | Description                            |
-| --------------------------- | ------ | -------------------------------------- |
-| `/api/metadata/config`      | GET    | Get metadata enrichment configuration  |
-| `/api/metadata/config`      | POST   | Save metadata enrichment configuration |
-| `/api/metadata/enrich`      | POST   | Trigger manual metadata enrichment     |
-| `/api/metadata/stats`       | GET    | Get enrichment statistics              |
-| `/api/metadata/clear-cache` | POST   | Clear metadata cache                   |
-
-### File Endpoints
-
-| Endpoint        | Method | Description                          |
-| --------------- | ------ | ------------------------------------ |
-| `/playlist.m3u` | GET    | Download generated playlist          |
-| `/epg.xml`      | GET    | Download generated EPG guide         |
-| `/files/*`      | GET    | Static file access to data directory |
-
-## Generated Files
-
-- `data/playlist.m3u` - Filtered playlist with matched channels
-- `data/epg.xml` - Merged EPG guide with TVMaze metadata (if enabled)
-- `data/local.db` - SQLite database with settings, mappings, and metadata cache
-
-## Environment Variables
-
-| Variable | Default     | Description                                |
-| -------- | ----------- | ------------------------------------------ |
-| `DB_DIR` | `/app/data` | Directory for database and generated files |
-| `PORT`   | `3000`      | HTTP server port                           |
-
-## Channel Numbering
-
-Channels are automatically numbered starting at **700**. This provides a dedicated range that doesn't conflict with typical OTA or cable channel numbers.
-
-## Auto-Disable Feature
-
-Channels that fail EPG grabbing **5 consecutive times** across all available sites are automatically disabled. You can:
-
-- View disabled channels via `GET /api/channels/auto-disabled`
-- Re-enable channels via `POST /api/channels/re-enable`
-- Manually enable channels in the web UI
-
-## Development
-
-```bash
 # Install dependencies
 npm install
 
-# Run in development mode
-npm run dev
-
-# Build for production
+# Build both client and server
+npm run build --prefix client
 npm run build
 
 # Start production server
 npm start
 ```
 
-## Testing
+---
 
-The project includes comprehensive unit tests (Jest) and end-to-end tests (Playwright).
+## Configuration & Usage
 
-### Unit Tests
+1. Open `http://localhost:3000` in your browser.
+2. Log in using the default admin password: `admin`.
+3. Configure your M3U playlist source or select from pre-configured IPTV-ORG sources.
+4. Set preferred language, priority order, and EPG duration.
+5. Click **Start Full Sync** to ingest channels and guide data.
+
+---
+
+## API Reference
+
+### Core & Pipeline APIs
+
+| Endpoint | Method | Auth | Description |
+| :--- | :---: | :---: | :--- |
+| `/api/health` | GET | No | System health check, uptime, and database counts |
+| `/api/stats` | GET | No | Detailed statistics on channels, programs, and grabber status |
+| `/api/has-data` | GET | No | Checks if initial playlist/EPG sync data exists |
+| `/api/job-status` | GET | No | Returns active and historical background sync job state |
+| `/api/job-cancel` | POST | Yes | Requests cancellation of active background sync pipeline |
+| `/api/auth` | POST | No | Authenticates admin password and issues Bearer token |
+
+### Channel & Mapping APIs
+
+| Endpoint | Method | Auth | Description |
+| :--- | :---: | :---: | :--- |
+| `/api/channels` | GET | Yes | List all channels with matched EPG mappings |
+| `/api/channels/toggle` | POST | Yes | Bulk enable/disable specific channels |
+| `/api/override` | POST | Yes | Save manual XMLTV EPG override for a channel |
+| `/api/channels/auto-disabled` | GET | Yes | View channels auto-disabled due to grab failures |
+| `/api/channels/re-enable` | POST | Yes | Re-enable auto-disabled channels |
+
+### DVR & Streaming APIs
+
+| Endpoint | Method | Auth | Description |
+| :--- | :---: | :---: | :--- |
+| `/api/dvr` | GET | Yes | List all scheduled, recording, and completed server DVR recordings |
+| `/api/dvr` | POST | Yes | Schedule a new recording (validates channel `enabled = 1`) |
+| `/api/dvr/stop/:id` | POST | Yes | Stop an active server recording |
+| `/api/dvr/:id` | DELETE | Yes | Cancel or delete a scheduled/completed recording |
+| `/api/dvr/storage` | GET | Yes | Check disk space usage and total volume capacity |
+| `/api/dvr/stream/:filename` | GET | No | Stream completed MP4 recording file for in-browser playback |
+| `/api/dvr/series-rules` | GET | Yes | List active automated Series Pass rules |
+| `/api/dvr/series-rules/:id` | DELETE | Yes | Delete a Series Pass rule |
+| `/api/stream/keepalive/:id` | GET | No | Extends stream idle timeout for active live HLS proxy session |
+| `/api/recordings/system` | GET | No | Public read-only system recording list for Watch UI |
+
+### Generated Export Files
+
+| Endpoint | Method | Description |
+| :--- | :---: | :--- |
+| `/playlist.m3u` | GET | Download processed, re-numbered M3U playlist |
+| `/epg.xml` | GET | Download merged XMLTV EPG guide with TVMaze metadata |
+| `/files/*` | GET | Direct access to data directory files and HLS stream segments |
+
+---
+
+## Environment Variables
+
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `DB_DIR` | `/app/data` | Path to SQLite database (`local.db`), stream cache, and recordings folder |
+| `PORT` | `3000` | HTTP port for Angular frontend & static web server |
+| `API_PORT` | `4000` | HTTP port for backend REST API server |
+| `ADMIN_PASSWORD` | `admin` | Password required for administrative actions |
+
+---
+
+## Development & Testing
 
 ```bash
-# Run all unit tests
+# Run backend in dev mode with auto-reload
+npm run dev
+
+# Run Angular client in dev mode
+cd client && npm run start
+
+# Execute backend unit test suite (189+ tests)
 npm test
 
-# Run tests in watch mode
-npm run test:watch
-
-# Run tests with coverage report
-npm run test:coverage
-```
-
-**Test coverage:**
-
-- `src/services/__tests__/metadata.test.ts` - Title normalization (25 tests)
-- `src/services/__tests__/epg.test.ts` - ID/name normalization, XML escaping (24 tests)
-
-### End-to-End Tests
-
-```bash
-# Install Playwright browsers (first time only)
-npx playwright install chromium
-
-# Run all e2e tests
+# Run full end-to-end Playwright tests
 npm run test:e2e
 
-# Run with visible browser
-npm run test:e2e -- --headed
-
-# Run specific test file
-npm run test:e2e -- e2e/api.spec.ts
+# Run 5-minute stream stability E2E test
+npx playwright test e2e/stream-stability.spec.ts
 ```
 
-**E2E test coverage:**
-
-- `e2e/api.spec.ts` - All API endpoints (11 tests)
-- `e2e/ui.spec.ts` - Web UI interactions (14 tests)
-
-> **Note:** E2E tests automatically start the server on port 3101 using a separate `test-data` directory.
+---
 
 ## License
 
