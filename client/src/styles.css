@@ -1,5 +1,5 @@
 /* ===========================================
-   IPTV Manager — Cinematic Noir Theme
+   Tuner Daemon — Cinematic Noir Theme
    Refined aesthetic: warm amber accents, film grain depth, editorial typography
    =========================================== */
 
@@ -14,6 +14,7 @@
     /* Warm Amber Accent - Cinematic Glow */
     --color-primary: #e8a854;
     --color-primary-rgb: 232, 168, 84;
+    --color-primary-light: #f0c078;
     --color-primary-dark: #c98a3a;
     --color-primary-text: #1a1408;
     --color-primary-dim: rgba(var(--color-primary-rgb), 0.15);
@@ -33,8 +34,8 @@
     
     /* Text - Warm Whites */
     --text-primary: #f5f2eb;
-    --text-secondary: #9a9285;
-    --text-muted: #5c554a;
+    --text-secondary: #b5ac9d;
+    --text-muted: #82786a;
     
     /* Semantic Surface & Border tokens (adapt to light/dark) */
     --bg-surface: rgba(10, 8, 6, 0.5);
@@ -48,12 +49,20 @@
     --bg-glass-strong: rgba(20, 16, 12, 0.9);
     --bg-glass-light: rgba(255, 248, 240, 0.03);
     
-    /* Typography - Editorial */
-    --font-heading: 'Syne', 'Libre Franklin', sans-serif;
-    --font-display: 'Cormorant Garamond', serif;
+    /* Typography - Scale and Fonts */
+    --font-heading: 'Syne', sans-serif;
     --font-body: 'Libre Franklin', sans-serif;
     --font-sans: 'Libre Franklin', sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
+    
+    --text-xs: 0.75rem;
+    --text-sm: 0.875rem;
+    --text-base: 1rem;
+    --text-lg: 1.125rem;
+    --text-xl: 1.25rem;
+    --text-2xl: 1.5rem;
+    --text-3xl: 1.875rem;
+    --text-4xl: 2.25rem;
     
     /* Borders & Shadows */
     --border-glass: 1px solid rgba(var(--color-primary-rgb), 0.12);
@@ -115,8 +124,8 @@ body.theme-neon-cyberpunk {
     --color-info: #00b4ff;
     --color-info-rgb: 0, 180, 255;
     --text-primary: #f3e8ff;
-    --text-secondary: #a78bfa;
-    --text-muted: #6d44b8;
+    --text-secondary: #c4aefc;
+    --text-muted: #9565f0;
     --bg-surface: rgba(13, 6, 21, 0.6);
     --bg-surface-hover: rgba(0, 240, 255, 0.08);
     --bg-inset: rgba(0, 0, 0, 0.3);
@@ -275,6 +284,118 @@ body.theme-arctic-ice {
     --theme-texture-opacity: 0;
 }
 
+/* Theme Tuner Daemon — Cyber Lime, Bronze Gear & Metallic Slate Void */
+body.theme-tuner-daemon {
+    --bg-deep: #070a12;
+    --bg-void: #030509;
+    --bg-gradient: radial-gradient(ellipse at 30% 0%, rgba(34, 197, 94, 0.22) 0%, var(--bg-deep) 60%),
+                   radial-gradient(ellipse at 75% 100%, rgba(217, 119, 6, 0.18) 0%, var(--bg-deep) 50%),
+                   linear-gradient(180deg, #090e1a 0%, var(--bg-deep) 100%);
+    --color-primary: #22c55e;
+    --color-primary-rgb: 34, 197, 94;
+    --color-primary-dark: #16a34a;
+    --color-primary-text: #040806;
+    --color-primary-dim: rgba(34, 197, 94, 0.12);
+    --color-primary-glow: rgba(34, 197, 94, 0.4);
+    --color-secondary: #d97706;
+    --color-secondary-rgb: 217, 119, 6;
+    --text-primary: #f0fdf4;
+    --text-secondary: #86efac;
+    --text-muted: #15803d;
+    --bg-surface: rgba(9, 14, 26, 0.65);
+    --bg-surface-hover: rgba(34, 197, 94, 0.08);
+    --bg-glass: rgba(9, 14, 26, 0.85);
+    --bg-glass-strong: rgba(12, 19, 34, 0.95);
+    --border-glass: 1px solid rgba(34, 197, 94, 0.18);
+    --border-glow: 1px solid rgba(34, 197, 94, 0.5);
+    --shadow-glow: 0 0 25px rgba(34, 197, 94, 0.25);
+    --theme-texture-opacity: 0;
+}
+
+/* Theme Aether — Midnight Obsidian & Cyan-Violet Glowing Glass */
+body.theme-aether {
+    --bg-deep: #05070e;
+    --bg-void: #020307;
+    --bg-gradient: radial-gradient(ellipse at 30% 0%, rgba(0, 240, 255, 0.2) 0%, var(--bg-deep) 60%),
+                   radial-gradient(ellipse at 70% 100%, rgba(139, 92, 246, 0.2) 0%, var(--bg-deep) 50%),
+                   linear-gradient(180deg, #070a14 0%, var(--bg-deep) 100%);
+    --color-primary: #00f0ff;
+    --color-primary-rgb: 0, 240, 255;
+    --color-primary-dark: #00a8c6;
+    --color-primary-text: #05070e;
+    --color-primary-dim: rgba(0, 240, 255, 0.12);
+    --color-primary-glow: rgba(0, 240, 255, 0.4);
+    --color-secondary: #8b5cf6;
+    --color-secondary-rgb: 139, 92, 246;
+    --text-primary: #f0f9ff;
+    --text-secondary: #94a3b8;
+    --text-muted: #475569;
+    --bg-surface: rgba(7, 10, 20, 0.6);
+    --bg-surface-hover: rgba(0, 240, 255, 0.08);
+    --bg-glass: rgba(7, 10, 20, 0.85);
+    --bg-glass-strong: rgba(10, 15, 30, 0.95);
+    --border-glass: 1px solid rgba(0, 240, 255, 0.15);
+    --border-glow: 1px solid rgba(0, 240, 255, 0.5);
+    --shadow-glow: 0 0 25px rgba(0, 240, 255, 0.2);
+    --theme-texture-opacity: 0;
+}
+
+/* Theme Pulse — High-Energy Retro Broadcast Magenta & Cyan */
+body.theme-pulse {
+    --bg-deep: #0c0614;
+    --bg-void: #05020a;
+    --bg-gradient: radial-gradient(ellipse at 20% 0%, rgba(255, 0, 127, 0.25) 0%, var(--bg-deep) 55%),
+                   radial-gradient(ellipse at 80% 100%, rgba(0, 240, 255, 0.22) 0%, var(--bg-deep) 45%),
+                   linear-gradient(180deg, #0d0615 0%, var(--bg-deep) 100%);
+    --color-primary: #ff007f;
+    --color-primary-rgb: 255, 0, 127;
+    --color-primary-dark: #c60062;
+    --color-primary-text: #ffffff;
+    --color-primary-dim: rgba(255, 0, 127, 0.15);
+    --color-primary-glow: rgba(255, 0, 127, 0.5);
+    --color-secondary: #00f0ff;
+    --color-secondary-rgb: 0, 240, 255;
+    --text-primary: #fff0f6;
+    --text-secondary: #f472b6;
+    --text-muted: #9d174d;
+    --bg-surface: rgba(13, 6, 21, 0.6);
+    --bg-surface-hover: rgba(255, 0, 127, 0.08);
+    --bg-glass: rgba(13, 6, 21, 0.85);
+    --bg-glass-strong: rgba(18, 9, 29, 0.95);
+    --border-glass: 1px solid rgba(255, 0, 127, 0.2);
+    --border-glow: 1px solid rgba(255, 0, 127, 0.5);
+    --shadow-glow: 0 0 25px rgba(255, 0, 127, 0.3);
+    --theme-texture-opacity: 0;
+}
+
+/* Theme Omni — Ultra-Clean Electric Blue & Amber Slate */
+body.theme-omni {
+    --bg-deep: #0b1120;
+    --bg-void: #060913;
+    --bg-gradient: radial-gradient(ellipse at 25% 0%, rgba(59, 130, 246, 0.2) 0%, var(--bg-deep) 60%),
+                   radial-gradient(ellipse at 75% 100%, rgba(245, 158, 11, 0.15) 0%, var(--bg-deep) 50%),
+                   linear-gradient(180deg, #0e172a 0%, var(--bg-deep) 100%);
+    --color-primary: #3b82f6;
+    --color-primary-rgb: 59, 130, 246;
+    --color-primary-dark: #2563eb;
+    --color-primary-text: #ffffff;
+    --color-primary-dim: rgba(59, 130, 246, 0.12);
+    --color-primary-glow: rgba(59, 130, 246, 0.4);
+    --color-secondary: #f59e0b;
+    --color-secondary-rgb: 245, 158, 11;
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --text-muted: #475569;
+    --bg-surface: rgba(14, 23, 42, 0.6);
+    --bg-surface-hover: rgba(59, 130, 246, 0.08);
+    --bg-glass: rgba(14, 23, 42, 0.85);
+    --bg-glass-strong: rgba(15, 23, 42, 0.95);
+    --border-glass: 1px solid rgba(59, 130, 246, 0.18);
+    --border-glow: 1px solid rgba(59, 130, 246, 0.5);
+    --shadow-glow: 0 0 25px rgba(59, 130, 246, 0.25);
+    --theme-texture-opacity: 0;
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -302,12 +423,7 @@ body {
                background-image 0.5s var(--ease-smooth);
 }
 
-/* Smooth theme transition on all themed elements */
-body * {
-    transition-property: color, background-color, border-color, box-shadow, fill, stroke;
-    transition-duration: 0.35s;
-    transition-timing-function: var(--ease-smooth);
-}
+/* Removed body * wildcard transitions for performance */
 
 /* Subtle film grain overlay */
 body::before {
@@ -798,6 +914,7 @@ tbody tr:hover {
 }
 
 .icon-btn svg {
+    margin: 1em;
     width: 18px;
     height: 18px;
 }

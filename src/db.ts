@@ -310,6 +310,17 @@ export async function initDb() {
   await db.execute("CREATE INDEX IF NOT EXISTS idx_scheduled_recordings_status ON scheduled_recordings(status)");
   await db.execute("CREATE INDEX IF NOT EXISTS idx_scheduled_recordings_start ON scheduled_recordings(start_time)");
 
+  // DVR Persistent Series Rules
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS dvr_series_rules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        channel_id TEXT NOT NULL,
+        series_title TEXT NOT NULL,
+        created_at INTEGER DEFAULT (unixepoch())
+    )
+  `);
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_dvr_series_rules_channel ON dvr_series_rules(channel_id)");
+
   // Manual metadata overrides – user-corrected TVMaze matches
   await db.execute(`
     CREATE TABLE IF NOT EXISTS metadata_overrides (

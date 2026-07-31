@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-feature android:name="android.hardware.touchscreen" android:required="true" />
     <application>
-        <activity android:name="com.epg.manager.MainActivity">
+        <activity android:name="net.christopherrutherford.tunerdaemon.MainActivity" android:exported="true">
             <intent-filter>
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>

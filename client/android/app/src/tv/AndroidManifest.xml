@@ -3,7 +3,7 @@
     <uses-feature android:name="android.software.leanback" android:required="true" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <application android:banner="@mipmap/ic_launcher">
-        <activity android:name="com.epg.manager.MainActivity">
+        <activity android:name="net.christopherrutherford.tunerdaemon.MainActivity" android:exported="true">
             <intent-filter>
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>

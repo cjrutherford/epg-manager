@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">EPG Manager</string>
-    <string name="title_activity_main">EPG Manager</string>
-    <string name="package_name">com.epg.manager</string>
-    <string name="custom_url_scheme">com.epg.manager</string>
+    <string name="app_name">Tuner Daemon</string>
+    <string name="title_activity_main">Tuner Daemon</string>
+    <string name="package_name">net.christopherrutherford.tunerdaemon</string>
+    <string name="custom_url_scheme">net.christopherrutherford.tunerdaemon</string>
 </resources>

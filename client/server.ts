@@ -12,11 +12,22 @@ const serverDistFolder = dirname(fileURLToPath(import.meta.url));
 const browserDistFolder = resolve(serverDistFolder, '../browser');
 
 const angularNodeAppEngine = new AngularNodeAppEngine({
-  allowedHosts: ['*']
+  allowedHosts: ['*'],
+  trustProxyHeaders: [
+    'x-forwarded-for',
+    'x-forwarded-host',
+    'x-forwarded-proto',
+    'x-forwarded-port',
+    'x-forwarded-server',
+    'x-forwarded-ssl',
+    'x-forwarded-uri',
+    'x-forwarded-prefix'
+  ]
 });
 
 export function app(): express.Express {
   const server = express();
+  server.set('trust proxy', true);
 
   // Enable CORS for mobile apps and external API clients
   server.use((req, res, next) => {
@@ -79,6 +90,12 @@ export function app(): express.Express {
 
   // All regular routes use the Angular engine
   server.get('*', (req, res, next) => {
+    delete req.headers['x-forwarded-port'];
+    delete req.headers['x-forwarded-server'];
+    delete req.headers['x-forwarded-ssl'];
+    delete req.headers['x-forwarded-uri'];
+    delete req.headers['x-forwarded-prefix'];
+
     angularNodeAppEngine
       .handle(req, { server: 'express' })
       .then((response) => (response ? writeResponseToNodeResponse(response, res) : next()))

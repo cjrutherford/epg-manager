@@ -47,7 +47,7 @@ export class StorageService {
     private getLocalFavorites(): Set<string> {
         if (!this.isBrowser) return new Set();
         try {
-            const saved = localStorage.getItem('iptv_favorites');
+            const saved = localStorage.getItem('tuner_daemon_favorites');
             return saved ? new Set(JSON.parse(saved)) : new Set();
         } catch { return new Set(); }
     }
@@ -55,19 +55,19 @@ export class StorageService {
     private getLocalHiddenChannels(): Set<string> {
         if (!this.isBrowser) return new Set();
         try {
-            const saved = localStorage.getItem('iptv_hidden_channels');
+            const saved = localStorage.getItem('tuner_daemon_hidden_channels');
             return saved ? new Set(JSON.parse(saved)) : new Set();
         } catch { return new Set(); }
     }
 
     private saveLocalFavorites(favorites: Set<string>): void {
         if (!this.isBrowser) return;
-        localStorage.setItem('iptv_favorites', JSON.stringify([...favorites]));
+        localStorage.setItem('tuner_daemon_favorites', JSON.stringify([...favorites]));
     }
 
     private saveLocalHidden(hidden: Set<string>): void {
         if (!this.isBrowser) return;
-        localStorage.setItem('iptv_hidden_channels', JSON.stringify([...hidden]));
+        localStorage.setItem('tuner_daemon_hidden_channels', JSON.stringify([...hidden]));
     }
 
     // ── Favorites ───────────────────────────────
@@ -133,30 +133,30 @@ export class StorageService {
     // ── Last Channel ────────────────────────────
     getLastChannel(): string | null {
         if (!this.isBrowser) return null;
-        return localStorage.getItem('iptv_last_channel');
+        return localStorage.getItem('tuner_daemon_last_channel');
     }
 
     setLastChannel(channelId: string): void {
-        if (this.isBrowser) localStorage.setItem('iptv_last_channel', channelId);
+        if (this.isBrowser) localStorage.setItem('tuner_daemon_last_channel', channelId);
     }
 
     // ── Volume ──────────────────────────────────
     getVolume(): number {
         if (!this.isBrowser) return 0.8;
-        const saved = localStorage.getItem('iptv_volume');
+        const saved = localStorage.getItem('tuner_daemon_volume');
         return saved !== null ? parseFloat(saved) : 0.8;
     }
 
     setVolume(volume: number): void {
-        if (this.isBrowser) localStorage.setItem('iptv_volume', String(volume));
+        if (this.isBrowser) localStorage.setItem('tuner_daemon_volume', String(volume));
     }
 
     getMuted(): boolean {
         if (!this.isBrowser) return false;
-        return localStorage.getItem('iptv_muted') === 'true';
+        return localStorage.getItem('tuner_daemon_muted') === 'true';
     }
 
     setMuted(muted: boolean): void {
-        if (this.isBrowser) localStorage.setItem('iptv_muted', String(muted));
+        if (this.isBrowser) localStorage.setItem('tuner_daemon_muted', String(muted));
     }
 }

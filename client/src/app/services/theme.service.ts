@@ -16,11 +16,15 @@ export class ThemeService {
     private currentTheme = 'cinematic-noir';
 
     readonly themes: Theme[] = [
+        { key: 'tuner-daemon', name: 'Tuner Daemon (Cyber Lime)', primaryColor: '#22c55e', bgColor: '#070a12' },
         { key: 'cinematic-noir', name: 'Cinematic Noir', primaryColor: '#e8a854', bgColor: '#050505' },
-        { key: 'neon-cyberpunk', name: 'Neon Cyberpunk', primaryColor: '#00f0ff', bgColor: '#0c0614' },
+        { key: 'aether', name: 'Aether Vision', primaryColor: '#00f0ff', bgColor: '#05070e' },
+        { key: 'pulse', name: 'Pulse Broadcast', primaryColor: '#ff007f', bgColor: '#0c0614' },
+        { key: 'omni', name: 'Omni Station', primaryColor: '#3b82f6', bgColor: '#0b1120' },
         { key: 'midnight-forest', name: 'Midnight Forest', primaryColor: '#3cd070', bgColor: '#08100c' },
         { key: 'cosmic-purple', name: 'Cosmic Purple', primaryColor: '#a855f7', bgColor: '#090514' },
-        { key: 'arctic-ice', name: 'Arctic Ice', primaryColor: '#2563eb', bgColor: '#f1f5f9' }
+        { key: 'neon-cyberpunk', name: 'Neon Cyberpunk', primaryColor: '#e040fb', bgColor: '#110214' },
+        { key: 'arctic-ice', name: 'Arctic Ice', primaryColor: '#4fc3f7', bgColor: '#020e14' }
     ];
 
     constructor(@Inject(PLATFORM_ID) platformId: Object) {
@@ -43,7 +47,7 @@ export class ThemeService {
         this.currentTheme = themeKey;
 
         if (this.isBrowser) {
-            localStorage.setItem('iptv_theme', themeKey);
+            localStorage.setItem('tuner_daemon_theme', themeKey);
             this.applyTheme(themeKey);
         }
     }
@@ -52,7 +56,7 @@ export class ThemeService {
         if (!this.isBrowser) return;
 
         try {
-            const saved = localStorage.getItem('iptv_theme');
+            const saved = localStorage.getItem('tuner_daemon_theme');
             if (saved && this.themes.some(t => t.key === saved)) {
                 this.currentTheme = saved;
             }

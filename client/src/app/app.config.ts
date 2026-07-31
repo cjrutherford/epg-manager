@@ -7,14 +7,14 @@ import { LucideAngularModule, GripHorizontal, Columns2, SquareMenu, PlaySquare, 
 
 const serverUrlInterceptor: HttpInterceptorFn = (req, next) => {
   if (typeof window !== 'undefined') {
-    let serverUrl = localStorage.getItem('iptv_server_url');
+    let serverUrl = localStorage.getItem('tuner_daemon_server_url');
     if (!serverUrl) {
       const origin = window.location.origin || '';
       if (origin.startsWith('capacitor:') || 
           origin === 'http://localhost' || 
           origin === 'https://localhost' || 
           origin.startsWith('file:')) {
-        serverUrl = 'http://teevee.christopherrutherford.net';
+        serverUrl = 'https://teevee.christopherrutherford.net';
       } else if (origin.includes(':4200')) {
         serverUrl = 'http://localhost:3000';
       } else {

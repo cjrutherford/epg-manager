@@ -1,4 +1,4 @@
-package com.epg.manager;
+package net.christopherrutherford.tunerdaemon;
 
 import com.getcapacitor.BridgeActivity;
 

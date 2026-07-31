@@ -54,6 +54,10 @@ export class ApiService {
         return this.http.get(`/api/channel/${channelId}/stream`);
     }
 
+    pingStreamKeepAlive(streamId: string): Observable<any> {
+        return this.http.get(`/api/stream/keepalive/${streamId}`);
+    }
+
     getRecordings(status?: string): Observable<any[]> {
         const url = status ? `/api/recordings?status=${status}` : '/api/recordings';
         return this.http.get<any[]>(url);

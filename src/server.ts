@@ -62,6 +62,10 @@ app.use('/files/streams/:id', (req, res, next) => {
     StreamManager.keepAlive(req.params.id);
     next();
 });
+app.get('/api/stream/keepalive/:id', (req: any, res: any) => {
+    StreamManager.keepAlive(req.params.id);
+    res.json({ success: true, timestamp: Date.now() });
+});
 app.use('/files', express.static(DB_DIR)); // Static files
 
 
@@ -1443,8 +1447,38 @@ app.post('/api/dvr', requireAuth, async (req: any, res: any) => {
             episode_num,
             description,
             rating,
-            category
+            category,
+            record_series
         } = req.body;
+
+        if (!channel_id) {
+            return res.status(400).json({ error: 'Channel ID is required' });
+        }
+
+        // Validate channel exists and is enabled
+        const chanCheck = await db.execute({
+            sql: 'SELECT enabled, name, url FROM channels WHERE id = ?',
+            args: [channel_id],
+        });
+        if (chanCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Channel not found' });
+        }
+        if (chanCheck.rows[0].enabled === 0) {
+            return res.status(400).json({ error: 'Cannot schedule recording on a disabled channel' });
+        }
+
+        const resolvedChannelName = channel_name || (chanCheck.rows[0].name as string);
+        const resolvedStreamUrl = stream_url || (chanCheck.rows[0].url as string);
+
+        // Check for existing duplicate schedule on same channel and overlapping start time
+        const existing = await db.execute({
+            sql: `SELECT id FROM scheduled_recordings
+                  WHERE channel_id = ? AND program_title = ? AND start_time = ? AND status != 'failed'`,
+            args: [channel_id, program_title, start_time],
+        });
+        if (existing.rows.length > 0) {
+            return res.status(409).json({ error: 'A recording for this program is already scheduled' });
+        }
 
         await db.execute({
             sql: `INSERT INTO scheduled_recordings (
@@ -1454,11 +1488,11 @@ app.post('/api/dvr', requireAuth, async (req: any, res: any) => {
                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled')`,
             args: [
                 channel_id,
-                channel_name || null,
+                resolvedChannelName,
                 program_title,
                 start_time,
                 end_time,
-                stream_url,
+                resolvedStreamUrl,
                 thumbnail || null,
                 sub_title || null,
                 episode_num || null,
@@ -1467,6 +1501,14 @@ app.post('/api/dvr', requireAuth, async (req: any, res: any) => {
                 category || null
             ]
         });
+
+        // Save series rule if requested
+        if (record_series && program_title) {
+            await db.execute({
+                sql: `INSERT OR IGNORE INTO dvr_series_rules (channel_id, series_title) VALUES (?, ?)`,
+                args: [channel_id, program_title],
+            });
+        }
 
         // Check if we need to start it immediately (scheduler checks every 30s)
         checkScheduledRecordings();
@@ -1496,6 +1538,48 @@ app.get('/api/recordings/system', async (req: any, res: any) => {
             ORDER BY sr.start_time DESC
         `);
         res.json(result.rows.map((row: any) => mapSystemRecordingRow(row)));
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Stream completed DVR recording file for in-browser playback
+app.get('/api/dvr/stream/:filename', async (req: any, res: any) => {
+    try {
+        const filename = path.basename(req.params.filename);
+        const filePath = getRecordingFilePath(filename);
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).send('Recording file not found');
+        }
+        res.sendFile(filePath);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ── Series Rules API ──
+app.get('/api/dvr/series-rules', requireAuth, async (req: any, res: any) => {
+    try {
+        const result = await db.execute(`
+            SELECT r.*, c.name as channel_name
+            FROM dvr_series_rules r
+            LEFT JOIN channels c ON c.id = r.channel_id
+            ORDER BY r.created_at DESC
+        `);
+        res.json(result.rows);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.delete('/api/dvr/series-rules/:id', requireAuth, async (req: any, res: any) => {
+    try {
+        const id = parseInt(req.params.id);
+        await db.execute({
+            sql: 'DELETE FROM dvr_series_rules WHERE id = ?',
+            args: [id],
+        });
+        res.json({ success: true });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }

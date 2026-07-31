@@ -196,7 +196,20 @@ async function runRecordingSession(
         return;
     }
 
-    const streamUrl = rec.stream_url as string;
+    const channelRes = await db.execute({
+        sql: 'SELECT url, enabled FROM channels WHERE id = ?',
+        args: [rec.channel_id as string],
+    });
+    if (channelRes.rows.length > 0 && channelRes.rows[0].enabled === 0) {
+        await db.execute({
+            sql: "UPDATE scheduled_recordings SET status = 'failed', error_message = 'Channel is disabled' WHERE id = ?",
+            args: [recordingId],
+        });
+        cleanUpParts(partPaths);
+        return;
+    }
+
+    const streamUrl = (channelRes.rows.length > 0 && channelRes.rows[0].url) ? (channelRes.rows[0].url as string) : (rec.stream_url as string);
     const endTime = new Date(rec.end_time as string);
     const now = new Date();
 
@@ -231,6 +244,7 @@ async function runRecordingSession(
     // Spawn ffmpeg with native reconnect switches for HLS/HTTP robustness
     const ffmpeg = spawn('ffmpeg', [
         '-y',
+        '-http_persistent', '0',
         '-reconnect', '1',
         '-reconnect_at_eof', '0',
         '-reconnect_streamed', '1',
@@ -378,18 +392,139 @@ export async function checkScheduledRecordings(): Promise<void> {
  */
 export async function cleanupStaleRecordings(): Promise<void> {
     const result = await db.execute(
-        `SELECT id FROM scheduled_recordings WHERE status = 'recording'`
+        `SELECT id, filename, program_title FROM scheduled_recordings WHERE status = 'recording'`
     );
 
     for (const row of result.rows) {
         const id = row.id as number;
         if (!activeProcesses.has(id)) {
+            console.warn(`[RECORDER] Recovering stale recording ${id} ("${row.program_title}")...`);
+            const baseFilename = row.filename as string;
+            if (baseFilename) {
+                // Find existing parts
+                try {
+                    const dir = getRecordingsDir();
+                    const files = fs.readdirSync(dir);
+                    const parts = files
+                        .filter(f => f.startsWith(`${baseFilename}.part`) || f === baseFilename)
+                        .map(f => path.join(dir, f));
+
+                    if (parts.length > 0) {
+                        if (parts.length === 1) {
+                            await finalizeSingleFile(id, parts[0]);
+                        } else {
+                            await mergeRecordingParts(id, parts);
+                        }
+                        await db.execute({
+                            sql: "UPDATE scheduled_recordings SET error_message = 'Recovered partial recording after server restart' WHERE id = ?",
+                            args: [id],
+                        });
+                        continue;
+                    }
+                } catch (e: any) {
+                    console.error(`[RECORDER] Error recovering parts for ${id}:`, e.message);
+                }
+            }
+
             await db.execute({
                 sql: 'UPDATE scheduled_recordings SET status = ?, error_message = ? WHERE id = ?',
-                args: ['failed', 'Process lost (server restart?)', id],
+                args: ['failed', 'Process lost (server restart)', id],
             });
-            console.warn(`[RECORDER] Cleaned up stale recording ${id}`);
         }
+    }
+}
+
+/**
+ * Auto-schedule upcoming episodes matching saved series rules
+ */
+export async function autoScheduleSeriesRules(): Promise<number> {
+    try {
+        const rulesRes = await db.execute('SELECT * FROM dvr_series_rules');
+        if (rulesRes.rows.length === 0) return 0;
+
+        let scheduledCount = 0;
+        for (const rule of rulesRes.rows) {
+            const channelId = rule.channel_id as string;
+            const seriesTitle = (rule.series_title as string).trim().toLowerCase();
+
+            // Find matching upcoming programs from epg_programs for this channel
+            const progsRes = await db.execute({
+                sql: `SELECT ep.*, c.name as channel_name, c.url as stream_url, c.tvg_logo as channel_logo
+                      FROM epg_programs ep
+                      JOIN channels c ON c.matched_epg_id = ep.channel_id OR c.id = ep.channel_id
+                      WHERE c.id = ? AND c.enabled = 1
+                        AND LOWER(TRIM(ep.title)) = ?`,
+                args: [channelId, seriesTitle],
+            });
+
+            for (const prog of progsRes.rows) {
+                const title = prog.title as string;
+                const startRaw = prog.start as string; // EPG format YYYYMMDDHHMMSS +0000 or ISO
+                const stopRaw = prog.stop as string;
+
+                let startTimeStr = startRaw;
+                let endTimeStr = stopRaw;
+
+                // Parse XMLTV dates if needed
+                if (startRaw && startRaw.length >= 14 && !startRaw.includes('-')) {
+                    const year = startRaw.substring(0, 4);
+                    const month = startRaw.substring(4, 6);
+                    const day = startRaw.substring(6, 8);
+                    const hour = startRaw.substring(8, 10);
+                    const min = startRaw.substring(10, 12);
+                    const sec = startRaw.substring(12, 14);
+                    startTimeStr = `${year}-${month}-${day}T${hour}:${min}:${sec}.000Z`;
+                }
+                if (stopRaw && stopRaw.length >= 14 && !stopRaw.includes('-')) {
+                    const year = stopRaw.substring(0, 4);
+                    const month = stopRaw.substring(4, 6);
+                    const day = stopRaw.substring(6, 8);
+                    const hour = stopRaw.substring(8, 10);
+                    const min = stopRaw.substring(10, 12);
+                    const sec = stopRaw.substring(12, 14);
+                    endTimeStr = `${year}-${month}-${day}T${hour}:${min}:${sec}.000Z`;
+                }
+
+                // Check if already scheduled or recorded
+                const existing = await db.execute({
+                    sql: `SELECT id FROM scheduled_recordings
+                          WHERE channel_id = ? AND program_title = ? AND start_time = ?`,
+                    args: [channelId, title, startTimeStr],
+                });
+
+                if (existing.rows.length === 0) {
+                    await db.execute({
+                        sql: `INSERT INTO scheduled_recordings (
+                                channel_id, channel_name, program_title, start_time, end_time, stream_url,
+                                thumbnail, sub_title, episode_num, description, rating, category, status
+                              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled')`,
+                        args: [
+                            channelId,
+                            prog.channel_name || null,
+                            title,
+                            startTimeStr,
+                            endTimeStr,
+                            prog.stream_url || '',
+                            prog.icon || prog.channel_logo || null,
+                            prog.sub_title || null,
+                            prog.episode_num || null,
+                            prog.desc || null,
+                            prog.rating || null,
+                            prog.category || null,
+                        ],
+                    });
+                    scheduledCount++;
+                }
+            }
+        }
+        if (scheduledCount > 0) {
+            console.log(`[RECORDER] Auto-scheduled ${scheduledCount} new episodes from series rules.`);
+            checkScheduledRecordings();
+        }
+        return scheduledCount;
+    } catch (e: any) {
+        console.error('[RECORDER] Failed to process series rules:', e.message);
+        return 0;
     }
 }
 

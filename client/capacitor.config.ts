@@ -1,9 +1,13 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.epg.manager',
-  appName: 'EPG Manager',
-  webDir: 'dist/client/browser'
+  appId: 'net.christopherrutherford.tunerdaemon',
+  appName: 'Tuner Daemon',
+  webDir: 'dist/client/browser',
+  server: {
+    androidScheme: 'https',
+    cleartext: true
+  }
 };
 
 export default config;

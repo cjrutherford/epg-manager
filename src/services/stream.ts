@@ -59,6 +59,7 @@ export class StreamManager {
             const ffmpeg = spawn('ffmpeg', [
                 '-y',
                 '-user_agent',          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                '-http_persistent',    '0',
                 '-reconnect',          '1',
                 '-reconnect_streamed', '1',
                 '-reconnect_delay_max','10',
@@ -78,8 +79,11 @@ export class StreamManager {
 
             // Log stderr so we can debug failures
             ffmpeg.stderr?.on('data', (chunk: Buffer) => {
-                // Only emit actual errors, not progress lines
                 const line = chunk.toString();
+                // Filter out benign ffmpeg HTTP keep-alive retry notices
+                if (/keepalive request failed|retrying with new connection/i.test(line)) {
+                    return;
+                }
                 if (/error|failed|invalid/i.test(line)) {
                     emitLog(`[stream:${id}] ${line.trim()}`, 'warning');
                 }
@@ -163,8 +167,9 @@ export class StreamManager {
     static cleanup() {
         const now = Date.now();
         for (const [id, stream] of activeStreams.entries()) {
-            // Stop stream if no access in last 60 seconds
-            if (now - stream.lastAccess > 60000) {
+            // Stop stream if no access in last 5 minutes (300 seconds)
+            if (now - stream.lastAccess > 300000) {
+                console.log(`[StreamManager] Stream ${id} inactive for >5 mins; stopping ffmpeg process.`);
                 this.stopStream(id);
             }
         }

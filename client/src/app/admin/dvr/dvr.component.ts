@@ -32,6 +32,8 @@ export class DvrComponent implements OnInit, OnDestroy {
     selectedChannelPrograms: any[] = [];
     selectedProgram: any = null;
     programSearchQuery = '';
+    channelSearchQuery = '';
+    playingServerRec: any = null;
     recordSeries = false;
     newRec = { channelId: '', title: '', startTime: '', endTime: '' };
 
@@ -109,19 +111,22 @@ export class DvrComponent implements OnInit, OnDestroy {
         this.cdr.detectChanges();
 
         if (this.guideChannels && this.guideChannels.length > 0) {
-            this.channels = this.guideChannels;
+            this.channels = (this.guideChannels || []).filter(c => c.enabled !== 0);
         } else {
             try {
                 const res = await this.api.getGuide().toPromise();
-                this.channels = res?.channels || [];
+                const raw = res?.channels || [];
+                this.channels = raw.filter((c: any) => c.enabled !== 0);
                 if (this.channels.length === 0) {
                     const allChannels = await this.api.getChannels().toPromise();
-                    this.channels = allChannels || [];
+                    const raw = allChannels || [];
+                this.channels = raw.filter((c: any) => c.enabled !== 0);
                 }
             } catch {
                 try {
                     const allChannels = await this.api.getChannels().toPromise();
-                    this.channels = allChannels || [];
+                    const raw = allChannels || [];
+                this.channels = raw.filter((c: any) => c.enabled !== 0);
                 } catch {
                     this.channels = [];
                 }
@@ -357,6 +362,26 @@ export class DvrComponent implements OnInit, OnDestroy {
         const end = new Date(rec.end_time);
         if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return '';
         return `${start.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+    }
+
+    
+    get filteredChannels(): any[] {
+        if (!this.channelSearchQuery) return this.channels;
+        const q = this.channelSearchQuery.toLowerCase();
+        return this.channels.filter(c => 
+            (c.name || '').toLowerCase().includes(q) || 
+            (c.channel_number || '').toString().includes(q)
+        );
+    }
+
+    playServerRecording(rec: any): void {
+        this.playingServerRec = rec;
+        this.cdr.detectChanges();
+    }
+
+    closeVideoModal(): void {
+        this.playingServerRec = null;
+        this.cdr.detectChanges();
     }
 
     recordingSize(rec: any): string {

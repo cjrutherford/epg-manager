@@ -12,7 +12,7 @@ interface StoredSegment {
 
 @Injectable({ providedIn: 'root' })
 export class ClientRecordingService implements OnDestroy {
-    private readonly dbName = 'epg-manager-client-recordings';
+    private readonly dbName = 'tuner-daemon-client-recordings';
     private readonly dbVersion = 1;
     private dbPromise: Promise<IDBDatabase> | null = null;
     private worker: Worker | null = null;

@@ -4,7 +4,8 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
-    "build": "ng build",
+    "build": "ng build && cp dist/client/browser/index.csr.html dist/client/browser/index.html",
+    "cap:sync": "npm run build && npx cap sync android",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "serve:ssr:client": "node dist/client/server/server.mjs"

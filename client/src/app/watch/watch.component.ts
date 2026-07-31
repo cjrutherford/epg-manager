@@ -106,6 +106,9 @@ export class WatchComponent implements OnInit, OnDestroy {
     osdChannel: Channel | null = null;
     dataState: { hasChannels: boolean; hasPrograms: boolean; hasPlaylist: boolean; isEmpty: boolean } | null = null;
 
+    // Cached active program — updated on channel switch & 10s timer
+    activeProgram: any | null = null;
+
     toggleDiagnostics(): void {
         this.diagnosticsOpen = !this.diagnosticsOpen;
     }
@@ -141,6 +144,7 @@ export class WatchComponent implements OnInit, OnDestroy {
     private osdTimer: any;
     private infoTimer: any;
     private watchdogInterval: any = null;
+    private keepAliveInterval: any = null;
     reconnecting = false;
     reconnectAttempt = 0;
     maxReconnectAttempts = 3;
@@ -226,6 +230,8 @@ export class WatchComponent implements OnInit, OnDestroy {
     private diagnosticsInterval: any = null;
     private castSub: Subscription | null = null;
     private recordingsSub: Subscription | null = null;
+    private jobStatusSub: Subscription | null = null;
+    private streamGeneration = 0;
 
     private isBrowser: boolean;
 
@@ -288,12 +294,14 @@ export class WatchComponent implements OnInit, OnDestroy {
         this.muted = this.storage.getMuted();
 
         this.currentTimeMs = Date.now();
+        this.updateActiveProgram();
         this.currentTimeInterval = setInterval(() => {
             this.currentTimeMs = Date.now();
+            this.updateActiveProgram();
             this.cdr.markForCheck();
-        }, 60000);
+        }, 10000);
 
-        this.api.getJobStatus().subscribe(status => {
+        this.jobStatusSub = this.api.getJobStatus().subscribe(status => {
             this.isSyncing = !!status?.running;
             if (this.isSyncing && this.channels.length === 0) {
                 this.serverStandby = true;
@@ -347,6 +355,7 @@ export class WatchComponent implements OnInit, OnDestroy {
         if (this.hls) { this.hls.destroy(); this.hls = null; }
         if (this.castSub) { this.castSub.unsubscribe(); this.castSub = null; }
         if (this.recordingsSub) { this.recordingsSub.unsubscribe(); this.recordingsSub = null; }
+        if (this.jobStatusSub) { this.jobStatusSub.unsubscribe(); this.jobStatusSub = null; }
         clearTimeout(this.overlayTimer);
         clearTimeout(this.osdTimer);
         clearTimeout(this.idleTimer);
@@ -371,10 +380,36 @@ export class WatchComponent implements OnInit, OnDestroy {
         this.updateGuideHours();
     }
 
+    private wasPlayingBeforeHidden = false;
+
     @HostListener('document:visibilitychange')
     onVisibilityChange(): void {
         if (!this.isBrowser) return;
         this.isDocumentHidden = document.hidden;
+
+        // On standard web browsers, tab visibility change is ineffective (audio/video continues playing).
+        // Only run auto-pause on native Capacitor mobile apps when sent to background without PiP.
+        const isCapacitor = !!(window as any).Capacitor?.isNativePlatform?.() || (window.location.origin && (window.location.origin.startsWith('capacitor:') || window.location.origin.startsWith('file:')));
+
+        if (isCapacitor) {
+            if (document.hidden) {
+                const isPipActive = !!(document.pictureInPictureElement);
+                if (!isPipActive && this.videoRef?.nativeElement) {
+                    const video = this.videoRef.nativeElement;
+                    if (!video.paused) {
+                        this.wasPlayingBeforeHidden = true;
+                        video.pause();
+                    }
+                }
+            } else {
+                if (this.wasPlayingBeforeHidden && this.videoRef?.nativeElement) {
+                    this.wasPlayingBeforeHidden = false;
+                    const video = this.videoRef.nativeElement;
+                    video.play().catch(() => {});
+                }
+            }
+        }
+
         this.cdr.markForCheck();
     }
 
@@ -764,6 +799,7 @@ export class WatchComponent implements OnInit, OnDestroy {
         if (index < 0 || index >= this.channels.length) return;
         this.currentChannelIndex = index;
         const ch = this.channels[index];
+        this.updateActiveProgram();
         if (this.isBrowser) {
             this.playStream(ch.stream_url);
         }
@@ -787,6 +823,33 @@ export class WatchComponent implements OnInit, OnDestroy {
 
     get currentChannel(): Channel | null {
         return this.currentChannelIndex >= 0 ? this.channels[this.currentChannelIndex] : null;
+    }
+
+    /** Recomputes and caches the active program for the current channel. Call on tune & timer tick. */
+    private updateActiveProgram(): void {
+        this.activeProgram = this.computeCurrentProgram(this.currentChannel);
+    }
+
+    /** Computes the currently-airing program for a given channel (used by guide rows, not cached). */
+    getCurrentProgram(ch?: Channel | null): any | null {
+        const target = ch !== undefined ? ch : this.currentChannel;
+        return this.computeCurrentProgram(target);
+    }
+
+    private computeCurrentProgram(target: Channel | null | undefined): any | null {
+        if (!target) return null;
+        const nowMs = this.currentTimeMs || Date.now();
+
+        if (target.programs && target.programs.length > 0) {
+            const active = target.programs.find((p: any) => {
+                const startMs = new Date(p.start).getTime();
+                const stopMs = new Date(p.stop).getTime();
+                return startMs <= nowMs && stopMs > nowMs;
+            });
+            if (active) return active;
+        }
+
+        return target.current_program || null;
     }
 
     // ── Player ──────────────────────────────────
@@ -844,54 +907,103 @@ export class WatchComponent implements OnInit, OnDestroy {
         video.muted = this.muted;
 
         // Dynamic import of hls.js for SSR compatibility
+        // Track generation to guard against race conditions on rapid channel switches
+        const gen = ++this.streamGeneration;
         if (!this.Hls) {
             import('hls.js').then((mod) => {
+                if (gen !== this.streamGeneration) return; // channel changed while loading
                 this.Hls = mod.default;
                 this.setupHlsPlayback(resolvedUrl, video);
             }).catch(() => {
+                if (gen !== this.streamGeneration) return;
                 this.error = 'HLS player not available';
                 this.loading = false;
             });
         } else {
             this.setupHlsPlayback(resolvedUrl, video);
         }
+        this.startDiagnostics();
     }
 
-    private setupHlsPlayback(url: string, video: HTMLVideoElement): void {
+    
+    private startKeepAlive(url: string): void {
+        if (this.keepAliveInterval) {
+            clearInterval(this.keepAliveInterval);
+            this.keepAliveInterval = null;
+        }
+
+        let streamId = this.currentChannel?.id;
+        if (url.includes('/files/streams/')) {
+            const parts = url.split('/files/streams/')[1]?.split('/');
+            if (parts && parts[0]) streamId = parts[0];
+        }
+
+        if (!streamId) return;
+
+        const ping = () => {
+            if (!this.isBrowser) return;
+            this.api.pingStreamKeepAlive(streamId).toPromise().catch(() => {});
+        };
+
+        ping();
+        this.keepAliveInterval = setInterval(ping, 10000);
+    }
+
+        private setupHlsPlayback(url: string, video: HTMLVideoElement): void {
+        this.startKeepAlive(url);
+
         const Hls = this.Hls;
         if (Hls.isSupported()) {
             const hls = new Hls({
                 enableWorker: true,
                 lowLatencyMode: true,
+                backBufferLength: 90,
                 maxBufferLength: 30,
                 maxMaxBufferLength: 60,
+                liveSyncDurationCount: 3,
+                liveMaxLatencyDurationCount: 10,
+                liveDurationInfinity: true,
+                manifestLoadingTimeOut: 10000,
+                manifestLoadingMaxRetry: 5,
+                fragLoadingTimeOut: 10000,
+                fragLoadingMaxRetry: 5,
                 startFragPrefetch: true,
                 renderTextTracksNatively: true,
             });
-            hls.loadSource(url);
-            hls.attachMedia(video);
-            
+
+            this.hls = hls;
+
             let networkRetryCount = 0;
             let mediaRetryCount = 0;
             const maxRetries = 3;
 
-            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            hls.loadSource(url);
+            hls.attachMedia(video);
+
+            const resetLoadingState = () => {
                 this.loading = false;
                 this.reconnecting = false;
                 this.reconnectAttempt = 0;
                 networkRetryCount = 0;
                 mediaRetryCount = 0;
                 this.cdr.detectChanges();
+            };
+
+            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                resetLoadingState();
                 video.play().catch(() => { });
             });
 
+            hls.on(Hls.Events.FRAG_LOADED, () => {
+                if (this.loading || this.reconnecting) {
+                    resetLoadingState();
+                }
+            });
+
             video.onplaying = () => {
-                this.loading = false;
-                this.reconnecting = false;
-                this.reconnectAttempt = 0;
-                this.cdr.detectChanges();
+                resetLoadingState();
             };
-            
+
             hls.on(Hls.Events.ERROR, (_: any, data: any) => {
                 if (data.fatal) {
                     console.warn(`HLS fatal error: ${data.type} - ${data.details}`);
@@ -907,20 +1019,16 @@ export class WatchComponent implements OnInit, OnDestroy {
                             console.log(`Retrying network connection (${networkRetryCount}/${maxRetries})...`);
                             setTimeout(() => {
                                 if (this.hls === hls) {
-                                    hls.startLoad();
+                                    hls.startLoad(-1);
+                                    video.play().catch(() => {});
                                 }
-                            }, 2000);
+                            }, 1500);
                         } else {
-                            console.error('Max network retries exceeded. Performing full stream reload...');
+                            console.error('Max network retries exceeded. Full stream re-tune...');
                             networkRetryCount = 0;
-                            this.reconnectAttempt = 0;
-                            this.cdr.detectChanges();
-                            setTimeout(() => {
-                                if (this.hls === hls) {
-                                    hls.loadSource(url);
-                                    hls.startLoad();
-                                }
-                            }, 2000);
+                            if (this.currentChannel?.stream_url) {
+                                this.playStream(this.currentChannel.stream_url);
+                            }
                         }
                     } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
                         mediaRetryCount++;
@@ -928,23 +1036,20 @@ export class WatchComponent implements OnInit, OnDestroy {
                         this.cdr.detectChanges();
 
                         if (mediaRetryCount <= 1) {
-                            console.log('Attempting to recover media error...');
+                            console.log('Attempting media error recovery...');
                             hls.recoverMediaError();
+                            video.play().catch(() => {});
                         } else if (mediaRetryCount === 2) {
-                            console.log('Second media recovery attempt - swapping audio codec...');
+                            console.log('Swapping audio codec...');
                             hls.swapAudioCodec();
                             hls.recoverMediaError();
+                            video.play().catch(() => {});
                         } else {
-                            console.error('Max media recovery retries exceeded. Reloading stream...');
+                            console.error('Max media recovery retries exceeded. Re-tuning stream...');
                             mediaRetryCount = 0;
-                            this.reconnectAttempt = 0;
-                            this.cdr.detectChanges();
-                            setTimeout(() => {
-                                if (this.hls === hls) {
-                                    hls.loadSource(url);
-                                    hls.startLoad();
-                                }
-                            }, 1000);
+                            if (this.currentChannel?.stream_url) {
+                                this.playStream(this.currentChannel.stream_url);
+                            }
                         }
                     } else {
                         this.error = 'Stream playback failed';
@@ -964,50 +1069,55 @@ export class WatchComponent implements OnInit, OnDestroy {
             }
 
             this.watchdogInterval = setInterval(() => {
-                if (video.paused || video.ended || this.loading || this.reconnecting) {
+                if (!this.hls || this.hls !== hls) return;
+
+                if (video.paused || video.ended) {
                     lastTimeChanged = Date.now();
-                    if (video.currentTime !== lastCurrentTime) {
-                        lastCurrentTime = video.currentTime;
-                    }
+                    lastCurrentTime = video.currentTime;
                     return;
                 }
 
                 if (video.currentTime === lastCurrentTime) {
                     const stallDuration = Date.now() - lastTimeChanged;
-                    if (stallDuration > 5000) {
-                        console.warn('Playback watchdog: Stalled stream detected!');
+                    
+                    if (stallDuration > 4000) {
+                        console.warn(`Playback watchdog: Stalled for ${Math.floor(stallDuration / 1000)}s!`);
                         this.reconnecting = true;
                         this.loading = true;
                         networkRetryCount++;
                         this.reconnectAttempt = networkRetryCount;
                         this.cdr.detectChanges();
 
-                        lastTimeChanged = Date.now();
+                        // Try jump ahead if buffer exists
+                        if (video.buffered.length > 0) {
+                            const bufEnd = video.buffered.end(video.buffered.length - 1);
+                            if (bufEnd > video.currentTime + 1) {
+                                console.log('Watchdog: Jumping to buffered position...');
+                                video.currentTime = bufEnd - 0.5;
+                            }
+                        }
 
-                        if (networkRetryCount <= maxRetries) {
-                            console.log(`Watchdog: Recovering via network reload (${networkRetryCount}/${maxRetries})...`);
-                            if (this.hls === hls) {
-                                hls.startLoad();
-                                hls.recoverMediaError();
+                        if (stallDuration > 12000) {
+                            console.error('Watchdog: Stall extended beyond 12s. Re-tuning stream...');
+                            lastTimeChanged = Date.now();
+                            if (this.currentChannel?.stream_url) {
+                                this.playStream(this.currentChannel.stream_url);
                             }
                         } else {
-                            console.error('Watchdog: Max retries exceeded. Doing full stream reload...');
-                            networkRetryCount = 0;
-                            this.reconnectAttempt = 0;
-                            this.cdr.detectChanges();
-                            if (this.hls === hls) {
-                                hls.loadSource(url);
-                                hls.startLoad();
-                            }
+                            hls.startLoad(-1);
+                            hls.recoverMediaError();
+                            video.play().catch(() => {});
                         }
                     }
                 } else {
                     lastCurrentTime = video.currentTime;
                     lastTimeChanged = Date.now();
+                    if (this.loading || this.reconnecting) {
+                        resetLoadingState();
+                    }
                 }
             }, 1000);
 
-            this.hls = hls;
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
             video.src = url;
             let nativeRetryCount = 0;
@@ -1025,16 +1135,18 @@ export class WatchComponent implements OnInit, OnDestroy {
                 video.play().catch(() => { }); 
             }, { once: true });
             
+            const streamGenAtSetup = this.streamGeneration;
             const handleNativeError = () => {
+                if (streamGenAtSetup !== this.streamGeneration) return;
                 nativeRetryCount++;
                 this.reconnectAttempt = nativeRetryCount;
                 this.reconnecting = true;
                 this.loading = true;
                 this.cdr.detectChanges();
 
-                console.warn(`Native playback error (retry ${nativeRetryCount}/3)`);
                 if (nativeRetryCount <= 3) {
                     setTimeout(() => {
+                        if (streamGenAtSetup !== this.streamGeneration) return;
                         video.load();
                         video.play().catch(() => { });
                     }, 2000);
@@ -1045,17 +1157,14 @@ export class WatchComponent implements OnInit, OnDestroy {
                     this.cdr.detectChanges();
                 }
             };
-            video.addEventListener('error', handleNativeError);
+            video.addEventListener('error', handleNativeError, { once: true });
 
-            // Native watchdog
             let lastCurrentTime = -1;
             let lastTimeChanged = Date.now();
             this.watchdogInterval = setInterval(() => {
-                if (video.paused || video.ended || this.loading || this.reconnecting) {
+                if (video.paused || video.ended) {
                     lastTimeChanged = Date.now();
-                    if (video.currentTime !== lastCurrentTime) {
-                        lastCurrentTime = video.currentTime;
-                    }
+                    lastCurrentTime = video.currentTime;
                     return;
                 }
 
@@ -1087,10 +1196,59 @@ export class WatchComponent implements OnInit, OnDestroy {
                     lastTimeChanged = Date.now();
                 }
             }, 1000);
-        } else {
-            this.error = 'HLS not supported';
-            this.loading = false;
         }
+    }
+
+    private startDiagnostics(): void {
+        if (this.diagnosticsInterval) clearInterval(this.diagnosticsInterval);
+        
+        this.diagnosticsInterval = setInterval(() => {
+            if (!this.diagnosticsOpen) return;
+            
+            const video = this.videoRef?.nativeElement;
+            if (!video) return;
+
+            const data = this.diagnosticsData;
+            
+            // Basic video element stats
+            data.resolution = video.videoWidth ? `${video.videoWidth}x${video.videoHeight}` : 'Unknown';
+            data.bufferLength = 0;
+            
+            for (let i = 0; i < video.buffered.length; i++) {
+                if (video.buffered.start(i) <= video.currentTime && video.buffered.end(i) > video.currentTime) {
+                    data.bufferLength = video.buffered.end(i) - video.currentTime;
+                    break;
+                }
+            }
+
+            // HLS.js specific stats
+            if (this.hls) {
+                data.playerType = 'HLS.js';
+                const currentLevelIdx = this.hls.currentLevel === -1 ? this.hls.loadLevel : this.hls.currentLevel;
+                const level = this.hls.levels[currentLevelIdx];
+                if (level) {
+                    data.bandwidth = level.bitrate ? `${(level.bitrate / 1000000).toFixed(2)} Mbps` : 'Unknown';
+                    data.codec = level.codec || level.videoCodec || 'Unknown';
+                }
+                data.latency = this.hls.latency || 0;
+            } else {
+                data.playerType = 'Native';
+                data.bandwidth = 'Native (Unknown)';
+                data.codec = 'Native';
+                data.latency = 0;
+            }
+            
+            if ((video as any).webkitDroppedFrameCount !== undefined) {
+                data.droppedFrames = (video as any).webkitDroppedFrameCount;
+                data.totalFrames = (video as any).webkitDecodedFrameCount;
+            } else if ((video as any).getVideoPlaybackQuality) {
+                const quality = (video as any).getVideoPlaybackQuality();
+                data.droppedFrames = quality.droppedVideoFrames;
+                data.totalFrames = quality.totalVideoFrames;
+            }
+            
+            this.cdr.detectChanges();
+        }, 1000);
     }
 
     async playLocalRecording(rec: ClientRecording): Promise<void> {
@@ -1378,6 +1536,11 @@ export class WatchComponent implements OnInit, OnDestroy {
     // ── Program Helpers ─────────────────────────
     parseEpgTime(str: string): Date | null {
         if (!str) return null;
+        // Support ISO 8601 strings (from fillProgramGaps placeholders) as well as XMLTV format
+        if (str.includes('-') || str.includes('T')) {
+            const d = new Date(str);
+            return isNaN(d.getTime()) ? null : d;
+        }
         const clean = str.replace(/\s.+$/, '');
         const y = clean.slice(0, 4), mo = clean.slice(4, 6), d = clean.slice(6, 8);
         const h = clean.slice(8, 10), mi = clean.slice(10, 12), s = clean.slice(12, 14);
@@ -1440,6 +1603,11 @@ export class WatchComponent implements OnInit, OnDestroy {
         return this.channels.indexOf(ch);
     }
 
+    /** O(1) active channel check for guide rows — avoids O(N) indexOf per row per render. */
+    isActiveChannel(ch: Channel): boolean {
+        return !!this.currentChannel && ch.id === this.currentChannel.id;
+    }
+
     getCategoryIcon(name: string): string {
         const icons: Record<string, string> = {
             news: 'newspaper', sports: 'trophy', entertainment: 'monitor', movies: 'film',
@@ -1480,7 +1648,14 @@ export class WatchComponent implements OnInit, OnDestroy {
         const clientY = 'touches' in event ? (event as TouchEvent).touches[0].clientY : (event as MouseEvent).clientY;
         const clientX = 'touches' in event ? (event as TouchEvent).touches[0].clientX : (event as MouseEvent).clientX;
 
-        if (this.guideLayout === 'side') {
+        if (this.guideLayout === 'guide-only') {
+            const deltaY = clientY - this.dragStartY;
+            if (deltaY > 30) {
+                this.guideLayout = 'overlay';
+                this.guideHeight = window.innerHeight * 0.5 - 20;
+                this.isDraggingGuide = false; // prevent jitter
+            }
+        } else if (this.guideLayout === 'side') {
             const deltaX = this.dragStartX - clientX; // dragging left = increase width
             const startWidth = this.dragStartHeight * 1.6;
             const maxSideWidth = window.innerWidth * 0.5; // max 50% of viewport
@@ -1585,16 +1760,34 @@ export class WatchComponent implements OnInit, OnDestroy {
     popoutWindow(): void {
         if (!this.isBrowser) return;
         const ch = this.channels[this.currentChannelIndex];
-        window.open(
-            `/watch?popout=true${ch ? '&channel=' + ch.id : ''}`,
-            'IPTV_Popout',
+        const targetUrl = `/watch?popout=true${ch ? '&channel=' + ch.id : ''}`;
+
+        const isNativeApp = !!(window as any).Capacitor?.isNativePlatform?.() || (window.location.origin && window.location.origin.startsWith('capacitor:'));
+        if (this.isMobile || isNativeApp) {
+            window.location.href = targetUrl;
+            return;
+        }
+
+        const pop = window.open(
+            targetUrl,
+            'TunerDaemon_Popout',
             'width=854,height=480,resizable=yes,status=no,location=no,toolbar=no,menubar=no'
         );
+        if (!pop) {
+            window.location.href = targetUrl;
+        }
     }
 
     closePopout(): void {
-        if (this.isBrowser) {
+        if (!this.isBrowser) return;
+        try {
             window.close();
+        } catch (_) {}
+
+        if (this.isPopoutMode) {
+            const ch = this.channels[this.currentChannelIndex];
+            const targetUrl = `/watch${ch ? '?channel=' + ch.id : ''}`;
+            window.location.href = targetUrl;
         }
     }
 
@@ -1795,14 +1988,14 @@ export class WatchComponent implements OnInit, OnDestroy {
 
     getServerUrl(): string {
         if (!this.isBrowser) return '';
-        let serverUrl = localStorage.getItem('iptv_server_url');
+        let serverUrl = localStorage.getItem('tuner_daemon_server_url');
         if (!serverUrl) {
             const origin = window.location.origin || '';
             if (origin.startsWith('capacitor:') || 
                 origin === 'http://localhost' || 
                 origin === 'https://localhost' || 
                 origin.startsWith('file:')) {
-                serverUrl = 'http://teevee.christopherrutherford.net';
+                serverUrl = 'https://teevee.christopherrutherford.net';
             } else if (origin.includes(':4200')) {
                 serverUrl = 'http://localhost:3000';
             } else {
@@ -1818,7 +2011,7 @@ export class WatchComponent implements OnInit, OnDestroy {
         if (url && !/^https?:\/\//i.test(url)) {
             url = 'http://' + url;
         }
-        localStorage.setItem('iptv_server_url', url);
+        localStorage.setItem('tuner_daemon_server_url', url);
         this.serverSettingsOpen = false;
         this.loadCategories();
         this.loadGuide();
@@ -1840,7 +2033,7 @@ export class WatchComponent implements OnInit, OnDestroy {
         if (!this.isBrowser) return;
         this.discovering = true;
         this.discoveryError = false;
-        this.discoveryMessage = 'Scanning local network for EPG Manager server...';
+        this.discoveryMessage = 'Scanning local network for Tuner Daemon server...';
         this.cdr.markForCheck();
 
         const targets = new Set<string>();
