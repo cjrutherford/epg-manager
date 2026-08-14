@@ -3,6 +3,35 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { SystemRecording } from './client-recording.types';
 
+export interface SourceRecord {
+    key: string;
+    kind: string | null;
+    label: string;
+    provider: string;
+    site: string;
+    provides: ('channels' | 'guide')[];
+    enabled: boolean;
+    priority: number;
+    importedRows: number;
+    channelCountEstimate: number | null;
+    lastSyncAt: number | null;
+    lastSyncStatus: string | null;
+    lastError: string | null;
+    hasCredentials: boolean;
+    url: string | null;
+    notes: string;
+}
+
+export interface ProbeResult {
+    ok: boolean;
+    provides: string[];
+    detectedKind?: string;
+    sample: { channels?: { name: string }[]; programmes?: unknown[] };
+    counts: { channels?: number; programmes?: number; days?: number };
+    warnings: string[];
+    error?: { code: string; message: string };
+}
+
 export interface BuiltInPresetDto {
     id: string;
     kind: string;
@@ -220,6 +249,34 @@ export class ApiService {
     }
 
     // ── iptv-org Playlists ──────────────────────
+    getSources(): Observable<SourceRecord[]> {
+        return this.http.get<SourceRecord[]>('/api/sources');
+    }
+
+    probeSource(descriptor: unknown): Observable<ProbeResult> {
+        return this.http.post<ProbeResult>('/api/sources/probe', { descriptor });
+    }
+
+    addSource(descriptor: unknown): Observable<any> {
+        return this.http.post('/api/sources', { descriptor });
+    }
+
+    toggleSource(key: string, enabled: boolean): Observable<any> {
+        return this.http.post(`/api/sources/${encodeURIComponent(key)}/toggle`, { enabled });
+    }
+
+    removeSource(key: string): Observable<any> {
+        return this.http.delete(`/api/sources/${encodeURIComponent(key)}`);
+    }
+
+    exportSources(): Observable<any> {
+        return this.http.get('/api/sources/export');
+    }
+
+    importSources(payload: unknown): Observable<any> {
+        return this.http.post('/api/sources/import', payload);
+    }
+
     getSourceCatalog(): Observable<BuiltInPresetDto[]> {
         return this.http.get<BuiltInPresetDto[]>('/api/sources/catalog');
     }

@@ -1,0 +1,225 @@
+<div class="sources-page">
+    <div class="page-header">
+        <div class="header-left">
+            <h1>Sources</h1>
+            <p class="page-sub">Where channels and guide data come from.</p>
+        </div>
+        <div class="header-actions">
+            <button class="btn btn-secondary" (click)="exportAll()">Export / Import</button>
+            <button class="btn btn-primary" (click)="openAdd()">+ Add Source</button>
+        </div>
+    </div>
+
+    @if (loading) {
+    <div class="loading-container"><div class="spinner"></div></div>
+    } @else {
+
+    <div class="source-summary">
+        <button type="button" class="summary-tab" [class.active]="family === 'all'"
+            [attr.aria-pressed]="family === 'all'" (click)="family = 'all'">
+            <span class="summary-num">{{ sources.length }}</span>
+            <span class="summary-lab">All sources</span>
+        </button>
+        <button type="button" class="summary-tab" [class.active]="family === 'channels'"
+            [attr.aria-pressed]="family === 'channels'" (click)="family = 'channels'">
+            <span class="summary-num">{{ channelSourceCount }}</span>
+            <span class="summary-lab">Channel sources</span>
+        </button>
+        <button type="button" class="summary-tab" [class.active]="family === 'guide'"
+            [attr.aria-pressed]="family === 'guide'" (click)="family = 'guide'">
+            <span class="summary-num">{{ guideSourceCount }}</span>
+            <span class="summary-lab">Guide sources</span>
+        </button>
+        <div class="summary-tab is-static" [class.has-failures]="failingCount > 0">
+            <span class="summary-num">{{ failingCount }}</span>
+            <span class="summary-lab">Failing</span>
+        </div>
+    </div>
+
+    @if (visibleSources.length === 0) {
+    <div class="glass-card empty-sources">
+        <p>No sources here yet. Add a playlist URL or a guide feed to get started.</p>
+        <button class="btn btn-primary" (click)="openAdd()">+ Add Source</button>
+    </div>
+    } @else {
+    <div class="glass-card table-wrapper">
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Source</th>
+                        <th>Provides</th>
+                        <th>Health</th>
+                        <th class="num-col">Channels</th>
+                        <th>Last sync</th>
+                        <th class="actions-col">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (source of visibleSources; track source.key) {
+                    <tr [class.is-disabled]="!source.enabled">
+                        <td>
+                            <div class="source-cell">
+                                <strong class="source-label">{{ source.label }}</strong>
+                                <span class="source-meta">
+                                    <code>{{ source.kind || 'unknown' }}</code>
+                                    @if (source.priority > 0) { <span class="prio">priority {{ source.priority }}</span> }
+                                    @if (source.hasCredentials) { <span class="cred">credentialed</span> }
+                                </span>
+                                @if (source.url) {
+                                <span class="source-url" [title]="source.url">{{ source.url }}</span>
+                                }
+                            </div>
+                        </td>
+                        <td>
+                            @for (capability of source.provides; track capability) {
+                            <span class="cap cap-{{ capability }}">{{ capability }}</span>
+                            }
+                        </td>
+                        <td>
+                            <span class="health health-{{ healthOf(source) }}">{{ healthLabel(source) }}</span>
+                            @if (source.lastError) {
+                            <div class="health-reason" [title]="source.lastError">{{ source.lastError }}</div>
+                            }
+                        </td>
+                        <td class="num-col">{{ source.importedRows | number }}</td>
+                        <td class="muted">{{ lastSyncLabel(source) }}</td>
+                        <td>
+                            <div class="row-actions">
+                                <button class="btn btn-secondary small-btn" (click)="toggle(source)">
+                                    {{ source.enabled ? 'Disable' : 'Enable' }}
+                                </button>
+                                <button class="btn btn-secondary small-btn danger-text" (click)="remove(source)">
+                                    Remove
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+    }
+    }
+
+    <!-- Add source: probe before anything is written -->
+    @if (showAddModal) {
+    <div class="modal-backdrop" (click)="closeAdd()">
+        <div class="modal-content source-modal" role="dialog" aria-modal="true" aria-labelledby="add-source-title"
+            (click)="$event.stopPropagation()">
+            <div class="modal-header">
+                <h2 id="add-source-title">Add a source</h2>
+                <button class="close-modal-btn" (click)="closeAdd()" aria-label="Close">✕</button>
+            </div>
+
+            <p class="modal-intro">
+                Paste a playlist or guide URL. Nothing is saved until you have seen what it contains.
+            </p>
+
+            <div class="form-row">
+                <label for="src-url">URL</label>
+                <input id="src-url" type="text" class="themed-input" [(ngModel)]="newUrl"
+                    (ngModelChange)="onUrlChange()" (keyup.enter)="runProbe()"
+                    placeholder="https://example.com/playlist.m3u or guide.xml.gz">
+            </div>
+
+            <div class="form-row split">
+                <div>
+                    <label for="src-label">Name</label>
+                    <input id="src-label" type="text" class="themed-input" [(ngModel)]="newLabel"
+                        placeholder="Optional — taken from the URL if blank">
+                </div>
+                <div>
+                    <label for="src-kind">Type</label>
+                    <select id="src-kind" class="themed-input" [(ngModel)]="newKind">
+                        <option value="m3u">Channels (M3U playlist)</option>
+                        <option value="xmltv">Guide (XMLTV feed)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="probe-row">
+                <button class="btn btn-secondary" (click)="runProbe()" [disabled]="!newUrl.trim() || probing">
+                    {{ probing ? 'Checking…' : 'Check source' }}
+                </button>
+                @if (probing) { <span class="spinner-sm"></span> }
+            </div>
+
+            <div class="probe-result">
+                @if (probeError) {
+                <div class="probe-error">{{ probeError }}</div>
+                } @else if (probe) {
+                <div class="probe-head" [class.bad]="!probe.ok">
+                    {{ probe.ok ? 'This source looks usable' : 'This source returned nothing usable' }}
+                </div>
+                <ul class="probe-counts">
+                    @if (probe.counts.channels !== undefined && probe.counts.channels !== null) {
+                    <li><span>Channels</span><span>{{ probe.counts.channels | number }}</span></li>
+                    }
+                    @if (probe.counts.programmes !== undefined && probe.counts.programmes !== null) {
+                    <li><span>Programmes</span><span>{{ probe.counts.programmes | number }}</span></li>
+                    }
+                    @if (probe.counts.days !== undefined && probe.counts.days !== null) {
+                    <li><span>Guide coverage</span><span>{{ probe.counts.days.toFixed(1) }} days</span></li>
+                    }
+                </ul>
+                @if (probe.sample?.channels?.length) {
+                <div class="probe-sample">
+                    <span class="sample-title">First few channels</span>
+                    @for (channel of probe.sample.channels; track channel.name) {
+                    <span class="sample-item">{{ channel.name }}</span>
+                    }
+                </div>
+                }
+                @for (warning of probe.warnings; track warning) {
+                <div class="probe-warning">{{ warning }}</div>
+                }
+                } @else {
+                <div class="probe-idle">Check the source to see what it contains before adding it.</div>
+                }
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn btn-secondary" (click)="closeAdd()">Cancel</button>
+                <button class="btn btn-primary" (click)="confirmAdd()" [disabled]="!canAdd">
+                    {{ adding ? 'Adding…' : 'Add source' }}
+                </button>
+            </div>
+        </div>
+    </div>
+    }
+
+    <!-- Export / import -->
+    @if (showExportModal) {
+    <div class="modal-backdrop" (click)="closeExport()">
+        <div class="modal-content source-modal" role="dialog" aria-modal="true" aria-labelledby="export-title"
+            (click)="$event.stopPropagation()">
+            <div class="modal-header">
+                <h2 id="export-title">Export / import sources</h2>
+                <button class="close-modal-btn" (click)="closeExport()" aria-label="Close">✕</button>
+            </div>
+
+            <p class="modal-intro">
+                Descriptors are portable — hand this to another install, or keep it to restore your setup.
+                Credentials are never included.
+            </p>
+
+            <label for="export-json">Your sources</label>
+            <textarea id="export-json" class="themed-input json-box" rows="8" readonly>{{ exportJson }}</textarea>
+            <div class="probe-row">
+                <button class="btn btn-secondary" (click)="copyExport()">Copy</button>
+            </div>
+
+            <label for="import-json">Paste descriptors to import</label>
+            <textarea id="import-json" class="themed-input json-box" rows="6" [(ngModel)]="importJson"
+                placeholder='[{ "id": "...", "kind": "xmltv", ... }]'></textarea>
+
+            <div class="modal-actions">
+                <button class="btn btn-secondary" (click)="closeExport()">Close</button>
+                <button class="btn btn-primary" (click)="runImport()" [disabled]="!importJson.trim()">Import</button>
+            </div>
+        </div>
+    </div>
+    }
+</div>

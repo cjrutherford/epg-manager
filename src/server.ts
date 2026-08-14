@@ -31,7 +31,9 @@ import { setOpenCorsHeaders } from './http-headers';
 import { rankEpgSources } from './services/epg-sources';
 import { redactUrl } from './services/sources/descriptor';
 import { getBuiltInCatalog, getFastSources } from './services/sources/catalog';
-import { createAdapterContext, getAdapter, registerBuiltInAdapters } from './services/sources';
+import { createAdapterContext, createProbeContext, getAdapter, registerBuiltInAdapters } from './services/sources';
+import { addSource, exportSources, importSources, listSources, removeSource, setSourceEnabled, setSourcePriority } from './services/sources/registry';
+import { normalizeDescriptor, validateDescriptor } from './services/sources/descriptor';
 import { checkScopeCoverage, isResetScope, planReset } from './services/reset-scopes';
 import {
     checkThrottle,
@@ -1606,6 +1608,117 @@ app.get('/api/iptv-org/playlists', requireAuth, async (req: any, res: any) => {
             }
         }
         res.json(playlists);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ── Sources API ───────────────────────────────
+// Backs the Sources screen: both source families, probe-before-write, and
+// portable descriptors.
+
+app.get('/api/sources', requireAuth, async (req: any, res: any) => {
+    try {
+        res.json(await listSources());
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+/**
+ * Inspect a source without writing anything. Runs on a probe context so it
+ * does not store conditional validators — otherwise the first real sync after
+ * adding would answer 304 and the source would look empty.
+ */
+app.post('/api/sources/probe', requireAuth, async (req: any, res: any) => {
+    try {
+        const descriptor = req.body?.descriptor || req.body;
+        const validation = validateDescriptor(descriptor);
+        if (!validation.valid) {
+            return res.status(400).json({ ok: false, errors: validation.errors });
+        }
+
+        registerBuiltInAdapters();
+        const normalized = normalizeDescriptor(descriptor);
+        const adapter = getAdapter(normalized.kind);
+        if (!adapter) {
+            return res.status(400).json({
+                ok: false,
+                errors: [`No adapter is registered for kind "${normalized.kind}"`]
+            });
+        }
+
+        const result = await adapter.probe(normalized, createProbeContext(normalized.id));
+        res.json(result);
+    } catch (e: any) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+app.post('/api/sources', requireAuth, async (req: any, res: any) => {
+    try {
+        const result = await addSource(req.body?.descriptor || req.body);
+        if (!result.ok) {
+            return res.status(400).json({ error: (result.errors || []).join('; '), errors: result.errors });
+        }
+        res.json({ success: true, key: result.key });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/sources/:key/toggle', requireAuth, async (req: any, res: any) => {
+    try {
+        const enabled = req.body?.enabled === true || req.body?.enabled === 1;
+        const updated = await setSourceEnabled(String(req.params.key), enabled);
+        if (!updated) return res.status(404).json({ error: 'Source not found' });
+        invalidateIptvOrgCache();
+        res.json({ success: true, enabled });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/sources/:key/priority', requireAuth, async (req: any, res: any) => {
+    try {
+        const priority = Number(req.body?.priority);
+        if (!Number.isFinite(priority)) {
+            return res.status(400).json({ error: 'priority must be a number' });
+        }
+        const updated = await setSourcePriority(String(req.params.key), priority);
+        if (!updated) return res.status(404).json({ error: 'Source not found' });
+        res.json({ success: true, priority });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.delete('/api/sources/:key', requireAuth, async (req: any, res: any) => {
+    try {
+        const result = await removeSource(String(req.params.key));
+        if (!result.removed) return res.status(404).json({ error: 'Source not found' });
+        emitLog(`Removed source ${req.params.key} and ${result.programmes} programme(s) it supplied.`, 'info');
+        res.json({ success: true, programmesRemoved: result.programmes });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/sources/export', requireAuth, async (req: any, res: any) => {
+    try {
+        res.json({ version: 1, exportedAt: new Date().toISOString(), sources: await exportSources() });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/sources/import', requireAuth, async (req: any, res: any) => {
+    try {
+        const descriptors = Array.isArray(req.body?.sources) ? req.body.sources : req.body;
+        if (!Array.isArray(descriptors)) {
+            return res.status(400).json({ error: 'Expected an array of descriptors, or { sources: [...] }' });
+        }
+        res.json(await importSources(descriptors));
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }

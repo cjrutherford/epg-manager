@@ -3,7 +3,7 @@
 Single source of truth for the remediation effort. Consolidates the process audit, the UI &
 source-retrieval audit, and the source acquisition architecture into one tracked backlog.
 
-**Status:** Waves 1–2 complete, wave 3 in progress — 11 of 26 done, S12 and S25 partial
+**Status:** Wave 3 complete except S16c (paused) — 12 of 26 done, S12 and S25 partial
 **Suite score at baseline:** 2.5 / 5 (process) · 2.3 / 5 (UI)
 **Last updated:** 2026-08-13
 
@@ -387,15 +387,25 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
   `pipeline.ts`'s dynamic `import('./grabber.js')` cannot resolve under ts-jest — that had made the
   pipeline effectively untestable.
 
-- [ ] **S18 · Sources screen with probe-first add flow** — M
-  One screen for both source families. Add by pasting a URL or portal details; probe reports what was
-  found and the user confirms against real numbers. Per-source health, coverage, priority, cadence,
-  enable/disable, descriptor import/export.
-  → `client/src/app/admin/sources/`, `api.service.ts`, `app.routes.ts`
-  - [ ] Adding any supported source needs no code change
-  - [ ] Probe results are shown before anything is written
-  - [ ] A failing source is visibly failing with its reason
-  - [ ] A configuration can be exported and restored
+- [x] **S18 · Sources screen with probe-first add flow** — M — *done 2026-08-14*
+  A Sources screen covering both families, backed by a registry module and nine API routes. Source
+  management has moved out of Diagnostics, which was configuration filed under diagnosis.
+  → `client/src/app/admin/sources/`, `src/services/sources/registry.ts`, `server.ts`
+  - [x] Adding any supported source needs no code change
+        — a guide feed and a playlist were both added through the UI by pasting a URL; kind is
+        inferred from the url and stored as a descriptor
+  - [x] Probe results are shown before anything is written
+        — verified in a browser: probing a gzipped XMLTV feed reported 30 channels and 1.0 days
+        coverage while the sources table still held **0 rows**, both before and after the probe.
+        The playlist probe reported 120 channels with a sample of the first few names
+  - [x] A failing source is visibly failing with its reason
+        — a source carrying `last_error` renders a red "Failing" chip, its reason underneath, and
+        increments the Failing counter in the summary
+  - [x] A configuration can be exported and restored
+        — export returned 2 descriptors; re-importing reported `{added: 0, skipped: 2}`; after
+        deleting one source, re-importing restored it (`{added: 1, skipped: 1}`)
+
+  Removing a source deletes only the rows attributed to it — provenance is what makes that safe.
 
 ### Wave 4 — Make every control do something
 > Close the gap between what the UI offers and what the system does.
@@ -612,4 +622,5 @@ memory, so **restart it after `ng build`** or you will screenshot the previous b
 | 2026-08-14 | S25 | New slice. Streaming M3U parser + streaming fetch, proven equivalent to the library it replaces. 50k channels: +68.6 MB -> +17.5 MB. Strictly-flat criterion still unmet; residual isolated to the in-memory preservation index, with a SQL-join path proposed. 19 new unit tests; suite 302 -> 321. |
 | 2026-08-14 | S16c | Scope reduced to the file adapter. Xtream deferred: m3u + xmltv already cover portals via their get.php/xmltv.php endpoints, so a bespoke adapter adds little for the credential surface it costs. |
 | 2026-08-14 | S17 | Done. Grab denominator counts only queued channels, so the phase can reach 100%; unsourced channels reported instead of absorbed. Fixed two test-infrastructure gaps that had made the pipeline untestable. 6 new unit tests; suite 321 -> 327. |
+| 2026-08-14 | S18 | Done. Sources screen for both families, registry module, nine API routes. Probe-first add verified in a browser — 30 channels and 1.0 days reported with 0 rows written. Failure surfacing and export/restore round-trip verified. |
 

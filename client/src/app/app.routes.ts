@@ -13,6 +13,7 @@ export const routes: Routes = [
             { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
             { path: 'dashboard', loadComponent: () => import('./admin/dashboard/dashboard.component').then(m => m.DashboardComponent) },
             { path: 'channels', loadComponent: () => import('./admin/channels/channel-manager.component').then(m => m.ChannelManagerComponent) },
+            { path: 'sources', loadComponent: () => import('./admin/sources/sources.component').then(m => m.SourcesComponent) },
             { path: 'dvr', loadComponent: () => import('./admin/dvr/dvr.component').then(m => m.DvrComponent) },
             { path: 'diagnostics', loadComponent: () => import('./admin/diagnostics/diagnostics.component').then(m => m.DiagnosticsComponent) },
             { path: 'settings', loadComponent: () => import('./admin/settings/settings.component').then(m => m.SettingsComponent) },
