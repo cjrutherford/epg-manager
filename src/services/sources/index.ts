@@ -12,6 +12,7 @@ import { fetchSource, loadValidators, saveValidators } from './fetcher';
 import { m3uAdapter } from './adapters/m3u';
 import { bundleAdapter } from './adapters/bundle';
 import { scraperRepoAdapter } from './adapters/scraper-repo';
+import { xmltvAdapter } from './adapters/xmltv';
 
 let registered = false;
 
@@ -20,6 +21,7 @@ export function registerBuiltInAdapters(): void {
     registerAdapter(m3uAdapter);
     registerAdapter(bundleAdapter);
     registerAdapter(scraperRepoAdapter);
+    registerAdapter(xmltvAdapter);
     registered = true;
 }
 
@@ -41,19 +43,34 @@ export interface SourceContext extends AdapterContext {
  * conditional validators are stored and reused per source without the adapter
  * having to know they exist.
  */
-export function createAdapterContext(sourceKey: string): SourceContext {
+export interface ContextOptions {
+    /**
+     * Whether this context participates in the conditional cache. Off for
+     * probes: a probe is a read-only inspection, and letting it store
+     * validators would make the very next real sync answer 304 and pull
+     * nothing — the source would look empty immediately after being added.
+     */
+    useValidators?: boolean;
+}
+
+export function createAdapterContext(sourceKey: string, options: ContextOptions = {}): SourceContext {
+    const useValidators = options.useValidators !== false;
     let notModified = false;
 
     return {
-        fetch: async (url, options = {}) => {
-            const stored = await loadValidators(sourceKey);
+        fetch: async (url, fetchOptions = {}) => {
+            const stored = useValidators
+                ? await loadValidators(sourceKey)
+                : { etag: null, lastModified: null };
+
             const result = await fetchSource(url, {
-                ...options,
-                etag: options.etag ?? stored.etag,
-                lastModified: options.lastModified ?? stored.lastModified
+                ...fetchOptions,
+                etag: fetchOptions.etag ?? stored.etag,
+                lastModified: fetchOptions.lastModified ?? stored.lastModified
             });
             notModified = result.notModified;
-            if (!result.notModified) {
+
+            if (useValidators && !result.notModified) {
                 await saveValidators(sourceKey, {
                     etag: result.etag ?? null,
                     lastModified: result.lastModified ?? null
@@ -65,6 +82,11 @@ export function createAdapterContext(sourceKey: string): SourceContext {
         credentials: null,
         get lastFetchNotModified() { return notModified; }
     };
+}
+
+/** A context for probing: fetches fresh and leaves the conditional cache alone. */
+export function createProbeContext(sourceKey: string): SourceContext {
+    return createAdapterContext(sourceKey, { useValidators: false });
 }
 
 export { getAdapter, registeredKinds };

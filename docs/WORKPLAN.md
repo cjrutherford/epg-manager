@@ -3,7 +3,7 @@
 Single source of truth for the remediation effort. Consolidates the process audit, the UI &
 source-retrieval audit, and the source acquisition architecture into one tracked backlog.
 
-**Status:** Waves 1–2 complete, wave 3 in progress — 9 of 25 done, S12 at 2 of 3
+**Status:** Waves 1–2 complete, wave 3 in progress — 10 of 25 done, S12 at 2 of 3
 **Suite score at baseline:** 2.5 / 5 (process) · 2.3 / 5 (UI)
 **Last updated:** 2026-08-13
 
@@ -312,14 +312,28 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
   unchanged re-sync keeps 250, changed re-sync imports 300. This is a good argument for finishing
   S12 (non-destructive playlist import) sooner rather than later.
 
-- [ ] **S16b · Direct XMLTV ingestion** — M
-  Implement the `xmltv` adapter on the dormant `processEpg` streaming parser. Register EPGShare 01's
-  ten feeds in the built-in catalogue. Merge direct-feed guide data with scraped data under the
-  conflict rules.
-  *Fixes R1, R2.* → `src/services/sources/adapters/xmltv.ts`, `src/services/epg.ts`
-  - [ ] A channel with no scraper coverage gets guide data from a direct feed
-  - [ ] Programmes are attributable to the feed that supplied them
-  - [ ] Disabling a feed removes only its programmes
+- [x] **S16b · Direct XMLTV ingestion** — M — *done 2026-08-14*
+  `xmltv` adapter with its own streaming SAX parser (channels, programmes, categories, ratings,
+  icons), gzip support, and a sample limit so probing a national guide doesn't hold it all in memory.
+  EPGShare 01's ten regional feeds were registered in the catalogue in S16.
+  *Fixes R1, R2.* → `src/services/sources/adapters/xmltv.ts`, `sources/index.ts`
+  - [x] A channel with no scraper coverage gets guide data from a direct feed
+        — end to end against a gzipped 50-channel / 48-hour feed: probe reported 50 channels and
+        2.00 days, catalogue returned 50 rows, and **2,400 programmes** were ingested and persisted
+  - [x] Programmes are attributable to the feed that supplied them
+        — all 2,400 rows carry the source key; `persistProgrammes` replaces only that source's rows
+  - [x] Disabling a feed removes only its programmes
+        — removing the feed left its own rows at 0 and another source's row untouched
+
+  **Two ordering bugs found by running it, both invisible to unit tests:**
+  1. **Probe poisoned the conditional cache.** Probing a source stored its validators, so the very
+     next real sync answered 304 and pulled nothing — a source would look empty immediately after
+     being added. Probes now run on a context that neither reads nor writes validators.
+  2. **`syncCatalog` starved `fetchGuide`.** Both fetch the same document for a whole-feed kind, and
+     the first stored validators, so the second got a 304 and yielded zero programmes. One fetch is
+     now shared per context, which also halves the bandwidth.
+
+  Verified separately with a fresh context that a genuine second cycle still gets its 304.
 
 - [ ] **S16c · Xtream and file adapters** — L
   Panel API adapter — categories, live streams, guide, credentialed and token-aware — plus the upload
@@ -561,4 +575,5 @@ memory, so **restart it after `ng build`** or you will screenshot the previous b
 | 2026-08-14 | S16 | Partial. Contract, fetch policy, HTTP client, built-in catalogue and stage-and-swap landed; R4 fixed and proven; 304 path proven (1.27 MB → 0 bytes); FAST presets reduced from three copies to one. Adapter port of scraper-repo/m3u/bundle still outstanding. 26 new unit tests; suite 249 → 275. |
 | 2026-08-14 | S16 | Done. m3u/bundle/scraper-repo implemented behind the contract; playlist import runs through the m3u adapter and was verified live (250 in, 300 after a change). Caught and fixed a regression where a 304 wiped all channels. 13 new unit tests; suite 275 → 288. |
 | 2026-08-14 | S12 | Pulled forward. Staging-and-swap for playlist imports; reload covers every configured playlist. Mid-import kill verified (after correcting a flawed test that killed an npx wrapper). Memory criterion measured and NOT met: +68.6 MB for 50k channels — needs a streaming parser. |
+| 2026-08-14 | S16b | Done. xmltv adapter with a streaming SAX parser and gzip; 2,400 programmes ingested from a gzipped feed with full provenance. Found and fixed two fetch-ordering bugs: probe poisoned the conditional cache, and syncCatalog starved fetchGuide. 14 new unit tests; suite 288 → 302. |
 

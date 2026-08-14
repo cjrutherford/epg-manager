@@ -9,19 +9,20 @@ describe('adapter registry', () => {
   beforeAll(() => registerBuiltInAdapters());
 
   it('registers the three ported kinds', () => {
-    expect(registeredKinds()).toEqual(['bundle', 'm3u', 'scraper-repo']);
+    expect(registeredKinds()).toEqual(['bundle', 'm3u', 'scraper-repo', 'xmltv']);
   });
 
   it('hands back an adapter by kind, and null for an unknown one', () => {
     expect(getAdapter('m3u')?.kind).toBe('m3u');
     expect(getAdapter('bundle')?.kind).toBe('bundle');
     expect(getAdapter('scraper-repo')?.kind).toBe('scraper-repo');
+    expect(getAdapter('xmltv')?.kind).toBe('xmltv');
     expect(getAdapter('xtream')).toBeNull();
   });
 
   it('registering twice does not duplicate', () => {
     registerBuiltInAdapters();
-    expect(registeredKinds()).toHaveLength(3);
+    expect(registeredKinds()).toHaveLength(4);
   });
 
   it('each adapter declares the capabilities it implements', () => {
