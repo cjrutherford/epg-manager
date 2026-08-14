@@ -28,6 +28,8 @@ export class PipelineQueue {
     private matchProgress = 0;
 
     private totalToGrab = 0;
+    /** Matched channels no enabled grab-capable source covers. */
+    private noSourceIds = new Set<string>();
     private grabsCompleted = 0;
     private grabsSuccessful = 0;
     private grabsFailed = 0;
@@ -56,7 +58,10 @@ export class PipelineQueue {
         if (uniqueIds.length === 0) return;
 
         this.totalMatched += uniqueIds.length;
-        this.totalToGrab += uniqueIds.length;
+        // totalToGrab is incremented per resolved id below, not here. Counting
+        // every id up front meant channels with no grab-capable source were
+        // included in the denominator but never queued, so grabsCompleted could
+        // never reach totalToGrab and the phase never rendered as complete (R5).
         emitLog(formatMemorySnapshot('pipeline enqueue matched', process.memoryUsage(), {
             queued: uniqueIds.length,
             totalQueued: this.totalToGrab,
@@ -107,6 +112,18 @@ export class PipelineQueue {
                     site_id: String(row.site_id),
                     lang: String(row.lang || 'en')
                 });
+            }
+
+            // Only what is actually queued counts toward the total.
+            this.totalToGrab += selectedXmltvIds.size;
+
+            // The rest have no enabled, grab-capable source covering them. That
+            // is a real and useful outcome — it is the answer to "why does this
+            // channel have no guide?" — so it is reported rather than absorbed.
+            for (const id of chunk) {
+                if (!selectedXmltvIds.has(id)) {
+                    this.noSourceIds.add(id);
+                }
             }
         }
 
@@ -260,20 +277,38 @@ export class PipelineQueue {
     }
 
     private emitGrabProgress() {
+        const noSource = this.noSourceIds.size;
+        const noSourceNote = noSource > 0 ? `, ${noSource} with no source` : '';
+
         if (this.totalToGrab === 0) {
             if (this.isMatchingComplete) {
-                emitProgressComplete('grab', 'Complete: No EPG grab required ✓', 0);
+                const message = noSource > 0
+                    ? `Complete: no grab-capable source for ${noSource} channel(s) ✓`
+                    : 'Complete: No EPG grab required ✓';
+                emitProgressComplete('grab', message, 0);
             }
             return;
         }
 
         const isFullyDone = this.isMatchingComplete && this.activeGrabs === 0 && this.grabBatches.size === 0 && this.grabsCompleted >= this.totalToGrab;
         if (isFullyDone) {
-            emitProgressComplete('grab', `Complete: ${this.grabsSuccessful} ok, ${this.grabsFailed} failed ✓`, this.totalToGrab);
+            emitProgressComplete('grab', `Complete: ${this.grabsSuccessful} ok, ${this.grabsFailed} failed${noSourceNote} ✓`, this.totalToGrab);
         } else {
-            const msg = `Grabbing: ${this.grabsCompleted}/${this.totalToGrab} (${this.grabsSuccessful} ok, ${this.grabsFailed} failed)`;
+            const msg = `Grabbing: ${this.grabsCompleted}/${this.totalToGrab} (${this.grabsSuccessful} ok, ${this.grabsFailed} failed${noSourceNote})`;
             emitProgress(msg, this.grabsCompleted, this.totalToGrab, 'grab');
         }
+    }
+
+    /** Counts for the caller's report. */
+    public getGrabStats() {
+        return {
+            totalToGrab: this.totalToGrab,
+            completed: this.grabsCompleted,
+            successful: this.grabsSuccessful,
+            failed: this.grabsFailed,
+            noSource: this.noSourceIds.size,
+            noSourceIds: [...this.noSourceIds]
+        };
     }
 
     private processEnrichQueue() {

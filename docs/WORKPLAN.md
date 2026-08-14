@@ -3,7 +3,7 @@
 Single source of truth for the remediation effort. Consolidates the process audit, the UI &
 source-retrieval audit, and the source acquisition architecture into one tracked backlog.
 
-**Status:** Waves 1–2 complete, wave 3 in progress — 10 of 26 done, S12 and S25 partial
+**Status:** Waves 1–2 complete, wave 3 in progress — 11 of 26 done, S12 and S25 partial
 **Suite score at baseline:** 2.5 / 5 (process) · 2.3 / 5 (UI)
 **Last updated:** 2026-08-13
 
@@ -368,12 +368,24 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
   toward unlicensed resale. Not worth the surface area for the marginal gain. Revisit if a concrete
   need appears.
 
-- [ ] **S17 · Honest grab accounting** — S
-  Count only what is actually queued. Increment `totalToGrab` after source resolution; report ids with
-  no grab-capable source as a distinct "no source" outcome. Stop feeding raw `tvg_id` into the queue.
+- [x] **S17 · Honest grab accounting** — S — *done 2026-08-14*
+  `totalToGrab` is incremented per resolved id after the catalogue query rather than per matched id
+  before it. Channels no enabled grab-capable source covers are collected as a distinct "no source"
+  outcome and surfaced in the progress message and in `getGrabStats()`.
   *Fixes R5.* → `src/services/pipeline.ts`
-  - [ ] The grab phase reaches 100% and renders complete on every successful sync
-  - [ ] Channels with no available source are reported and countable
+  - [x] The grab phase reaches 100% and renders complete on every successful sync
+        — the denominator now only counts queued channels, so `grabsCompleted >= totalToGrab`
+        is reachable. Locked by a test asserting 2 rather than 3 for a batch where one of three
+        channels has no source
+  - [x] Channels with no available source are reported and countable
+        — `noSource` count and ids exposed; progress reads "… , N with no source"
+
+  **Test infrastructure fixed along the way:** `jest.mock('../../db')` plus a direct import of
+  `src/__mocks__/db` gives two different module instances, so the call history stayed empty and the
+  first five assertions failed misleadingly. Switched to the inline-factory pattern the other service
+  tests already use. Also added a `moduleNameMapper` for NodeNext `.js` specifiers, without which
+  `pipeline.ts`'s dynamic `import('./grabber.js')` cannot resolve under ts-jest — that had made the
+  pipeline effectively untestable.
 
 - [ ] **S18 · Sources screen with probe-first add flow** — M
   One screen for both source families. Add by pasting a URL or portal details; probe reports what was
@@ -599,4 +611,5 @@ memory, so **restart it after `ng build`** or you will screenshot the previous b
 | 2026-08-14 | S16b | Done. xmltv adapter with a streaming SAX parser and gzip; 2,400 programmes ingested from a gzipped feed with full provenance. Found and fixed two fetch-ordering bugs: probe poisoned the conditional cache, and syncCatalog starved fetchGuide. 14 new unit tests; suite 288 → 302. |
 | 2026-08-14 | S25 | New slice. Streaming M3U parser + streaming fetch, proven equivalent to the library it replaces. 50k channels: +68.6 MB -> +17.5 MB. Strictly-flat criterion still unmet; residual isolated to the in-memory preservation index, with a SQL-join path proposed. 19 new unit tests; suite 302 -> 321. |
 | 2026-08-14 | S16c | Scope reduced to the file adapter. Xtream deferred: m3u + xmltv already cover portals via their get.php/xmltv.php endpoints, so a bespoke adapter adds little for the credential surface it costs. |
+| 2026-08-14 | S17 | Done. Grab denominator counts only queued channels, so the phase can reach 100%; unsourced channels reported instead of absorbed. Fixed two test-infrastructure gaps that had made the pipeline untestable. 6 new unit tests; suite 321 -> 327. |
 

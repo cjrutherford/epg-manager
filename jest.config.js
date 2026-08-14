@@ -4,6 +4,11 @@ module.exports = {
   roots: ['<rootDir>/src'],
   testMatch: ['**/__tests__/**/*.test.ts', '**/*.test.ts'],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
+  // NodeNext requires .js specifiers in relative imports; strip them so jest
+  // resolves the .ts source (and so those modules can be mocked by path).
+  moduleNameMapper: {
+    '^(\\.{1,2}/.*)\\.js$': '$1'
+  },
   transform: {
     '^.+\\.(ts|tsx|js|jsx|mjs)$': ['ts-jest', { useESM: true }]
   },
