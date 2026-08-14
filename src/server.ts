@@ -13,7 +13,8 @@ import { enrichProgramsWithMetadata, getEnrichmentStats, clearMetadataCache, isE
 import { PipelineQueue } from './services/pipeline';
 import { getJobStatus, startJob, completeJob, requestJobCancel, loadLastJobStateOnBoot } from './job';
 import { eventBus, emitLog, emitProgress, emitProgressComplete } from './events';
-import { startRecordingScheduler, cancelRecording as cancelRec, getRecordingFilePath, checkScheduledRecordings, startRecording, stopRecording } from './recorder';
+import { startRecordingScheduler, stopRecordingScheduler, drainRecordings, cancelRecording as cancelRec, getRecordingFilePath, checkScheduledRecordings, startRecording, stopRecording, safeRecordingPath, getFreeSpaceBytes, getVolumeUsage, getRetentionPolicy } from './recorder';
+import { formatBytes, meetsFreeSpaceFloor } from './services/recording-storage';
 import { StreamManager } from './services/stream';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -26,6 +27,20 @@ import { mapSystemRecordingRow } from './services/recordings';
 import { dedupeChannelsForDisplay } from './services/channel-dedup';
 import { setOpenCorsHeaders } from './http-headers';
 import { rankEpgSources } from './services/epg-sources';
+import { checkScopeCoverage, isResetScope, planReset } from './services/reset-scopes';
+import {
+    checkThrottle,
+    generateToken,
+    hashToken,
+    isSessionValid,
+    isWeakPassword,
+    passwordMatches,
+    pruneAttemptStates,
+    pruneExpiredSessions,
+    registerFailure,
+    registerSuccess,
+    type LoginAttemptState
+} from './services/sessions';
 
 function summarizePlaylistScope(items: Array<{ importedCount?: number; channelCountEstimate?: number | null }>) {
     const selectedCount = items.length;
@@ -39,9 +54,6 @@ import schedule from 'node-cron';
 const app = express();
 const PORT = parseInt(process.env.API_PORT || '4000', 10);
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin';
-
-// In-memory auth token store
-const validTokens = new Set<string>();
 
 app.set('trust proxy', true);
 
@@ -66,49 +78,179 @@ app.get('/api/stream/keepalive/:id', (req: any, res: any) => {
     StreamManager.keepAlive(req.params.id);
     res.json({ success: true, timestamp: Date.now() });
 });
-app.use('/files', express.static(DB_DIR)); // Static files
+// Recordings are served by a validated handler, registered ahead of the static
+// mount below. express.static resolves `recordings/../local.db` inside its own
+// root and would happily serve it, so this route has to win the match.
+app.get('/files/recordings/:filename', (req: any, res: any) => {
+    const filePath = safeRecordingPath(req.params.filename);
+    if (!filePath) {
+        return res.status(400).json({ error: "Invalid recording filename" });
+    }
+    if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: "Recording not found" });
+    }
 
+    res.header('Content-Type', 'video/mp4');
+    res.header('Content-Disposition', `inline; filename="${path.basename(filePath)}"`);
+    res.sendFile(filePath);
+});
+
+// ── /files: explicitly scoped, never the whole data directory ──
+//
+// This used to be `express.static(DB_DIR)`, which served local.db — settings,
+// playlist URLs with any embedded credentials, the full schedule — to anyone.
+// Each subtree is now mounted deliberately, and anything not listed 404s.
+
+// Viewer scope: HLS segments the player fetches directly.
+app.use('/files/streams', express.static(path.join(DB_DIR, 'streams'), {
+    setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache')
+}));
+
+// Admin scope: the iptv-org playlist catalogue browsed from Settings.
+// Import reads these off disk, so this mount is for browsing only.
+app.use('/files/iptv-org-playlists', requireAuth, express.static(path.join(DB_DIR, 'iptv-org-playlists')));
+
+// Anything else under /files is not public data.
+app.use('/files', (req: any, res: any) => {
+    res.status(404).json({ error: 'Not found' });
+});
+
+
+// ── Sessions ──────────────────────────────────
+//
+// Sessions live in SQLite so a restart no longer silently signs everyone out,
+// with an in-memory index (tokenHash -> expiresAt) so the hot path stays a map
+// lookup rather than a query per request. Tokens are stored hashed.
+
+const SESSION_TTL_MS = Math.max(1, parseInt(process.env.SESSION_TTL_HOURS || '168', 10)) * 60 * 60 * 1000;
+const sessionIndex = new Map<string, number>();
+const loginAttempts = new Map<string, LoginAttemptState>();
+
+async function loadSessionsOnBoot(): Promise<void> {
+    try {
+        const now = Date.now();
+        await db.execute({ sql: 'DELETE FROM admin_sessions WHERE expires_at <= ?', args: [now] });
+        const result = await db.execute('SELECT token_hash, expires_at FROM admin_sessions');
+        for (const row of result.rows) {
+            sessionIndex.set(String(row.token_hash), Number(row.expires_at));
+        }
+        if (sessionIndex.size > 0) {
+            // console, not emitLog: this runs before tui.init() and would not be rendered
+            console.log(`[Auth] Restored ${sessionIndex.size} active session(s).`);
+        }
+    } catch (e: any) {
+        console.error('[Auth] Failed to load sessions:', e.message);
+    }
+}
+
+async function sweepSessions(): Promise<void> {
+    const now = Date.now();
+    const expired = pruneExpiredSessions(sessionIndex, now);
+    pruneAttemptStates(loginAttempts, now);
+    if (expired.length === 0) return;
+    try {
+        await db.execute({ sql: 'DELETE FROM admin_sessions WHERE expires_at <= ?', args: [now] });
+        console.log(`[Auth] Expired ${expired.length} session(s).`);
+    } catch (e: any) {
+        console.error('[Auth] Failed to sweep sessions:', e.message);
+    }
+}
+
+async function createSession(): Promise<{ token: string; expiresAt: number }> {
+    const token = generateToken();
+    const tokenHash = hashToken(token);
+    const now = Date.now();
+    const expiresAt = now + SESSION_TTL_MS;
+
+    await db.execute({
+        sql: 'INSERT OR REPLACE INTO admin_sessions (token_hash, created_at, expires_at) VALUES (?, ?, ?)',
+        args: [tokenHash, now, expiresAt]
+    });
+    sessionIndex.set(tokenHash, expiresAt);
+    return { token, expiresAt };
+}
+
+async function destroySession(token: string): Promise<void> {
+    const tokenHash = hashToken(token);
+    sessionIndex.delete(tokenHash);
+    try {
+        await db.execute({ sql: 'DELETE FROM admin_sessions WHERE token_hash = ?', args: [tokenHash] });
+    } catch (e: any) {
+        console.error('[Auth] Failed to delete session:', e.message);
+    }
+}
+
+function bearerToken(req: any): string | null {
+    const header = req.headers.authorization;
+    if (typeof header !== 'string' || !header.startsWith('Bearer ')) return null;
+    const token = header.slice(7).trim();
+    return token || null;
+}
+
+/** True when the request carries a live session. Expired tokens are evicted on sight. */
+function hasValidSession(req: any): boolean {
+    const token = bearerToken(req);
+    if (!token) return false;
+
+    const tokenHash = hashToken(token);
+    const expiresAt = sessionIndex.get(tokenHash);
+    if (isSessionValid(expiresAt, Date.now())) return true;
+
+    if (expiresAt !== undefined) {
+        sessionIndex.delete(tokenHash);
+        db.execute({ sql: 'DELETE FROM admin_sessions WHERE token_hash = ?', args: [tokenHash] })
+            .catch(() => { /* best effort */ });
+    }
+    return false;
+}
 
 // ── Auth endpoints ────────────────────────────
 
-app.post('/api/auth', (req: any, res: any) => {
-    const { password } = req.body;
-    if (password === ADMIN_PASSWORD) {
-        const token = crypto.randomUUID();
-        validTokens.add(token);
-        return res.json({ success: true, token });
+app.post('/api/auth', async (req: any, res: any) => {
+    const clientKey = String(req.ip || req.socket?.remoteAddress || 'unknown');
+    const now = Date.now();
+
+    // Throttle before touching the password, so guessing costs time
+    const verdict = checkThrottle(loginAttempts.get(clientKey), now);
+    if (!verdict.allowed) {
+        const seconds = Math.ceil(verdict.retryAfterMs / 1000);
+        res.setHeader('Retry-After', String(seconds));
+        return res.status(429).json({
+            error: `Too many failed attempts. Try again in ${Math.ceil(seconds / 60)} minute(s).`
+        });
     }
-    res.status(401).json({ error: 'Invalid password' });
+
+    if (!passwordMatches(req.body?.password, ADMIN_PASSWORD)) {
+        loginAttempts.set(clientKey, registerFailure(loginAttempts.get(clientKey), now));
+        return res.status(401).json({ error: 'Invalid password' });
+    }
+
+    loginAttempts.set(clientKey, registerSuccess());
+    try {
+        const { token, expiresAt } = await createSession();
+        res.json({ success: true, token, expiresAt });
+    } catch (e: any) {
+        console.error('[Auth] Failed to create session:', e.message);
+        res.status(500).json({ error: 'Could not start a session' });
+    }
 });
 
 app.get('/api/auth/status', (req: any, res: any) => {
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-        const token = authHeader.slice(7);
-        if (validTokens.has(token)) {
-            return res.json({ authenticated: true });
-        }
+    if (hasValidSession(req)) {
+        return res.json({ authenticated: true });
     }
     res.json({ authenticated: false, required: true });
 });
 
-app.post('/api/auth/logout', (req: any, res: any) => {
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-        validTokens.delete(authHeader.slice(7));
-    }
+app.post('/api/auth/logout', async (req: any, res: any) => {
+    const token = bearerToken(req);
+    if (token) await destroySession(token);
     res.json({ success: true });
 });
 
 // ── Auth middleware for admin routes ──────────
 function requireAuth(req: any, res: any, next: any) {
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-        const token = authHeader.slice(7);
-        if (validTokens.has(token)) {
-            return next();
-        }
-    }
+    if (hasValidSession(req)) return next();
     res.status(401).json({ error: 'Authentication required. Please log in at /admin/' });
 }
 
@@ -716,66 +858,110 @@ app.post('/api/rebuild-files', requireAuth, async (req: any, res: any) => {
     }
 });
 
-app.post('/api/reset', requireAuth, async (req: any, res: any) => {
+/** Bytes on disk for a file or directory under DB_DIR, 0 when absent. */
+function measurePath(target: string): number {
     try {
-        emitLog("Initiating full system reset...", "warning");
-
-        // ── 1. Clear all DB tables (channels, programs, guide data, playlists, etc.) ──
-        const tables = [
-            'settings', 'channels', 'epg_channels', 'epg_programs',
-            'manual_overrides', 'iptv_org_map', 'site_status', 'grab_logs',
-            'metadata_cache', 'episode_metadata_cache', 'channel_grab_status',
-            'tvmaze_cache', 'scheduled_recordings', 'metadata_overrides',
-            'channel_favorites', 'channel_hidden'
-        ];
-        for (const table of tables) {
-            try { await db.execute(`DELETE FROM ${table}`); } catch (_) { /* table may not exist */ }
+        const stat = fs.statSync(target);
+        if (stat.isFile()) return stat.size;
+        if (!stat.isDirectory()) return 0;
+        let total = 0;
+        for (const entry of fs.readdirSync(target, { withFileTypes: true })) {
+            total += measurePath(path.join(target, entry.name));
         }
-        emitLog("Database tables cleared.", "info");
+        return total;
+    } catch (_) {
+        return 0;
+    }
+}
 
-        // ── 2. Delete the SQLite DB file + WAL/SHM so no stale data persists ──
-        //    (We must close the connection first by calling VACUUM to force a checkpoint)
-        try { await db.execute("VACUUM"); } catch (_) { }
-        const dbFile = path.join(DB_DIR, 'local.db');
-        const dbWal  = path.join(DB_DIR, 'local.db-wal');
-        const dbShm  = path.join(DB_DIR, 'local.db-shm');
-        for (const f of [dbFile, dbWal, dbShm]) {
-            if (fs.existsSync(f)) fs.unlinkSync(f);
-        }
-        emitLog("SQLite database file deleted.", "info");
-
-        // Re-initialise fresh schema
-        fs.writeFileSync(dbFile, '');
-        await initDb();
-        emitLog("Fresh database schema created.", "info");
-
-        // ── 3. Remove generated output files ──
-        for (const name of ['playlist.m3u', 'epg.xml']) {
-            const p = path.join(DB_DIR, name);
-            if (fs.existsSync(p)) fs.unlinkSync(p);
+// GET /api/reset/preview?scope=... - What would this scope destroy?
+app.get('/api/reset/preview', requireAuth, async (req: any, res: any) => {
+    try {
+        const scope = req.query.scope;
+        if (!isResetScope(scope)) {
+            return res.status(400).json({ error: "Unknown reset scope. Expected one of: guide, user, collection, all." });
         }
 
-        // ── 4. Remove downloaded guide source / playlist caches ──
-        //    These are re-downloaded on the next sync.
-        const cacheDirs = ['iptv-org-epg', 'iptv-org-playlists', 'imdb-data'];
-        for (const dir of cacheDirs) {
-            const p = path.join(DB_DIR, dir);
-            if (fs.existsSync(p)) {
-                fs.rmSync(p, { recursive: true, force: true });
-                emitLog(`Removed cached data: ${dir}`, "info");
+        const plan = planReset(scope);
+        const tables: { table: string; rows: number }[] = [];
+        for (const table of plan.tables) {
+            try {
+                const result = await db.execute(`SELECT COUNT(*) as c FROM ${table}`);
+                tables.push({ table, rows: Number(result.rows[0].c) });
+            } catch (_) {
+                // Table not present in this database — nothing to clear.
             }
         }
 
-        // ── 5. Remove streams and recordings ──
-        for (const dir of ['streams', 'recordings']) {
-            const p = path.join(DB_DIR, dir);
-            if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
+        const paths = [...plan.files, ...plan.dirs]
+            .map(name => ({ name, bytes: measurePath(path.join(DB_DIR, name)) }))
+            .filter(entry => entry.bytes > 0);
+
+        res.json({
+            scope,
+            summary: plan.summary,
+            totalRows: tables.reduce((sum, entry) => sum + entry.rows, 0),
+            totalBytes: paths.reduce((sum, entry) => sum + entry.bytes, 0),
+            tables: tables.filter(entry => entry.rows > 0),
+            paths
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// POST /api/reset - Clear a declared scope, in place
+app.post('/api/reset', requireAuth, async (req: any, res: any) => {
+    try {
+        const scope = req.body?.scope;
+        if (!isResetScope(scope)) {
+            return res.status(400).json({ error: "Unknown reset scope. Expected one of: guide, user, collection, all." });
         }
 
-        emitLog("Full system reset complete. All channels, playlists, guide data, and program data cleared.", "success");
-        res.json({ success: true });
+        // A reset mid-sync would race the pipeline writing into the tables
+        // being cleared, and leave the job pointing at rows that no longer exist.
+        if (getJobStatus().running) {
+            return res.status(409).json({
+                error: "A sync is currently running. Cancel it before resetting."
+            });
+        }
+
+        const plan = planReset(scope);
+        emitLog(`Resetting scope '${scope}'...`, "warning");
+
+        // Truncate in place. The database file is never unlinked — the libsql
+        // client holds it open, and deleting it would leave every subsequent
+        // write going to an unlinked inode.
+        let clearedTables = 0;
+        for (const table of plan.tables) {
+            try {
+                await db.execute(`DELETE FROM ${table}`);
+                clearedTables++;
+            } catch (_) { /* table may not exist in this database */ }
+        }
+        emitLog(`Cleared ${clearedTables} table(s).`, "info");
+
+        for (const name of plan.files) {
+            const target = path.join(DB_DIR, name);
+            try { if (fs.existsSync(target)) fs.unlinkSync(target); } catch (_) {}
+        }
+        for (const name of plan.dirs) {
+            const target = path.join(DB_DIR, name);
+            try {
+                if (fs.existsSync(target)) {
+                    fs.rmSync(target, { recursive: true, force: true });
+                    emitLog(`Removed ${name}/`, "info");
+                }
+            } catch (_) {}
+        }
+
+        // Reclaim the freed pages without dropping the connection.
+        try { await db.execute("VACUUM"); } catch (_) {}
+
+        emitLog(`Reset complete (${scope}).`, "success");
+        res.json({ success: true, scope, clearedTables });
     } catch (e: any) {
-        console.error("Full reset failed:", e);
+        console.error("Reset failed:", e);
         res.status(500).json({ error: e.message });
     }
 });
@@ -810,20 +996,60 @@ app.get('/epg.xml', async (req, res) => {
     }
 });
 
+/**
+ * Every table must belong to exactly one reset scope. A table added to the
+ * schema without being classified would silently survive every reset, so it is
+ * surfaced at boot rather than discovered when someone's wipe leaves data behind.
+ */
+async function verifyResetScopeCoverage() {
+    try {
+        const result = await db.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+        );
+        const liveTables = result.rows.map(row => String(row.name));
+        const coverage = checkScopeCoverage(liveTables);
+
+        if (coverage.unassigned.length > 0) {
+            emitLog(
+                `Reset scopes do not cover: ${coverage.unassigned.join(', ')}. These tables would survive every reset — classify them in reset-scopes.ts.`,
+                "warning"
+            );
+        }
+        if (coverage.duplicated.length > 0) {
+            emitLog(`Reset scopes list these tables more than once: ${coverage.duplicated.join(', ')}.`, "warning");
+        }
+    } catch (e: any) {
+        console.error("Reset scope coverage check failed:", e.message);
+    }
+}
+
 async function startServer() {
     emitLog("Initializing database...", "info");
     await initDb();
     await loadLastJobStateOnBoot();
+    await verifyResetScopeCoverage();
+    await loadSessionsOnBoot();
+
+    // Expire stale sessions and throttle records hourly
+    setInterval(() => { void sweepSessions(); }, 60 * 60 * 1000);
 
     // Initialize TUI
     tui.init();
+
+    // Emitted after the TUI is up so it is actually rendered, and mirrored to
+    // stderr so it survives in container logs regardless of the TUI.
+    if (isWeakPassword(ADMIN_PASSWORD)) {
+        const warning = `SECURITY: ADMIN_PASSWORD is still the default ("${ADMIN_PASSWORD}"). Anyone who can reach this server can administer it — set ADMIN_PASSWORD to something private.`;
+        emitLog(warning, 'warning');
+        console.warn(`[Auth] ${warning}`);
+    }
 
     // Catch-all 404 for unhandled API/File requests
     app.use((req: express.Request, res: express.Response) => {
         res.status(404).json({ error: 'Not found' });
     });
 
-    app.listen(PORT, () => {
+    httpServer = app.listen(PORT, () => {
         emitLog(`Server running on port ${PORT} `, "success");
     });
 
@@ -838,20 +1064,69 @@ startServer().catch(err => {
     process.exit(1);
 });
 
-// Graceful shutdown handlers
-function shutdown(): void {
+// ── Graceful shutdown ─────────────────────────
+let httpServer: import('http').Server | null = null;
+let shutdownInProgress = false;
+
+/** Upper bound on the whole drain; SIGKILL follows if we exceed it. */
+const SHUTDOWN_GRACE_MS = parseInt(process.env.SHUTDOWN_GRACE_MS || '30000', 10);
+const RECORDING_DRAIN_MS = Math.max(1000, SHUTDOWN_GRACE_MS - 8000);
+
+/**
+ * Stop accepting work, let in-flight recordings finalise, then exit.
+ *
+ * ffmpeg writes a playable MP4 when it receives SIGINT, so draining turns what
+ * used to be a salvage job on next boot into an ordinary completed recording.
+ */
+async function shutdown(signal: string): Promise<void> {
+    if (shutdownInProgress) return;
+    shutdownInProgress = true;
+    console.log(`Received ${signal}, shutting down gracefully...`);
+
+    // Last resort: never hang a container stop.
+    const forceExit = setTimeout(() => {
+        console.error(`[Shutdown] Grace period of ${SHUTDOWN_GRACE_MS}ms exceeded; forcing exit.`);
+        process.exit(1);
+    }, SHUTDOWN_GRACE_MS);
+    forceExit.unref();
+
+    try {
+        // 1. Stop taking on new work
+        stopRecordingScheduler();
+        if (activePipeline) {
+            activePipeline.cancel();
+        }
+
+        // 2. Stop serving; in-flight requests are allowed to finish
+        if (httpServer) {
+            await new Promise<void>(resolve => httpServer!.close(() => resolve()));
+            console.log('[Shutdown] HTTP server closed.');
+        }
+
+        // 3. Finalise recordings — the part that actually matters
+        await drainRecordings(RECORDING_DRAIN_MS);
+
+        // 4. Kill transcodes and release their scratch directories
+        StreamManager.stopAll();
+
+        // 5. Close the database last, once nothing else can write
+        try {
+            db.close();
+            console.log('[Shutdown] Database closed.');
+        } catch (e: any) {
+            console.error('[Shutdown] Error closing database:', e.message);
+        }
+    } catch (e: any) {
+        console.error('[Shutdown] Error during graceful shutdown:', e.message);
+    }
+
+    clearTimeout(forceExit);
+    console.log('[Shutdown] Complete.');
     process.exit(0);
 }
 
-process.on('SIGTERM', () => {
-    console.log('Received SIGTERM, shutting down gracefully...');
-    shutdown();
-});
-
-process.on('SIGINT', () => {
-    console.log('Received SIGINT, shutting down gracefully...');
-    shutdown();
-});
+process.on('SIGTERM', () => { void shutdown('SIGTERM'); });
+process.on('SIGINT', () => { void shutdown('SIGINT'); });
 
 // GET /api/config - Unified config
 app.get('/api/config', requireAuth, async (req: any, res: any) => {
@@ -1163,8 +1438,13 @@ app.get('/api/channels/favorites', async (req, res) => {
     }
 });
 
+// Favourites and hidden channels are viewer-scope display preferences, not
+// system configuration. Reads were already public; the writes required an admin
+// token and failed silently for anyone watching, so the state quietly diverged
+// per device. Both directions are now viewer scope.
+
 // POST /api/channels/favorites - Add channel to favorites
-app.post('/api/channels/favorites', requireAuth, async (req: any, res: any) => {
+app.post('/api/channels/favorites', async (req: any, res: any) => {
     try {
         const { channel_id } = req.body;
         if (!channel_id) {
@@ -1181,7 +1461,7 @@ app.post('/api/channels/favorites', requireAuth, async (req: any, res: any) => {
 });
 
 // DELETE /api/channels/favorites/:id - Remove channel from favorites
-app.delete('/api/channels/favorites/:id', requireAuth, async (req: any, res: any) => {
+app.delete('/api/channels/favorites/:id', async (req: any, res: any) => {
     try {
         const channelId = req.params.id;
         await db.execute({
@@ -1205,7 +1485,7 @@ app.get('/api/channels/hidden', async (req, res) => {
 });
 
 // POST /api/channels/hidden - Hide a channel
-app.post('/api/channels/hidden', requireAuth, async (req: any, res: any) => {
+app.post('/api/channels/hidden', async (req: any, res: any) => {
     try {
         const { channel_id } = req.body;
         if (!channel_id) {
@@ -1222,7 +1502,7 @@ app.post('/api/channels/hidden', requireAuth, async (req: any, res: any) => {
 });
 
 // DELETE /api/channels/hidden/:id - Unhide a channel
-app.delete('/api/channels/hidden/:id', requireAuth, async (req: any, res: any) => {
+app.delete('/api/channels/hidden/:id', async (req: any, res: any) => {
     try {
         const channelId = req.params.id;
         await db.execute({
@@ -1467,6 +1747,16 @@ app.post('/api/dvr', requireAuth, async (req: any, res: any) => {
             return res.status(400).json({ error: 'Cannot schedule recording on a disabled channel' });
         }
 
+        // Tell the user now, rather than letting the recording fail at start time
+        const retention = await getRetentionPolicy();
+        const freeBytes = getFreeSpaceBytes();
+        if (!meetsFreeSpaceFloor(freeBytes, retention.minFreeBytes)) {
+            return res.status(507).json({
+                code: 'INSUFFICIENT_STORAGE',
+                error: `Not enough free space to record: ${formatBytes(freeBytes)} available, ${formatBytes(retention.minFreeBytes)} required. Delete some recordings and try again.`
+            });
+        }
+
         const resolvedChannelName = channel_name || (chanCheck.rows[0].name as string);
         const resolvedStreamUrl = stream_url || (chanCheck.rows[0].url as string);
 
@@ -1546,8 +1836,10 @@ app.get('/api/recordings/system', async (req: any, res: any) => {
 // Stream completed DVR recording file for in-browser playback
 app.get('/api/dvr/stream/:filename', async (req: any, res: any) => {
     try {
-        const filename = path.basename(req.params.filename);
-        const filePath = getRecordingFilePath(filename);
+        const filePath = safeRecordingPath(req.params.filename);
+        if (!filePath) {
+            return res.status(400).json({ error: 'Invalid recording filename' });
+        }
         if (!fs.existsSync(filePath)) {
             return res.status(404).send('Recording file not found');
         }
@@ -1605,37 +1897,36 @@ app.delete('/api/dvr/:id', requireAuth, async (req: any, res: any) => {
     }
 });
 
-// GET /api/dvr/storage - Recording storage usage
+// GET /api/dvr/storage - Volume usage, plus the share taken by recordings
 app.get('/api/dvr/storage', requireAuth, async (req: any, res: any) => {
     try {
         const recordingsDir = path.join(DB_DIR, 'recordings');
-        let usedBytes = 0;
+        let recordingsBytes = 0;
         if (fs.existsSync(recordingsDir)) {
             const files = fs.readdirSync(recordingsDir).filter(f => f.endsWith('.mp4') || f.includes('.part'));
             for (const f of files) {
                 try {
-                    const stat = fs.statSync(path.join(recordingsDir, f));
-                    usedBytes += stat.size;
+                    recordingsBytes += fs.statSync(path.join(recordingsDir, f)).size;
                 } catch (_) {}
             }
         }
 
-        // Get filesystem info for the data directory
-        const { execSync } = require('child_process');
-        let totalBytes = 0;
-        try {
-            const df = execSync(`df -B1 "${DB_DIR}"`, { encoding: 'utf8' });
-            const lines = df.trim().split('\n');
-            if (lines.length > 1) {
-                const parts = lines[1].split(/\s+/);
-                // total blocks, used, available, use%, mount
-                totalBytes = parseInt(parts[1]) || 0;
-            }
-        } catch (_) {
-            totalBytes = usedBytes > 0 ? usedBytes * 10 : 10 * 1024 * 1024 * 1024; // fallback
-        }
+        // usedBytes/totalBytes describe the volume, so the gauge reflects real
+        // disk pressure rather than the recordings folder in isolation.
+        const { totalBytes, freeBytes, usedBytes } = getVolumeUsage();
+        const policy = await getRetentionPolicy();
 
-        res.json({ usedBytes, totalBytes });
+        res.json({
+            usedBytes,
+            totalBytes,
+            freeBytes,
+            recordingsBytes,
+            retention: {
+                mode: policy.mode,
+                maxAgeDays: policy.maxAgeDays,
+                minFreeBytes: policy.minFreeBytes
+            }
+        });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -1670,36 +1961,17 @@ app.get('/api/recordings', requireAuth, async (req: any, res: any) => {
     }
 });
 
-// GET /files/recordings/:filename - Serve recording files
-app.get('/files/recordings/:filename', (req: any, res: any) => {
-    const filename = req.params.filename;
-    if (!filename.endsWith('.mp4')) {
-        return res.status(400).json({ error: "Invalid file type" });
-    }
-    
-    const filePath = path.join(DB_DIR, 'recordings', filename);
-    if (!fs.existsSync(filePath)) {
-        return res.status(404).json({ error: "Recording not found" });
-    }
-    
-    res.header('Content-Type', 'video/mp4');
-    res.header('Content-Disposition', `inline; filename="${filename}"`);
-    res.sendFile(filePath);
-});
-
 // DELETE /api/recordings/:filename - Delete a recording
 app.delete('/api/recordings/:filename', requireAuth, async (req: any, res: any) => {
     try {
-        const filename = req.params.filename;
-        if (!filename.endsWith('.mp4')) {
-            return res.status(400).json({ error: "Invalid file type" });
+        const filePath = safeRecordingPath(req.params.filename);
+        if (!filePath) {
+            return res.status(400).json({ error: "Invalid recording filename" });
         }
-        
-        const filePath = path.join(DB_DIR, 'recordings', filename);
         if (!fs.existsSync(filePath)) {
             return res.status(404).json({ error: "Recording not found" });
         }
-        
+
         fs.unlinkSync(filePath);
         res.json({ success: true });
     } catch (e: any) {
@@ -2087,13 +2359,6 @@ app.get('/api/categories', async (req, res) => {
     }
 });
 
-app.get('/api/debug-channels', async (req, res) => {
-    try {
-        const r = await db.execute("SELECT name, group_title, enabled FROM channels LIMIT 10");
-        res.json(r.rows);
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-
 // GET /api/guide - EPG guide grid data for the streaming UI
 app.get('/api/guide', async (req, res) => {
     try {
@@ -2312,6 +2577,10 @@ app.get('/api/channel/:id/stream', async (req, res) => {
         const hlsUrl = await StreamManager.startStream(channelId, String(chRes.rows[0].url));
         res.redirect(302, hlsUrl);
     } catch (e: any) {
+        // Capacity is a temporary condition the client can retry, not a server fault
+        if (e?.code === 'STREAM_LIMIT') {
+            return res.status(503).json({ error: e.message, code: e.code });
+        }
         res.status(500).json({ error: e.message });
     }
 });

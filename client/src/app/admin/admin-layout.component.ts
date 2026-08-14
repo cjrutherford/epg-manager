@@ -53,14 +53,30 @@ export class AdminLayoutComponent implements OnInit, OnDestroy, AfterViewChecked
             if (this.isMobile) this.sidebarOpen = false;
         }
 
+        // Track the session for the life of the shell, not just at startup.
+        // Snapshotting it once meant an expiry mid-session left the admin UI
+        // rendered as if still signed in, with every panel quietly empty.
         this.subscriptions.push(
-            this.auth.checkAuth().subscribe(ok => {
+            this.auth.isAuthenticated.subscribe(ok => {
+                const wasAuthenticated = this.isAuthenticated;
                 this.isAuthenticated = ok;
                 if (ok && this.isBrowser) {
+                    this.loginError = '';
                     this.sse.connect();
+                } else if (!ok) {
+                    if (this.auth.sessionExpiredNotice) {
+                        this.loginError = 'Your session expired — please sign in again';
+                    }
+                    if (wasAuthenticated && this.isBrowser) {
+                        this.sse.disconnect();
+                    }
                 }
                 this.cdr.detectChanges();
             })
+        );
+
+        this.subscriptions.push(
+            this.auth.checkAuth().subscribe()
         );
     }
 

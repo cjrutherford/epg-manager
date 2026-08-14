@@ -348,6 +348,17 @@ export async function initDb() {
     )
   `);
 
+  // Admin sessions — tokens are stored hashed so a database read does not
+  // hand over live sessions.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS admin_sessions (
+      token_hash TEXT PRIMARY KEY,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    )
+  `);
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires ON admin_sessions(expires_at)");
+
   // Persistent sync job history table
   await db.execute(`
     CREATE TABLE IF NOT EXISTS sync_jobs (

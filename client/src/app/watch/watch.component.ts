@@ -1877,8 +1877,27 @@ export class WatchComponent implements OnInit, OnDestroy {
             this.toast.show(`Scheduled recording for '${program.title}'`, 'success');
         } catch (e) {
             console.error('Failed to schedule recording', e);
-            this.toast.show('Failed to schedule recording', 'error');
+            this.toast.show(this.describeApiError(e, 'Failed to schedule recording'), 'error');
         }
+    }
+
+    /**
+     * Turn a failed API call into something the viewer can act on. Server DVR is
+     * admin scope, so an anonymous viewer gets 401 — saying "failed" leaves them
+     * with no idea that signing in is what's missing.
+     */
+    private describeApiError(error: any, fallback: string): string {
+        const status = error?.status;
+        if (status === 401 || status === 403) {
+            return 'Sign in on the Admin page to schedule server recordings';
+        }
+        if (status === 507) {
+            return error?.error?.error || 'Not enough free disk space to record';
+        }
+        if (status === 409) {
+            return error?.error?.error || 'That recording is already scheduled';
+        }
+        return error?.error?.error || fallback;
     }
 
     async recordSeries(channel: Channel, program: any) {
@@ -1919,7 +1938,7 @@ export class WatchComponent implements OnInit, OnDestroy {
             this.toast.show(`Scheduled series: ${count} episodes of '${program.title}'`, 'success');
         } catch (e) {
             console.error('Failed to schedule series', e);
-            this.toast.show('Failed to schedule series', 'error');
+            this.toast.show(this.describeApiError(e, 'Failed to schedule series'), 'error');
         }
     }
 

@@ -1,23 +1,33 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { AuthService } from './auth.service';
 import { SystemRecording } from './client-recording.types';
+
+export type ResetScope = 'guide' | 'user' | 'collection' | 'all';
+
+export interface ResetPreview {
+    scope: ResetScope;
+    summary: string;
+    totalRows: number;
+    totalBytes: number;
+    tables: { table: string; rows: number }[];
+    paths: { name: string; bytes: number }[];
+}
+
+export interface DvrStorage {
+    /** Volume usage, not just the recordings folder. */
+    usedBytes: number;
+    totalBytes: number;
+    freeBytes: number;
+    recordingsBytes: number;
+    retention: { mode: string; maxAgeDays: number; minFreeBytes: number };
+}
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
-    constructor(private http: HttpClient, private auth: AuthService) { }
+    // The auth interceptor attaches the admin token; no method sets headers by hand.
+    constructor(private http: HttpClient) { }
 
-    private authHeaders(): HttpHeaders {
-        const token = this.auth.getToken();
-        let headers = new HttpHeaders({ 'Content-Type': 'application/json' });
-        if (token) {
-            headers = headers.set('Authorization', `Bearer ${token}`);
-        }
-        return headers;
-    }
-
-    // ── Public endpoints (no auth) ──────────────
     getGuide(params: { hours?: number; start?: string; categories?: string } = {}): Observable<any> {
         const query = new URLSearchParams();
         if (params.hours) query.set('hours', String(params.hours));
@@ -72,135 +82,138 @@ export class ApiService {
     }
 
     scheduleRecording(data: any): Observable<any> {
-        return this.http.post('/api/dvr', data, { headers: this.authHeaders() });
+        return this.http.post('/api/dvr', data);
     }
 
     cancelRecording(id: number): Observable<any> {
-        return this.http.delete(`/api/dvr/${id}`, { headers: this.authHeaders() });
+        return this.http.delete(`/api/dvr/${id}`);
     }
 
-    // ── Auth-protected endpoints ────────────────
     getConfig(): Observable<any> {
-        return this.http.get('/api/config', { headers: this.authHeaders() });
+        return this.http.get('/api/config');
     }
 
     saveConfig(config: any): Observable<any> {
-        return this.http.post('/api/config', config, { headers: this.authHeaders() });
+        return this.http.post('/api/config', config);
     }
 
     getSettings(): Observable<any> {
-        return this.http.get('/api/settings', { headers: this.authHeaders() });
+        return this.http.get('/api/settings');
     }
 
     getMapping(): Observable<any[]> {
-        return this.http.get<any[]>('/api/mapping', { headers: this.authHeaders() });
+        return this.http.get<any[]>('/api/mapping');
     }
 
     getChannels(): Observable<any[]> {
-        return this.http.get<any[]>('/api/channels', { headers: this.authHeaders() });
+        return this.http.get<any[]>('/api/channels');
     }
 
     toggleChannels(ids: string[], enabled: boolean): Observable<any> {
-        return this.http.post('/api/channels/toggle', { ids, enabled }, { headers: this.authHeaders() });
+        return this.http.post('/api/channels/toggle', { ids, enabled });
     }
 
     updateChannel(id: string, data: any): Observable<any> {
-        return this.http.put(`/api/channels/${id}`, data, { headers: this.authHeaders() });
+        return this.http.put(`/api/channels/${id}`, data);
     }
 
     setOverride(channelId: string, epgId: string | null): Observable<any> {
-        return this.http.post('/api/override', { channel_id: channelId, epg_id: epgId }, { headers: this.authHeaders() });
+        return this.http.post('/api/override', { channel_id: channelId, epg_id: epgId });
     }
 
     searchEpg(query: string): Observable<any[]> {
-        return this.http.get<any[]>(`/api/search-epg?q=${encodeURIComponent(query)}`, { headers: this.authHeaders() });
+        return this.http.get<any[]>(`/api/search-epg?q=${encodeURIComponent(query)}`);
     }
 
     getPlaylists(): Observable<any> {
-        return this.http.get<any>('/api/playlists', { headers: this.authHeaders() });
+        return this.http.get<any>('/api/playlists');
     }
 
     syncPlaylist(): Observable<any> {
-        return this.http.post('/api/sync-playlist', {}, { headers: this.authHeaders() });
+        return this.http.post('/api/sync-playlist', {});
     }
 
     runFullSync(): Observable<any> {
-        return this.http.post('/api/sync', {}, { headers: this.authHeaders() });
+        return this.http.post('/api/sync', {});
     }
 
     cancelSync(): Observable<any> {
-        return this.http.post('/api/sync/cancel', {}, { headers: this.authHeaders() });
+        return this.http.post('/api/sync/cancel', {});
     }
 
     rebuildFiles(): Observable<any> {
-        return this.http.post('/api/rebuild-files', {}, { headers: this.authHeaders() });
+        return this.http.post('/api/rebuild-files', {});
     }
 
     grabMissing(): Observable<any> {
-        return this.http.post('/api/grab', {}, { headers: this.authHeaders() });
+        return this.http.post('/api/grab', {});
     }
 
-    resetSystem(): Observable<any> {
-        return this.http.post('/api/reset', {}, { headers: this.authHeaders() });
+    previewReset(scope: ResetScope): Observable<ResetPreview> {
+        return this.http.get<ResetPreview>(`/api/reset/preview?scope=${scope}`);
+    }
+
+    resetSystem(scope: ResetScope): Observable<any> {
+        return this.http.post('/api/reset', { scope });
     }
 
     getGrabLogs(): Observable<any[]> {
-        return this.http.get<any[]>('/api/grab-logs', { headers: this.authHeaders() });
+        return this.http.get<any[]>('/api/grab-logs');
     }
 
     // ── DVR Scheduler (scheduled recordings) ────
     getDvrSchedules(): Observable<any[]> {
-        return this.http.get<any[]>('/api/dvr', { headers: this.authHeaders() });
+        return this.http.get<any[]>('/api/dvr');
     }
 
-    getDvrStorage(): Observable<{ usedBytes: number; totalBytes: number }> {
-        return this.http.get<{ usedBytes: number; totalBytes: number }>('/api/dvr/storage', { headers: this.authHeaders() });
+    getDvrStorage(): Observable<DvrStorage> {
+        return this.http.get<DvrStorage>('/api/dvr/storage');
     }
 
     stopDvr(id: number): Observable<any> {
-        return this.http.post(`/api/dvr/stop/${id}`, {}, { headers: this.authHeaders() });
+        return this.http.post(`/api/dvr/stop/${id}`, {});
     }
 
     // ── Metadata ────────────────────────────────
     getMetadataConfig(): Observable<any> {
-        return this.http.get('/api/metadata/config', { headers: this.authHeaders() });
+        return this.http.get('/api/metadata/config');
     }
 
     saveMetadataConfig(data: any): Observable<any> {
-        return this.http.post('/api/metadata/config', data, { headers: this.authHeaders() });
+        return this.http.post('/api/metadata/config', data);
     }
 
     getMetadataStats(): Observable<any> {
-        return this.http.get('/api/metadata/stats', { headers: this.authHeaders() });
+        return this.http.get('/api/metadata/stats');
     }
 
     triggerEnrichment(): Observable<any> {
-        return this.http.post('/api/metadata/enrich', {}, { headers: this.authHeaders() });
+        return this.http.post('/api/metadata/enrich', {});
     }
 
     refreshImdbData(): Observable<any> {
-        return this.http.post('/api/metadata/refresh-data', {}, { headers: this.authHeaders() });
+        return this.http.post('/api/metadata/refresh-data', {});
     }
 
     clearMetadataCache(): Observable<any> {
-        return this.http.post('/api/metadata/clear-cache', {}, { headers: this.authHeaders() });
+        return this.http.post('/api/metadata/clear-cache', {});
     }
 
     searchTVMaze(query: string): Observable<any[]> {
-        return this.http.post<any[]>('/api/metadata/search-tvmaze', { query }, { headers: this.authHeaders() });
+        return this.http.post<any[]>('/api/metadata/search-tvmaze', { query });
     }
 
     saveMetadataOverride(data: any): Observable<any> {
-        return this.http.post('/api/metadata/override', data, { headers: this.authHeaders() });
+        return this.http.post('/api/metadata/override', data);
     }
 
     // ── iptv-org Playlists ──────────────────────
     getIptvOrgPlaylists(): Observable<any[]> {
-        return this.http.get<any[]>('/api/iptv-org/playlists', { headers: this.authHeaders() });
+        return this.http.get<any[]>('/api/iptv-org/playlists');
     }
 
     syncIptvOrgPlaylists(): Observable<any> {
-        return this.http.post('/api/iptv-org/update-playlists', {}, { headers: this.authHeaders() });
+        return this.http.post('/api/iptv-org/update-playlists', {});
     }
 
     // ── Channel Favorites (backend) ──────────────
@@ -209,11 +222,11 @@ export class ApiService {
     }
 
     addFavorite(channelId: string): Observable<any> {
-        return this.http.post('/api/channels/favorites', { channel_id: channelId }, { headers: this.authHeaders() });
+        return this.http.post('/api/channels/favorites', { channel_id: channelId });
     }
 
     removeFavorite(channelId: string): Observable<any> {
-        return this.http.delete(`/api/channels/favorites/${channelId}`, { headers: this.authHeaders() });
+        return this.http.delete(`/api/channels/favorites/${channelId}`);
     }
 
     // ── Hidden Channels (backend) ─────────────────
@@ -222,39 +235,39 @@ export class ApiService {
     }
 
     hideChannel(channelId: string): Observable<any> {
-        return this.http.post('/api/channels/hidden', { channel_id: channelId }, { headers: this.authHeaders() });
+        return this.http.post('/api/channels/hidden', { channel_id: channelId });
     }
 
     unhideChannel(channelId: string): Observable<any> {
-        return this.http.delete(`/api/channels/hidden/${channelId}`, { headers: this.authHeaders() });
+        return this.http.delete(`/api/channels/hidden/${channelId}`);
     }
 
     // ── Recordings (backend) ─────────────────────
     getRecordingsList(): Observable<any[]> {
-        return this.http.get<any[]>('/api/recordings', { headers: this.authHeaders() });
+        return this.http.get<any[]>('/api/recordings');
     }
 
     deleteRecording(filename: string): Observable<any> {
-        return this.http.delete(`/api/recordings/${filename}`, { headers: this.authHeaders() });
+        return this.http.delete(`/api/recordings/${filename}`);
     }
 
     getGrabSources(): Observable<any[]> {
-        return this.http.get<any[]>('/api/grab/sources', { headers: this.authHeaders() });
+        return this.http.get<any[]>('/api/grab/sources');
     }
 
     getEpgSources(): Observable<any[]> {
-        return this.http.get<any[]>('/api/epg-sources', { headers: this.authHeaders() });
+        return this.http.get<any[]>('/api/epg-sources');
     }
 
     toggleEpgSource(key: string, enabled: boolean): Observable<any> {
-        return this.http.post(`/api/epg-sources/${encodeURIComponent(key)}/toggle`, { enabled }, { headers: this.authHeaders() });
+        return this.http.post(`/api/epg-sources/${encodeURIComponent(key)}/toggle`, { enabled });
     }
 
     syncEpgSources(): Observable<any> {
-        return this.http.post('/api/epg-sources/sync', {}, { headers: this.authHeaders() });
+        return this.http.post('/api/epg-sources/sync', {});
     }
 
     getMatchAnalysis(): Observable<any> {
-        return this.http.get<any>('/api/match/analysis', { headers: this.authHeaders() });
+        return this.http.get<any>('/api/match/analysis');
     }
 }
