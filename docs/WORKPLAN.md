@@ -3,7 +3,7 @@
 Single source of truth for the remediation effort. Consolidates the process audit, the UI &
 source-retrieval audit, and the source acquisition architecture into one tracked backlog.
 
-**Status:** Wave 4 in progress — 18 of 26 done, S16c paused
+**Status:** Wave 4 complete — 20 of 26 done, S16c paused, S24 held
 **Suite score at baseline:** 2.5 / 5 (process) · 2.3 / 5 (UI)
 **Last updated:** 2026-08-13
 
@@ -71,6 +71,7 @@ Defects are referenced by id from slice descriptions. `D` = process audit, `R` =
 | D2 | HLS segments never deleted while streaming | `stream.ts:59` | S1 |
 | D3 | No cap on concurrent ffmpeg stream processes | `server.ts:2300` | S1 |
 | D4 | Series Pass wired at 3 layers of 4, never fires | `recorder.ts:440` | S8 ✅ |
+| X8 | A full sync killed the server outright when run from source | `pipeline.ts:230` | S10 ✅ |
 | D5 | Sessions die on restart; no TTL, no rate limit | `server.ts:44` | S5 |
 | D6 | Path traversal on recording read and delete | `server.ts:1674,1691` | S2 |
 | D7 | Whole data dir is a public static mount — **confirmed exploitable**, `/files/local.db` returns 200 | `server.ts:70` | S7 |
@@ -482,13 +483,32 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
   Padding defaults to 0 before / 120s after. Post-padding is what a DVR is expected to do; starting
   early is left off because it overlaps whatever the channel was showing before.
 
-- [ ] **S10 · One front door for background work** — L
+- [x] **S10 · One front door for background work** — L
   Every mutating background action behind a single job manager with a real queue. Report the actual
   cron cadence from configuration.
-  → `src/job.ts`, `src/server.ts`, `src/services/pipeline.ts`
-  - [ ] Two conflicting triggers queue instead of overlapping
-  - [ ] Every background action appears in job status and can be cancelled
-  - [ ] Reported schedule matches the configured schedule
+  → `src/services/job-queue.ts` (new), `src/services/cron-schedule.ts` (new), `src/job.ts`,
+  `src/server.ts`, `src/services/pipeline.ts`
+  - [x] Two conflicting triggers queue instead of overlapping
+        — a full sync, then a grab and a rebuild fired during it: "Guide grab queued behind full sync
+        (position 1)", "Rebuild output files queued behind full sync (position 2)". A second grab
+        folded into the first rather than queueing twice
+  - [x] Every background action appears in job status and can be cancelled
+        — all four kinds are listed with labels and positions; one queued job was removed by id, an
+        unknown id returned 404, and cancelling the running job dropped the queue with it
+  - [x] Reported schedule matches the configured schedule
+        — changing `sync_cron` to `30 3 * * *` changed the report to "Daily at 03:30" with the next
+        run at 07:30Z, with no restart; an unreadable expression is rejected and the previous one kept
+
+  Four endpoints each had their own idea of what to do when something was already running. Three
+  rejected the caller; `/api/rebuild-files` ran regardless, rewriting `playlist.m3u` and `epg.xml`
+  underneath a sync that was generating them. The cron had a single boolean that could hold exactly
+  one deferred job, and only ever a full sync.
+
+  The reported cadence was two string literals — one that happened to match the cron, and one
+  ("Weekly Playlist Sync: Disabled") for a job that does not exist. Both now derive from the
+  expression actually scheduled.
+
+  **Found while verifying: a full sync killed the server.** See the defect register (X8).
 
 - [x] **S19 · Close the settings loop** — S — *done 2026-08-14*
   `POST /api/config` now accepts and persists `channel_numbering_mode` and `custom_channel_ranges`,
@@ -538,13 +558,26 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
   The framework-free half is a separate module so jest can reach it; `roots` now includes
   `client/src/app/services`. That is the first client-side unit test in the repo.
 
-- [ ] **S21 · Channel Manager at real scale** — M
+- [x] **S21 · Channel Manager at real scale** — M
   Replace the 500-row truncation with virtual scrolling or server-side paging, debounce EPG search,
   scope search results to the requesting row, precompute match badges, resolve the two edit paths.
-  *Fixes X6.* → `channel-manager.component.*`
-  - [ ] Every channel is reachable at 2,000 channels
-  - [ ] EPG search issues one request per pause, not per keystroke
-  - [ ] Expanding a row never shows another row's candidates
+  *Fixes X6.* → `channel-window.ts` (new), `channel-manager.component.*`
+  - [x] Every channel is reachable at 2,000 channels
+        — measured against 1,490 real channels: 27 rows in the DOM, 72,502px of scroll, and the last
+        three rows at the bottom match the last three the API returns. Previously everything past
+        row 500 was unreachable by any means. The window maths is unit tested to 2,000 and 50,000
+        rows, including "every row is reachable by some scroll position"
+  - [x] EPG search issues one request per pause, not per keystroke
+        — typing 17 characters produced **1 request**, for the complete string; it would have been 16
+  - [x] Expanding a row never shows another row's candidates
+        — with 50 results showing, collapsing and expanding a different row showed 0 and an empty box
+
+  Results are keyed to the row that asked for them and stale replies are discarded by token, so a
+  slow response cannot overwrite a newer one or land in a row the user has since moved on from.
+
+  Match badges were recomputed for every row on every change-detection pass and again for every
+  comparison during a sort; they are computed once when the data loads. Setting an override updated
+  one row instead of refetching all 1,490 and discarding the scroll position.
 
 ### Wave 5 — Pay down the drift
 > Make the code, the config, and the docs agree.
@@ -585,7 +618,9 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
   - [ ] Invalid values rejected with a field-level message
   - [ ] Changing sync cadence takes effect without a restart
 
-- [ ] **S24 · Make the e2e suite mean something** — M
+- [ ] **S24 · Make the e2e suite mean something** — M — ⏸ **HELD** *(2026-08-14, Chris)*
+  Deliberately deferred, to be subdivided into smaller slices later. Not to be raised again as a
+  recommendation; the risk is known and accepted.
   `e2e/ui.spec.ts` fails wholesale on a clean checkout — stale assertions from before the rename, and
   an assumption that channels are already seeded. A suite that fails either way gates nothing, so
   every future slice ships without UI regression cover. Fix the assertions, add a seeded fixture so
@@ -714,3 +749,8 @@ memory, so **restart it after `ng build`** or you will screenshot the previous b
 | 2026-08-14 | S8 | Done. The series pass had no caller, no future filter, and a join blind to `manual_overrides`; all three fixed and each acceptance criterion verified against a live server on a copy of the real database. Rules panel added with a separate confirmation for cancelling already-booked episodes. Testing surfaced a duplicate-booking bug from comparing timestamps exactly — now a 5-minute window. 18 new unit tests; suite 327 -> 345. |
 | 2026-08-14 | S9 | Done. Missed is now a state of its own, padding is configurable and honoured by both the scheduler and the recorder, and ffmpeg failures are classified from stderr instead of retried blindly five times. Retention finally got a UI — it had been readable-only since S2. Every criterion measured against a live server on a copy of the real database. 36 new unit tests. |
 | 2026-08-14 | S20 | Done. One DvrService; four scheduling paths across two components became one. Verified both branches in a browser: signed in, Watch produces server rows identical to the admin screen; signed out, it produces browser recordings. Found that Watch's time parser discarded the UTC offset while the DVR screen's applied it. First client-side unit tests in the repo (jest roots widened). 26 new tests; suite 345 -> 407. |
+| 2026-08-14 | S24 | Held at Chris's direction, to be subdivided into smaller slices later. The known gap in UI regression cover is accepted; closed as a standing recommendation. |
+| 2026-08-14 | — | Correction: Watch's guide is reachable from a lower-third button that appears on mouse movement. My earlier note about being stranded in the player was wrong — the control exists, I simply had not moved the mouse. |
+| 2026-08-14 | S10 | Done. One queue behind all four background actions; rebuild-files no longer rewrites output files underneath a running sync. Cadence is configurable and everything reported about it derives from the expression actually scheduled. 39 new unit tests. |
+| 2026-08-14 | X8 | Found while verifying S10, and **pre-existing**: `import('./grabber.js')` does not resolve when the server runs from source, so `npm run dev` died the moment a sync reached the grab stage. Confirmed on unmodified main by stashing. Made static (nothing was circular) and added process-level guards so background work can no longer take the server down. |
+| 2026-08-14 | S21 | Done. Virtual scrolling replaces the 500-row truncation — verified against 1,490 real channels that the last row now matches the API's last row. Search debounced to one request per pause (17 keystrokes -> 1 request) and scoped per row. Badges computed once instead of per change detection. 20 new unit tests; suite 407 -> 466. |

@@ -7,11 +7,16 @@ import { parse } from 'iptv-playlist-parser';
 // Playlist service removed
 import { getEpgFiles, processEpg, matchChannelsToIptvOrg, generatePlaylistAndEpg, cleanupEpgData, invalidateIptvOrgCache } from './services/epg';
 import { updateIptvOrgData } from './services/iptv-org';
-import { grabMissingChannels, getAutoDisabledChannels, reEnableChannels } from './services/grabber';
+import { grabMissingChannels, getAutoDisabledChannels, reEnableChannels, cancelAllGrabProcesses } from './services/grabber';
 import { updateIptvOrgPlaylists } from './services/iptv-org-playlists';
 import { enrichProgramsWithMetadata, getEnrichmentStats, clearMetadataCache, isEnrichmentEnabled, refreshImdbData, searchTVMaze, searchTVMazeShows, normalizeTitle } from './services/metadata';
 import { PipelineQueue } from './services/pipeline';
-import { getJobStatus, startJob, completeJob, requestJobCancel, loadLastJobStateOnBoot } from './job';
+import {
+    getJobStatus, startJob, completeJob, requestJobCancel, loadLastJobStateOnBoot,
+    registerJobRunner, requestJob, cancelQueuedJob, clearJobQueue
+} from './job';
+import { DEFAULT_SYNC_CRON, describeCron, isValidCron, nextCronRun, resolveSyncCron } from './services/cron-schedule';
+import { isJobKind, JOB_LABELS } from './services/job-queue';
 import { eventBus, emitLog, emitProgress, emitProgressComplete } from './events';
 import { startRecordingScheduler, stopRecordingScheduler, drainRecordings, cancelRecording as cancelRec, getRecordingFilePath, checkScheduledRecordings, startRecording, stopRecording, safeRecordingPath, getFreeSpaceBytes, getVolumeUsage, getRetentionPolicy, getRecordingPadding, autoScheduleSeriesRules } from './recorder';
 import { RETENTION_MODES, formatBytes, meetsFreeSpaceFloor } from './services/recording-storage';
@@ -272,24 +277,7 @@ export let activePipeline: PipelineQueue | null = null;
  * 4. Custom grab missing guide data
  * 5. Generate final M3U and XML files
  */
-let hasPendingScheduledSync = false;
-
-/**
- * Perform a full automation cycle:
- * 1. Refresh playlist from source
- * 2. Download and parse selected EPG sources
- * 3. Update IPTV-ORG metadata and match channels
- * 4. Custom grab missing guide data
- * 5. Generate final M3U and XML files
- */
 export async function runFullSync() {
-    const status = getJobStatus();
-    if (status.running) {
-        emitLog("Sync already in progress. Queuing delayed sync...", "warning");
-        hasPendingScheduledSync = true;
-        return;
-    }
-
     await startJob('full_sync');
     try {
         if (getJobStatus().cancelRequested) throw new Error("Sync cancelled by user");
@@ -415,22 +403,39 @@ export async function runFullSync() {
         eventBus.emit('report', { error: e.message });
     } finally {
         activePipeline = null;
-        if (hasPendingScheduledSync) {
-            hasPendingScheduledSync = false;
-            emitLog("Processing queued pending sync job...", "info");
-            setTimeout(() => {
-                runFullSync().catch(err => console.error("Queued sync failed:", err));
-            }, 1000);
-        }
     }
 }
 
 
-// Automation Cycle (Every day at 02:00 and 14:00)
-schedule.schedule('0 2,14 * * *', async () => {
-    emitLog("Running scheduled automation cycle (every 12 hours)...", "info");
-    runFullSync().catch(e => console.error("Scheduled full sync failed:", e));
-});
+// ── Automation cadence ───────────────────────
+//
+// The expression comes from settings, and everything the UI reports about the
+// schedule is derived from it. It used to be a literal here and two unrelated
+// literals in /api/job-status, so changing one changed nothing else.
+
+let syncCronExpression = DEFAULT_SYNC_CRON;
+let syncCronTask: { stop: () => void } | null = null;
+
+export function getSyncCronExpression(): string {
+    return syncCronExpression;
+}
+
+export async function applySyncSchedule(expression?: string): Promise<string> {
+    const resolved = resolveSyncCron(expression ?? await getSetting('sync_cron'));
+
+    if (syncCronTask) {
+        syncCronTask.stop();
+        syncCronTask = null;
+    }
+
+    syncCronExpression = resolved;
+    syncCronTask = schedule.schedule(resolved, () => {
+        const outcome = requestJob('full_sync', 'schedule');
+        emitLog(`Scheduled automation cycle: ${outcome.message}`, 'info');
+    });
+
+    return resolved;
+}
 
 app.get('/api/settings', requireAuth, async (req: any, res: any) => {
     try {
@@ -484,10 +489,17 @@ c.*,
 });
 
 app.get('/api/job-status', (req, res) => {
+    const expression = getSyncCronExpression();
+    const next = nextCronRun(expression);
     res.json({
         ...getJobStatus(),
-        daily: 'Every 12 hours (02:00, 14:00)',
-        weekly: 'Disabled'
+        schedule: {
+            expression,
+            description: describeCron(expression),
+            nextRunAt: next ? next.toISOString() : null
+        },
+        // Kept for the existing dashboard card, but derived rather than hardcoded.
+        daily: describeCron(expression)
     });
 });
 
@@ -562,149 +574,183 @@ app.post('/api/sync/cancel', requireAuth, async (req: any, res: any) => {
     if (activePipeline) {
         activePipeline.cancel();
     } else {
-        // Fallback for non-pipeline background grabs
-        import('./services/grabber.js').then(({ cancelAllGrabProcesses }) => {
+        // Fallback for non-pipeline background grabs. Statically imported: the
+        // dynamic `.js` specifier did not resolve when running from source.
+        try {
             cancelAllGrabProcesses();
-        }).catch(err => console.error("Error calling cancelAllGrabProcesses:", err));
+        } catch (err: any) {
+            console.error("Error calling cancelAllGrabProcesses:", err?.message || err);
+        }
     }
-    res.json({ success: true, message: "Sync cancellation initiated." });
+
+    // Cancelling means "stop what is happening", not "stop this one and start
+    // the next", so anything waiting is dropped too.
+    const dropped = clearJobQueue();
+    if (dropped.length > 0) {
+        emitLog(`Also dropped ${dropped.length} queued job(s).`, "warning");
+    }
+
+    res.json({
+        success: true,
+        message: dropped.length > 0
+            ? `Cancellation initiated; ${dropped.length} queued job(s) dropped.`
+            : "Sync cancellation initiated.",
+        droppedQueued: dropped.length
+    });
+});
+
+// DELETE /api/jobs/queued/:id - Drop one job that has not started yet
+app.delete('/api/jobs/queued/:id', requireAuth, (req: any, res: any) => {
+    const removed = cancelQueuedJob(String(req.params.id));
+    if (!removed) {
+        return res.status(404).json({ error: 'No queued job with that id (it may have already started).' });
+    }
+    emitLog(`Removed queued job: ${JOB_LABELS[removed.kind]}`, 'info');
+    res.json({ success: true, removed: { id: removed.id, kind: removed.kind, label: JOB_LABELS[removed.kind] } });
+});
+
+// POST /api/jobs - Ask for any background job by name, through the one door
+app.post('/api/jobs', requireAuth, (req: any, res: any) => {
+    const kind = req.body?.kind;
+    if (!isJobKind(kind)) {
+        return res.status(400).json({ error: `kind must be one of: ${Object.keys(JOB_LABELS).join(', ')}` });
+    }
+    const outcome = requestJob(kind);
+    res.json({ success: outcome.decision !== 'rejected', message: outcome.message, decision: outcome.decision });
 });
 
 // POST /api/sync - Clean alias for full pipeline trigger
 app.post('/api/sync', requireAuth, async (req: any, res: any) => {
-    const status = getJobStatus();
-    if (status.running) {
-        return res.json({ success: false, message: "Sync already in progress." });
-    }
-    runFullSync().catch(e => console.error("API /api/sync triggered sync failed:", e));
-    res.json({ success: true, message: "Full sync started in background." });
+    const outcome = requestJob('full_sync');
+    res.json({ success: outcome.decision !== 'rejected', message: outcome.message, decision: outcome.decision });
 });
 
 // POST /api/sync-playlist - Reload playlist only (no match/grab/enrich) — runs in background
+/**
+ * Reload every configured playlist. Previously inlined in the endpoint, which
+ * meant only that endpoint could run it and only when nothing else was going on.
+ */
+async function runPlaylistReload(): Promise<void> {
+    const urls = await getConfiguredPlaylistUrls();
+    if (urls.length === 0) {
+        emitLog('No playlist URL configured; nothing to reload.', 'warning');
+        return;
+    }
+
+    await startJob('playlist_reload');
+    try {
+        emitLog(`Reloading ${urls.length} playlist(s)...`, "info");
+        emitProgress("Reloading playlists...", 0, urls.length, 'playlist');
+
+        let total = 0;
+        let failed = 0;
+        for (let i = 0; i < urls.length; i++) {
+            const url = urls[i];
+            try {
+                emitLog(`Reloading playlist: ${url}`, "info");
+                total += await updatePlaylist(url);
+            } catch (e: any) {
+                failed++;
+                emitLog(`Failed to reload ${url}: ${e.message}`, "error");
+            }
+            emitProgress(`Reloaded ${i + 1}/${urls.length}`, i + 1, urls.length, 'playlist');
+        }
+
+        const summary = failed > 0
+            ? `Playlist reload complete: ${total} channels from ${urls.length - failed}/${urls.length} playlist(s)`
+            : `Playlist reload complete: ${total} channels imported`;
+        emitLog(summary, failed > 0 ? "warning" : "success");
+        emitProgressComplete('playlist', summary, urls.length);
+
+        const stats = {
+            channelsProcessed: total,
+            programsProcessed: 0,
+            channelsMatched: 0,
+            totalChannels: total,
+            filesGenerated: [],
+            customGrabCount: 0
+        };
+        await completeJob(stats);
+        eventBus.emit('report', stats);
+    } catch (e: any) {
+        emitLog(`Playlist reload failed: ${e.message}`, "error");
+        await completeJob(null, e.message);
+    }
+}
+
 app.post('/api/sync-playlist', requireAuth, async (req: any, res: any) => {
     try {
-        const status = getJobStatus();
-        if (status.running) {
-            return res.json({ success: false, message: "Sync already in progress." });
-        }
-        // Reload every configured playlist. This used to refresh only the
-        // legacy single `playlist_url`, so with several playlists configured
-        // "Reload playlist" silently refreshed one of them.
         const urls = await getConfiguredPlaylistUrls();
         if (urls.length === 0) {
             return res.status(400).json({ error: "No playlist URL configured." });
         }
-
-        // Fire in background — return immediately so the client doesn't wait on network I/O
-        (async () => {
-            startJob();
-            try {
-                emitLog(`Reloading ${urls.length} playlist(s)...`, "info");
-                emitProgress("Reloading playlists...", 0, urls.length, 'playlist');
-
-                let total = 0;
-                let failed = 0;
-                for (let i = 0; i < urls.length; i++) {
-                    const url = urls[i];
-                    try {
-                        emitLog(`Reloading playlist: ${url}`, "info");
-                        total += await updatePlaylist(url);
-                    } catch (e: any) {
-                        failed++;
-                        emitLog(`Failed to reload ${url}: ${e.message}`, "error");
-                    }
-                    emitProgress(`Reloaded ${i + 1}/${urls.length}`, i + 1, urls.length, 'playlist');
-                }
-
-                const summary = failed > 0
-                    ? `Playlist reload complete: ${total} channels from ${urls.length - failed}/${urls.length} playlist(s)`
-                    : `Playlist reload complete: ${total} channels imported`;
-                emitLog(summary, failed > 0 ? "warning" : "success");
-                emitProgressComplete('playlist', summary, urls.length);
-
-                const stats = {
-                    channelsProcessed: total,
-                    programsProcessed: 0,
-                    channelsMatched: 0,
-                    totalChannels: total,
-                    filesGenerated: [],
-                    customGrabCount: 0
-                };
-                completeJob(stats);
-                eventBus.emit('report', stats);
-            } catch (e: any) {
-                emitLog(`Playlist reload failed: ${e.message}`, "error");
-                completeJob(null);
-            }
-        })();
-        res.json({ success: true, message: "Playlist reload started in background." });
+        const outcome = requestJob('playlist_reload');
+        res.json({ success: outcome.decision !== 'rejected', message: outcome.message, decision: outcome.decision });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
 });
 
+/** Grab guide data for every matched, enabled channel. */
+async function runGrab(): Promise<void> {
+    const matched = await db.execute(`
+        SELECT DISTINCT COALESCE(mo.epg_id, c.matched_epg_id) as xmltv_id
+        FROM channels c
+        LEFT JOIN manual_overrides mo ON c.id = mo.channel_id
+        WHERE (c.matched_epg_id IS NOT NULL OR mo.epg_id IS NOT NULL)
+        AND c.enabled = 1
+    `);
+    const ids = matched.rows.map(r => String(r.xmltv_id)).filter(Boolean);
+    if (ids.length === 0) {
+        emitLog('No matched and enabled channels found to grab.', 'warning');
+        return;
+    }
+
+    await startJob('grab');
+    try {
+        const daysResult = await db.execute("SELECT value FROM settings WHERE key = 'epg_days'");
+        const epgDays = daysResult.rows.length > 0 ? String(daysResult.rows[0].value) : '2';
+
+        const pipeline = new PipelineQueue(epgDays);
+        activePipeline = pipeline;
+
+        emitProgressComplete('match', `Match stage skipped (using ${ids.length} existing channel matches)`, ids.length);
+        await pipeline.enqueueMatched(ids);
+        await pipeline.setMatchingComplete(ids.length, ids.length, 0);
+
+        await pipeline.waitForCompletion();
+
+        let enrichmentStats = null;
+        if (await isEnrichmentEnabled()) {
+            enrichmentStats = await getEnrichmentStats();
+        }
+
+        const stats: any = {
+            channelsProcessed: 0,
+            programsProcessed: 0,
+            channelsMatched: 0,
+            totalChannels: 0,
+            filesGenerated: [],
+            customGrabCount: ids.length
+        };
+        if (enrichmentStats) {
+            stats.enrichment = enrichmentStats;
+        }
+        await completeJob(stats);
+        eventBus.emit('report', stats);
+    } catch (err: any) {
+        console.error("Grab failed:", err);
+        emitLog(`Grab failed: ${err.message}`, "error");
+        await completeJob(null, err.message);
+    } finally {
+        activePipeline = null;
+    }
+}
+
 app.post('/api/grab', requireAuth, async (req: any, res: any) => {
     try {
-        const status = getJobStatus();
-        if (status.running) {
-            return res.json({ success: false, message: "Sync already in progress." });
-        }
-        // Trigger grab for all matched and enabled channels
-        const matched = await db.execute(`
-            SELECT DISTINCT COALESCE(mo.epg_id, c.matched_epg_id) as xmltv_id 
-            FROM channels c
-            LEFT JOIN manual_overrides mo ON c.id = mo.channel_id
-            WHERE (c.matched_epg_id IS NOT NULL OR mo.epg_id IS NOT NULL)
-            AND c.enabled = 1
-        `);
-        const ids = matched.rows.map(r => String(r.xmltv_id)).filter(Boolean);
-        if (ids.length === 0) {
-            return res.json({ success: true, message: "No matched and enabled channels found to grab." });
-        }
-
-        // Run in background using PipelineQueue so grabs stream into enrichment
-        (async () => {
-            startJob();
-            try {
-                const daysResult = await db.execute("SELECT value FROM settings WHERE key = 'epg_days'");
-                const epgDays = daysResult.rows.length > 0 ? String(daysResult.rows[0].value) : '2';
-
-                const pipeline = new PipelineQueue(epgDays);
-                activePipeline = pipeline;
-
-                emitProgressComplete('match', `Match stage skipped (using ${ids.length} existing channel matches)`, ids.length);
-                await pipeline.enqueueMatched(ids);
-                await pipeline.setMatchingComplete(ids.length, ids.length, 0);
-
-                await pipeline.waitForCompletion();
-
-                let enrichmentStats = null;
-                if (await isEnrichmentEnabled()) {
-                    enrichmentStats = await getEnrichmentStats();
-                }
-
-                const stats: any = {
-                    channelsProcessed: 0,
-                    programsProcessed: 0,
-                    channelsMatched: 0,
-                    totalChannels: 0,
-                    filesGenerated: [],
-                    customGrabCount: ids.length
-                };
-                if (enrichmentStats) {
-                    stats.enrichment = enrichmentStats;
-                }
-                completeJob(stats);
-                eventBus.emit('report', stats);
-            } catch (err: any) {
-                console.error("Grab failed:", err);
-                emitLog(`Grab failed: ${err.message}`, "error");
-                completeJob(null);
-            } finally {
-                activePipeline = null;
-            }
-        })();
-        res.json({ success: true, count: ids.length });
+        const outcome = requestJob('grab');
+        res.json({ success: outcome.decision !== 'rejected', message: outcome.message, decision: outcome.decision });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -891,15 +937,36 @@ app.get('/api/match/analysis', requireAuth, async (req: any, res: any) => {
     }
 });
 
-app.post('/api/rebuild-files', requireAuth, async (req: any, res: any) => {
+/**
+ * Regenerate the output files. This used to run inline in the request with no
+ * concurrency check at all, so a rebuild could rewrite playlist.m3u and epg.xml
+ * while a sync was midway through generating them.
+ */
+async function runRebuild(): Promise<void> {
+    await startJob('rebuild');
     try {
+        emitLog('Rebuilding output files...', 'info');
         await cleanupEpgData();
         const result = await generatePlaylistAndEpg();
-        res.json({ success: true, stats: result });
+        emitLog('Rebuild complete.', 'success');
+        await completeJob({
+            channelsProcessed: 0,
+            programsProcessed: 0,
+            channelsMatched: 0,
+            totalChannels: 0,
+            filesGenerated: (result as any)?.files || [],
+            customGrabCount: 0
+        });
     } catch (e: any) {
         console.error("Manual rebuild failed:", e);
-        res.status(500).json({ error: e.message });
+        emitLog(`Rebuild failed: ${e.message}`, 'error');
+        await completeJob(null, e.message);
     }
+}
+
+app.post('/api/rebuild-files', requireAuth, async (req: any, res: any) => {
+    const outcome = requestJob('rebuild');
+    res.json({ success: outcome.decision !== 'rejected', message: outcome.message, decision: outcome.decision });
 });
 
 /** Bytes on disk for a file or directory under DB_DIR, 0 when absent. */
@@ -1071,6 +1138,15 @@ async function startServer() {
     emitLog("Initializing database...", "info");
     await initDb();
     await loadLastJobStateOnBoot();
+
+    // One registration point for everything the queue can run.
+    registerJobRunner('full_sync', runFullSync);
+    registerJobRunner('playlist_reload', runPlaylistReload);
+    registerJobRunner('grab', runGrab);
+    registerJobRunner('rebuild', runRebuild);
+
+    const cron = await applySyncSchedule();
+    emitLog(`Automation schedule: ${describeCron(cron)}`, 'info');
     await verifyResetScopeCoverage();
     await loadSessionsOnBoot();
 
@@ -1186,6 +1262,27 @@ async function shutdown(signal: string): Promise<void> {
 process.on('SIGTERM', () => { void shutdown('SIGTERM'); });
 process.on('SIGINT', () => { void shutdown('SIGINT'); });
 
+// Background work must not be able to kill the server. An unhandled rejection
+// in a job used to terminate the process outright — a broken dynamic import in
+// the grab stage took the whole server down mid-sync, and the only evidence was
+// a stack trace in the log. Report it, mark the job failed, keep serving.
+process.on('unhandledRejection', (reason: any) => {
+    const message = reason?.message || String(reason);
+    console.error('[Server] Unhandled rejection in background work:', reason);
+    emitLog(`Background job failed unexpectedly: ${message}`, 'error');
+    if (getJobStatus().running) {
+        completeJob(null, message).catch(() => { /* best effort */ });
+    }
+});
+
+process.on('uncaughtException', (error: Error) => {
+    console.error('[Server] Uncaught exception:', error);
+    emitLog(`Unexpected error: ${error.message}`, 'error');
+    if (getJobStatus().running) {
+        completeJob(null, error.message).catch(() => { /* best effort */ });
+    }
+});
+
 /** The numbering modes epg.ts knows how to apply. */
 const CHANNEL_NUMBERING_MODES = ['list', 'auto-group', 'custom-ranges'] as const;
 const DEFAULT_CHANNEL_NUMBERING_MODE = 'auto-group';
@@ -1220,6 +1317,7 @@ app.get('/api/config', requireAuth, async (req: any, res: any) => {
         if (!config.channel_numbering_mode) {
             config.channel_numbering_mode = DEFAULT_CHANNEL_NUMBERING_MODE;
         }
+        config.sync_cron = getSyncCronExpression();
         res.json(config);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
@@ -1231,7 +1329,7 @@ app.post('/api/config', requireAuth, async (req: any, res: any) => {
     try {
         const {
             playlist_url, playlist_urls, epg_urls, preferred_lang, epg_days,
-            channel_numbering_mode, custom_channel_ranges
+            channel_numbering_mode, custom_channel_ranges, sync_cron
         } = req.body;
 
         // Get current playlist url to see if it changed
@@ -1318,6 +1416,24 @@ app.post('/api/config', requireAuth, async (req: any, res: any) => {
                 sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('custom_channel_ranges', ?)",
                 args: [serialized]
             });
+        }
+
+        // The automation cadence. Rescheduled immediately, so what the
+        // dashboard reports and what the server will actually do stay the same
+        // thing without a restart.
+        if (sync_cron !== undefined) {
+            const expression = String(sync_cron).trim();
+            if (!isValidCron(expression)) {
+                return res.status(400).json({
+                    error: 'sync_cron must be a five-field cron expression, e.g. "0 2,14 * * *"'
+                });
+            }
+            await db.execute({
+                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('sync_cron', ?)",
+                args: [expression]
+            });
+            await applySyncSchedule(expression);
+            emitLog(`Automation schedule changed to: ${describeCron(expression)}`, 'info');
         }
 
         res.json({ success: true });

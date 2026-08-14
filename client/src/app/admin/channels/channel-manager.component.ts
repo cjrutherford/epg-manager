@@ -1,8 +1,9 @@
-import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
 import { ToastService } from '../../services/toast.service';
+import { computeWindow } from './channel-window';
 
 @Component({
     selector: 'app-channel-manager',
@@ -11,7 +12,7 @@ import { ToastService } from '../../services/toast.service';
     templateUrl: './channel-manager.component.html',
     styleUrl: './channel-manager.component.css'
 })
-export class ChannelManagerComponent implements OnInit {
+export class ChannelManagerComponent implements OnInit, OnDestroy {
     channels: any[] = [];
     filteredChannels: any[] = [];
     loading = true;
@@ -28,8 +29,27 @@ export class ChannelManagerComponent implements OnInit {
     expandedChannelId: string | null = null;
     selectedChannelIds = new Set<string>();
 
+    // Search results belong to the row that asked for them. A single shared
+    // array meant an expanded row could show the candidates fetched for a
+    // different channel.
     epgSearchResults: any[] = [];
     epgSearchLoading = false;
+    epgSearchForChannelId: string | null = null;
+    epgSearchQuery = '';
+    private epgSearchTimer: any = null;
+    /** Incremented per request so a slow reply cannot overwrite a newer one. */
+    private epgSearchToken = 0;
+
+    // ── Virtual scrolling ───────────────────────
+    // The list used to render `filteredChannels.slice(0, 500)`; past that,
+    // channels were simply unreachable.
+    readonly rowHeight = 48;
+    readonly expandedExtraHeight = 300;
+    visibleChannels: any[] = [];
+    windowStartIndex = 0;
+    paddingTop = 0;
+    paddingBottom = 0;
+    viewportHeight = 640;
 
     showAutoNumberModal = false;
     autoNumberMode: 'list' | 'auto-group' | 'custom-ranges' = 'list';
@@ -42,6 +62,41 @@ export class ChannelManagerComponent implements OnInit {
         this.loadChannels();
     }
 
+    ngOnDestroy(): void {
+        if (this.epgSearchTimer) clearTimeout(this.epgSearchTimer);
+    }
+
+    // ── Virtual scrolling ───────────────────────
+    onListScroll(event: Event): void {
+        const target = event.target as HTMLElement;
+        this.viewportHeight = target.clientHeight || this.viewportHeight;
+        this.updateWindow(target.scrollTop);
+    }
+
+    private lastScrollTop = 0;
+
+    updateWindow(scrollTop = this.lastScrollTop): void {
+        this.lastScrollTop = scrollTop;
+        const expandedIndex = this.expandedChannelId
+            ? this.filteredChannels.findIndex(c => c.id === this.expandedChannelId)
+            : -1;
+
+        const result = computeWindow({
+            totalRows: this.filteredChannels.length,
+            rowHeight: this.rowHeight,
+            scrollTop,
+            viewportHeight: this.viewportHeight,
+            expandedIndex: expandedIndex >= 0 ? expandedIndex : null,
+            expandedExtraHeight: this.expandedExtraHeight
+        });
+
+        this.windowStartIndex = result.startIndex;
+        this.visibleChannels = this.filteredChannels.slice(result.startIndex, result.endIndex);
+        this.paddingTop = result.paddingTop;
+        this.paddingBottom = result.paddingBottom;
+        this.cdr.detectChanges();
+    }
+
     async loadChannels(): Promise<void> {
         this.loading = true;
         try {
@@ -49,7 +104,13 @@ export class ChannelManagerComponent implements OnInit {
                 this.api.getMapping().toPromise(),
                 this.api.getCategories().toPromise()
             ]);
-            this.channels = Array.isArray(channels) ? channels : [];
+            // The badge was recomputed for every row on every change detection
+            // pass, and again for every comparison during a sort. It only
+            // changes when the data does, so it is computed once here.
+            this.channels = (Array.isArray(channels) ? channels : []).map(c => ({
+                ...c,
+                _badge: this.computeMatchBadge(c)
+            }));
             this.categories = (categories || []).map((c: any) => c.group_title);
             this.applyFilters();
         } catch (e) {
@@ -71,6 +132,7 @@ export class ChannelManagerComponent implements OnInit {
             let matchStatus = true;
             const isMatched = !!(c.matched_epg_id || c.override_epg_id);
             const matchType = this.getMatchBadge(c).text.toLowerCase();
+
             switch (this.matchFilter) {
                 case 'exact': matchStatus = matchType === 'exact'; break;
                 case 'fuzzy': matchStatus = matchType === 'fuzzy' || matchType === 'match'; break;
@@ -89,6 +151,7 @@ export class ChannelManagerComponent implements OnInit {
             return searchMatch && matchStatus && enabledMatch && catFilter;
         });
         this.sortChannels();
+        this.updateWindow(0);
     }
 
     sortBy(key: string): void {
@@ -99,6 +162,7 @@ export class ChannelManagerComponent implements OnInit {
             this.sortDir = 'asc';
         }
         this.sortChannels();
+        this.updateWindow(0);
     }
 
     sortChannels(): void {
@@ -117,10 +181,8 @@ export class ChannelManagerComponent implements OnInit {
                     vb = Number(b.channel_number) || 0;
                     break;
                 case 'match':
-                    const badgeA = this.getMatchBadge(a);
-                    const badgeB = this.getMatchBadge(b);
-                    va = badgeA.text;
-                    vb = badgeB.text;
+                    va = this.getMatchBadge(a).text;
+                    vb = this.getMatchBadge(b).text;
                     break;
                 case 'category':
                     va = (a.group_title || '').toLowerCase();
@@ -252,12 +314,18 @@ export class ChannelManagerComponent implements OnInit {
         }
     }
 
+    /**
+     * The single write path for a channel's own fields. Bulk enable/disable and
+     * auto-numbering funnel through the same API, so a row cannot end up saved
+     * by one route and stale by another.
+     */
     async saveChannel(ch: any): Promise<void> {
         try {
             await this.api.updateChannel(ch.id, {
                 channel_number: ch.channel_number,
                 enabled: ch.enabled
             }).toPromise();
+            ch._badge = this.computeMatchBadge(ch);
             this.toast.show('Channel saved', 'success');
             this.applyFilters();
         } catch (e) {
@@ -267,27 +335,103 @@ export class ChannelManagerComponent implements OnInit {
 
     toggleExpand(channelId: string): void {
         this.expandedChannelId = this.expandedChannelId === channelId ? null : channelId;
+        // Candidates belong to the row that fetched them; opening a different
+        // row must not inherit them.
+        this.clearEpgSearch();
+        this.updateWindow();
     }
 
-    async searchEpg(query: string): Promise<void> {
-        if (query.length < 2) { this.epgSearchResults = []; return; }
+    private clearEpgSearch(): void {
+        if (this.epgSearchTimer) {
+            clearTimeout(this.epgSearchTimer);
+            this.epgSearchTimer = null;
+        }
+        this.epgSearchToken++;
+        this.epgSearchResults = [];
+        this.epgSearchQuery = '';
+        this.epgSearchForChannelId = null;
+        this.epgSearchLoading = false;
+    }
+
+    /** Results only ever belong to one row, so ask which before showing them. */
+    resultsFor(channelId: string): any[] {
+        return this.epgSearchForChannelId === channelId ? this.epgSearchResults : [];
+    }
+
+    isSearching(channelId: string): boolean {
+        return this.epgSearchLoading && this.epgSearchForChannelId === channelId;
+    }
+
+    /**
+     * Debounced: this fired a request on every keystroke, so typing a
+     * ten-character name issued nine requests whose replies could arrive in any
+     * order. One request per pause, and only the newest reply is kept.
+     */
+    onEpgSearchInput(channelId: string, query: string): void {
+        this.epgSearchQuery = query;
+        this.epgSearchForChannelId = channelId;
+
+        if (this.epgSearchTimer) clearTimeout(this.epgSearchTimer);
+
+        if (query.trim().length < 2) {
+            this.epgSearchToken++;
+            this.epgSearchResults = [];
+            this.epgSearchLoading = false;
+            this.cdr.detectChanges();
+            return;
+        }
+
         this.epgSearchLoading = true;
+        this.cdr.detectChanges();
+        this.epgSearchTimer = setTimeout(() => this.runEpgSearch(channelId, query), 300);
+    }
+
+    private async runEpgSearch(channelId: string, query: string): Promise<void> {
+        const token = ++this.epgSearchToken;
         try {
-            this.epgSearchResults = await this.api.searchEpg(query).toPromise() || [];
-        } catch { this.epgSearchResults = []; }
-        finally { this.epgSearchLoading = false; }
+            const results = await this.api.searchEpg(query).toPromise() || [];
+            // A reply that is no longer the newest, or is for a row the user has
+            // since collapsed, is discarded rather than displayed.
+            if (token !== this.epgSearchToken || this.expandedChannelId !== channelId) return;
+            this.epgSearchResults = results;
+            this.epgSearchForChannelId = channelId;
+        } catch {
+            if (token === this.epgSearchToken) this.epgSearchResults = [];
+        } finally {
+            if (token === this.epgSearchToken) {
+                this.epgSearchLoading = false;
+                this.cdr.detectChanges();
+            }
+        }
     }
 
     async setOverride(channelId: string, epgId: string | null): Promise<void> {
         try {
             await this.api.setOverride(channelId, epgId).toPromise();
-            await this.loadChannels();
+
+            // Update the one row rather than refetching every channel. The
+            // reload discarded the scroll position and the filters along with
+            // it, which is unnoticeable at 50 channels and painful at 2,000.
+            const channel = this.channels.find(c => c.id === channelId);
+            if (channel) {
+                channel.override_epg_id = epgId;
+                channel.is_overridden = !!epgId;
+                channel._badge = this.computeMatchBadge(channel);
+            }
+
             this.expandedChannelId = null;
+            this.clearEpgSearch();
+            this.applyFilters();
             this.toast.show(epgId ? `EPG mapping set to ${epgId}` : 'EPG mapping cleared', 'success');
         } catch { this.toast.show('Override failed', 'error'); }
     }
 
+    /** Cached on the row; recomputed only when the mapping changes. */
     getMatchBadge(ch: any): { cls: string; text: string } {
+        return ch._badge || (ch._badge = this.computeMatchBadge(ch));
+    }
+
+    private computeMatchBadge(ch: any): { cls: string; text: string } {
         if (ch.is_overridden) return { cls: 'badge-success', text: 'Override' };
         if (ch.matched_epg_id) {
             if (ch.match_type?.includes('Exact')) return { cls: 'badge-success', text: 'Exact' };

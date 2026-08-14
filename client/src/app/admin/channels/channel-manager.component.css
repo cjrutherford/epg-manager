@@ -218,3 +218,25 @@
         width: 100%;
     }
 }
+/* ─── Virtual scrolling ────────────────────── */
+.channel-scroll {
+    max-height: 70vh;
+    overflow-y: auto;
+    overflow-x: auto;
+}
+
+/* Stand-ins for the rows outside the window. They must not pick up row
+   styling, or they render as a giant striped block. */
+.virtual-spacer,
+.virtual-spacer td {
+    padding: 0;
+    border: none;
+    background: none;
+}
+
+.channel-scroll thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--color-surface, #14100c);
+}

@@ -48,6 +48,10 @@
 
     <!-- Table -->
     <div class="glass-card table-container">
+        <!-- Scroll container for the virtual window; the spacer rows below stand
+             in for everything outside it, so the scrollbar reflects the real
+             number of channels. -->
+        <div class="channel-scroll" (scroll)="onListScroll($event)">
         <table>
             <thead>
                 <tr>
@@ -71,7 +75,10 @@
                 </tr>
             </thead>
             <tbody>
-                @for (ch of filteredChannels.slice(0, 500); track ch.id) {
+                @if (paddingTop > 0) {
+                <tr class="virtual-spacer" [style.height.px]="paddingTop"><td colspan="6"></td></tr>
+                }
+                @for (ch of visibleChannels; track ch.id) {
                 <tr [style.opacity]="ch.enabled === 0 ? '0.5' : '1'" [class.selected]="selectedChannelIds.has(ch.id)">
                     <td>
                         <input type="checkbox" [ngModel]="selectedChannelIds.has(ch.id)"
@@ -136,12 +143,13 @@
 
                                 <h4>EPG Mapping</h4>
                                 <input type="text" class="themed-input w-full" placeholder="Search EPG channels..."
-                                    (input)="searchEpg($any($event.target).value)">
+                                    [value]="epgSearchQuery"
+                                    (input)="onEpgSearchInput(ch.id, $any($event.target).value)">
                                 <div class="epg-search-results">
-                                    @if (epgSearchLoading) {
+                                    @if (isSearching(ch.id)) {
                                     <div class="search-status">Searching...</div>
                                     }
-                                    @for (result of epgSearchResults; track result.id) {
+                                    @for (result of resultsFor(ch.id); track result.id) {
                                     <div class="epg-result" (click)="setOverride(ch.id, result.id)">
                                         <div>{{ result.display_name }}</div>
                                         <div class="text-secondary" style="font-size:0.8em;">{{ result.id }}</div>
@@ -161,6 +169,10 @@
                 }
                 }
 
+                @if (paddingBottom > 0) {
+                <tr class="virtual-spacer" [style.height.px]="paddingBottom"><td colspan="6"></td></tr>
+                }
+
                 @if (filteredChannels.length === 0) {
                 <tr>
                     <td colspan="6" style="text-align:center; padding:40px;">No channels found.</td>
@@ -168,10 +180,7 @@
                 }
             </tbody>
         </table>
-
-        @if (filteredChannels.length > 500) {
-        <div class="table-overflow-notice">Showing first 500 channels. Use filters to narrow results.</div>
-        }
+        </div>
     </div>
     }
 

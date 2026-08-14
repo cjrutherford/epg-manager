@@ -1,5 +1,12 @@
 import { db } from '../db';
 import { emitLog, emitProgress, emitProgressComplete } from '../events';
+// Imported statically. These were dynamic `import('./grabber.js')` calls, which
+// do not resolve when the server runs from source under ts-node — the specifier
+// points at a .js file that only exists after a build. The rejection was
+// unhandled, so `npm run dev` died the moment a sync reached the grab stage.
+// Neither module imports this one, so there is no cycle to avoid.
+import { grabSiteBatch, cancelAllGrabProcesses } from './grabber';
+import { autoScheduleSeriesRules } from '../recorder';
 import { grabChannel } from './grabber';
 import { enrichProgramsWithMetadata } from './metadata';
 import { formatMemorySnapshot } from './memory';
@@ -227,13 +234,13 @@ export class PipelineQueue {
                 }), 'info');
 
                 // Call the batched grabber
-                import('./grabber.js').then(({ grabSiteBatch }) => {
+                Promise.resolve().then(() => {
                     if (this.isCancelled) {
                         this.activeGrabs--;
                         this.checkPipelineComplete();
                         return;
                     }
-                    grabSiteBatch(nextSite, batch, this.epgDays)
+                    return grabSiteBatch(nextSite, batch, this.epgDays)
                         .then((results: any[]) => {
                             if (this.isCancelled) return;
                             for (const res of results) {
@@ -367,8 +374,7 @@ export class PipelineQueue {
                 // Fresh guide data is the moment a series rule can find new
                 // episodes, so run the pass here rather than making the user
                 // wait for the next hourly tick.
-                import('../recorder.js')
-                    .then(({ autoScheduleSeriesRules }) => autoScheduleSeriesRules())
+                autoScheduleSeriesRules()
                     .then(count => {
                         if (count > 0) emitLog(`Series rules scheduled ${count} new episode(s)`, 'info');
                     })
@@ -384,9 +390,11 @@ export class PipelineQueue {
         this.enrichQueue = [];
         
         // Terminate any active subprocess grab processes
-        import('./grabber.js').then(({ cancelAllGrabProcesses }) => {
+        try {
             cancelAllGrabProcesses();
-        }).catch(err => console.error("Error calling cancelAllGrabProcesses:", err));
+        } catch (err: any) {
+            console.error("Error calling cancelAllGrabProcesses:", err?.message || err);
+        }
 
         emitLog("Sync pipeline cancelled by user request.", "warning");
         emitProgress(`Cancelled`, this.grabsCompleted, this.totalToGrab, 'grab');

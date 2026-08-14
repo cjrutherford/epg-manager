@@ -1,5 +1,16 @@
 import { eventBus } from './events';
 import { db } from './db';
+import {
+    clearQueue,
+    completeRunning,
+    createQueueState,
+    describeQueue,
+    enqueueJob,
+    removeQueued,
+    type EnqueueOutcome,
+    type JobKind,
+    type QueuedJob
+} from './services/job-queue';
 
 export interface JobStatus {
     id?: string;
@@ -24,6 +35,10 @@ export interface JobStatus {
         completed?: boolean;
     }> | null;
     error?: string | null;
+    /** The job the queue considers in flight, with a human label. */
+    activeJob?: { id: string; kind: string; label: string; trigger: string; queuedAt: number } | null;
+    /** Jobs waiting behind it, in the order they will run. */
+    queuedJobs?: { id: string; kind: string; label: string; trigger: string; queuedAt: number; position: number }[];
 }
 
 export const currentJob: JobStatus = {
@@ -113,7 +128,81 @@ export async function completeJob(stats: JobStatus['stats'], error: string | nul
 }
 
 export function getJobStatus(): JobStatus {
-    return { ...currentJob };
+    // `running` already means "a job is in flight" in this shape, so the queue
+    // view is reported under its own names rather than shadowing it.
+    const view = describeQueue(queueState);
+    return { ...currentJob, activeJob: view.running, queuedJobs: view.queued };
+}
+
+// ── The queue ────────────────────────────────
+//
+// One door for every mutating background action. Each endpoint used to make its
+// own decision about what to do when something was already running, and they
+// did not agree.
+
+const queueState = createQueueState();
+
+/** Handlers that actually perform the work, registered once at boot. */
+const runners = new Map<JobKind, () => Promise<void>>();
+
+export function registerJobRunner(kind: JobKind, runner: () => Promise<void>): void {
+    runners.set(kind, runner);
+}
+
+let draining = false;
+
+/**
+ * Ask for a background job. Returns what happened so the caller can say so —
+ * "started", "queued behind the full sync", "already queued".
+ */
+export function requestJob(kind: JobKind, trigger: QueuedJob['trigger'] = 'user'): EnqueueOutcome {
+    const outcome = enqueueJob(queueState, kind, trigger);
+    if (outcome.decision === 'run-now') {
+        void drain();
+    }
+    return outcome;
+}
+
+/**
+ * Run the queue to exhaustion, one job at a time. A failing job must not stop
+ * the ones behind it, so each is caught here.
+ */
+async function drain(): Promise<void> {
+    if (draining) return;
+    draining = true;
+    try {
+        while (queueState.running) {
+            const job = queueState.running;
+            const runner = runners.get(job.kind);
+            if (!runner) {
+                console.error(`[Job] No runner registered for '${job.kind}'`);
+            } else {
+                try {
+                    await runner();
+                } catch (e: any) {
+                    console.error(`[Job] ${job.kind} failed:`, e?.message || e);
+                }
+            }
+            completeRunning(queueState);
+        }
+    } finally {
+        draining = false;
+    }
+}
+
+/** Remove a job that has not started. The running one is stopped by cancelling. */
+export function cancelQueuedJob(jobId: string): QueuedJob | null {
+    return removeQueued(queueState, jobId);
+}
+
+/** Drop everything waiting, e.g. when the running job is cancelled. */
+export function clearJobQueue(): QueuedJob[] {
+    return clearQueue(queueState);
+}
+
+/** What is running right now, if anything. */
+export function currentQueuedJob(): QueuedJob | null {
+    return queueState.running;
 }
 
 /**
