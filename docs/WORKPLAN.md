@@ -3,7 +3,7 @@
 Single source of truth for the remediation effort. Consolidates the process audit, the UI &
 source-retrieval audit, and the source acquisition architecture into one tracked backlog.
 
-**Status:** Waves 1–2 complete, wave 3 in progress — 9 of 25 slices done
+**Status:** Waves 1–2 complete, wave 3 in progress — 9 of 25 done, S12 at 2 of 3
 **Suite score at baseline:** 2.5 / 5 (process) · 2.3 / 5 (UI)
 **Last updated:** 2026-08-13
 
@@ -410,13 +410,30 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
   - [ ] Fetching `/epg.xml` during a rebuild always returns a complete document
   - [ ] Programme count in the file matches the count in the database
 
-- [ ] **S12 · Non-destructive playlist import** — M
-  Import into a staging set and swap on success. Stream-parse the M3U. Make `/api/sync-playlist`
-  operate on every configured playlist.
-  → `src/server.ts`, `src/services/playlist-import.ts`
-  - [ ] Killing the process mid-import leaves the old channel set intact
-  - [ ] Reload refreshes all configured playlists
-  - [ ] Peak memory is flat with respect to playlist size
+- [~] **S12 · Non-destructive playlist import** — M — *2 of 3 criteria met, 2026-08-14, pulled forward*
+  Imports stream into `channels_staging` and swap per source in one transaction, only once the whole
+  playlist has parsed. `/api/sync-playlist` now reloads every configured playlist. Orphaned staging
+  rows are cleared at boot.
+  → `src/server.ts`, `src/services/channel-staging.ts`
+  - [x] Killing the process mid-import leaves the old channel set intact
+        — `kill -9` on every server process during an import from a deliberately slow source: API
+        unreachable afterwards, and the 150 existing channels survived untouched. Separately verified
+        that staged rows never leak into live — 40 simulated partial rows sat in staging with 0
+        appearing in `channels`.
+  - [x] Reload refreshes all configured playlists
+        — with two playlists configured, reload reports "Reloading 2 playlist(s)" and returns 350
+        channels; previously it refreshed only the legacy single `playlist_url`
+  - [ ] **Peak memory is flat with respect to playlist size** — **not met, measured.**
+        150 channels costs +0.5 MB heap; 50,000 channels (a 6.3 MB file) costs **+68.6 MB**.
+        Streaming rows into staging removed the second accumulation, but `iptv-playlist-parser`
+        materialises the whole playlist and the adapter buffers the whole body. Making this flat
+        needs a line-based streaming M3U parser and a streamed HTTP body — worth its own slice
+        rather than a risky swap of a battle-tested parser here.
+
+  **A test of mine was wrong before it was right:** the first mid-import kill appeared to pass, then
+  a later reading showed 50,150 channels. `npx ts-node` spawns several matching processes and
+  `pgrep | head -1` had killed a wrapper while the real server finished the import. Re-run killing
+  every matching pid and confirming the API was unreachable before trusting the numbers.
 
 - [ ] **S13 · Consolidate configuration** — M
   Collapse `/api/settings` and `/api/config` into one typed, validated, defaulted contract. Retire the
@@ -543,4 +560,5 @@ memory, so **restart it after `ng build`** or you will screenshot the previous b
 | 2026-08-14 | S15 | Committed as 2793af6. |
 | 2026-08-14 | S16 | Partial. Contract, fetch policy, HTTP client, built-in catalogue and stage-and-swap landed; R4 fixed and proven; 304 path proven (1.27 MB → 0 bytes); FAST presets reduced from three copies to one. Adapter port of scraper-repo/m3u/bundle still outstanding. 26 new unit tests; suite 249 → 275. |
 | 2026-08-14 | S16 | Done. m3u/bundle/scraper-repo implemented behind the contract; playlist import runs through the m3u adapter and was verified live (250 in, 300 after a change). Caught and fixed a regression where a 304 wiped all channels. 13 new unit tests; suite 275 → 288. |
+| 2026-08-14 | S12 | Pulled forward. Staging-and-swap for playlist imports; reload covers every configured playlist. Mid-import kill verified (after correcting a flawed test that killed an npx wrapper). Memory criterion measured and NOT met: +68.6 MB for 50k channels — needs a streaming parser. |
 

@@ -25,6 +25,7 @@ export const GUIDE_TABLES = [
 /** User data — configuration, curation and recordings. */
 export const USER_TABLES = [
     'channels',
+    'channels_staging',
     'settings',
     'manual_overrides',
     'metadata_overrides',

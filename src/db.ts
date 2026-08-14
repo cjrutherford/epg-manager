@@ -55,6 +55,26 @@ export async function initDb() {
   try { await db.execute("ALTER TABLE channels ADD COLUMN channel_number INTEGER"); } catch (e) { }
   try { await db.execute("ALTER TABLE channels ADD COLUMN source_url TEXT"); } catch (e) { }
 
+  // Staging for playlist imports: rows land here and are swapped in per source
+  // only once the whole playlist has parsed, so a failed or interrupted import
+  // can no longer leave a source with no channels.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS channels_staging (
+        id TEXT,
+        name TEXT,
+        group_title TEXT,
+        url TEXT,
+        tvg_id TEXT,
+        tvg_logo TEXT,
+        matched_epg_id TEXT,
+        match_type TEXT,
+        enabled INTEGER DEFAULT 1,
+        channel_number INTEGER,
+        source_url TEXT
+    )
+  `);
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_channels_staging_source ON channels_staging(source_url)");
+
   await db.execute(`
     CREATE TABLE IF NOT EXISTS epg_channels (
         id TEXT,

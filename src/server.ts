@@ -22,6 +22,8 @@ import * as crypto from 'crypto';
 import { tui } from './services/tui';
 import { formatMemorySnapshot } from './services/memory';
 import { buildPlaylistImportIndexes, createPlaylistChannelRecord, type PlaylistChannelRow } from './services/playlist-import';
+import { beginChannelStaging, clearAllChannelStaging, commitChannelStaging, discardChannelStaging, stageChannelRows } from './services/channel-staging';
+import { clearAllStaging } from './services/sources/staging';
 import { describePlaylist } from './services/playlist-metadata';
 import { mapSystemRecordingRow } from './services/recordings';
 import { dedupeChannelsForDisplay } from './services/channel-dedup';
@@ -582,25 +584,46 @@ app.post('/api/sync-playlist', requireAuth, async (req: any, res: any) => {
         if (status.running) {
             return res.json({ success: false, message: "Sync already in progress." });
         }
-        const plResult = await db.execute("SELECT value FROM settings WHERE key = 'playlist_url'");
-        if (plResult.rows.length === 0) {
+        // Reload every configured playlist. This used to refresh only the
+        // legacy single `playlist_url`, so with several playlists configured
+        // "Reload playlist" silently refreshed one of them.
+        const urls = await getConfiguredPlaylistUrls();
+        if (urls.length === 0) {
             return res.status(400).json({ error: "No playlist URL configured." });
         }
-        const url = String(plResult.rows[0].value);
+
         // Fire in background — return immediately so the client doesn't wait on network I/O
         (async () => {
             startJob();
             try {
-                emitLog(`Reloading playlist from: ${url}`, "info");
-                emitProgress("Reloading playlist...", 0, 1, 'playlist');
-                const count = await updatePlaylist(url);
-                emitLog(`Playlist reloaded: ${count} channels imported.`, "success");
-                emitProgressComplete('playlist', `Playlist reload complete: ${count} channels imported`, 1);
+                emitLog(`Reloading ${urls.length} playlist(s)...`, "info");
+                emitProgress("Reloading playlists...", 0, urls.length, 'playlist');
+
+                let total = 0;
+                let failed = 0;
+                for (let i = 0; i < urls.length; i++) {
+                    const url = urls[i];
+                    try {
+                        emitLog(`Reloading playlist: ${url}`, "info");
+                        total += await updatePlaylist(url);
+                    } catch (e: any) {
+                        failed++;
+                        emitLog(`Failed to reload ${url}: ${e.message}`, "error");
+                    }
+                    emitProgress(`Reloaded ${i + 1}/${urls.length}`, i + 1, urls.length, 'playlist');
+                }
+
+                const summary = failed > 0
+                    ? `Playlist reload complete: ${total} channels from ${urls.length - failed}/${urls.length} playlist(s)`
+                    : `Playlist reload complete: ${total} channels imported`;
+                emitLog(summary, failed > 0 ? "warning" : "success");
+                emitProgressComplete('playlist', summary, urls.length);
+
                 const stats = {
-                    channelsProcessed: count,
+                    channelsProcessed: total,
                     programsProcessed: 0,
                     channelsMatched: 0,
-                    totalChannels: count,
+                    totalChannels: total,
                     filesGenerated: [],
                     customGrabCount: 0
                 };
@@ -1047,6 +1070,20 @@ async function startServer() {
     await loadLastJobStateOnBoot();
     await verifyResetScopeCoverage();
     await loadSessionsOnBoot();
+
+    // Drop staging rows left behind by a process that died mid-import. They are
+    // inert (a swap only reads its own source), but they should not accumulate.
+    try {
+        const [channelRows, catalogRows] = await Promise.all([
+            clearAllChannelStaging(),
+            clearAllStaging()
+        ]);
+        if (channelRows > 0 || catalogRows > 0) {
+            console.log(`[Db] Cleared ${channelRows} orphaned channel and ${catalogRows} catalogue staging row(s).`);
+        }
+    } catch (e: any) {
+        console.error('[Db] Staging cleanup failed:', e.message);
+    }
 
     // Expire stale sessions and throttle records hourly
     setInterval(() => { void sweepSessions(); }, 60 * 60 * 1000);
@@ -2150,9 +2187,22 @@ app.get('/api/metadata/config', requireAuth, async (req: any, res: any) => {
  * Fetch and update playlist channels from URL
  * Supports multiple playlists - merges and deduplicates channels
  */
+/** Every configured playlist url, preferring the array and falling back to the legacy single key. */
+async function getConfiguredPlaylistUrls(): Promise<string[]> {
+    const urlsStr = await getSetting('playlist_urls');
+    let urls: string[] = [];
+    try { urls = urlsStr ? JSON.parse(urlsStr) : []; } catch (_) { urls = []; }
+
+    const single = await getSetting('playlist_url');
+    if (single && !urls.includes(single)) urls.unshift(single);
+
+    return urls.filter(Boolean);
+}
+
 async function updatePlaylist(url: string) {
     try {
         emitLog(formatMemorySnapshot('playlist import start', process.memoryUsage(), { source: url }), 'info');
+
         // Fetch and parse through the m3u adapter, so playlist ingestion uses
         // the same contract, HTTP client and conditional-request handling as
         // every other source kind.
@@ -2164,8 +2214,28 @@ async function updatePlaylist(url: string) {
 
         const sourceKey = `playlist:${url}`;
         const ctx = createAdapterContext(sourceKey);
-        const items: Array<{ name: string; url: string; tvgId: string; tvgLogo: string; groupTitle: string }> = [];
-        for await (const row of adapter.fetchLineup({
+
+        // Cache existing channel state so user settings (enabled, EPG matches,
+        // channel numbers) survive the refresh.
+        const currentData = await db.execute("SELECT id, name, url, enabled, matched_epg_id, match_type, channel_number, source_url, tvg_id FROM channels");
+        const indexes = buildPlaylistImportIndexes(currentData.rows as any[], url);
+
+        // Rows stream into staging and are swapped in only once the whole
+        // playlist has parsed. The previous implementation deleted this
+        // source's channels first, so an interrupted import left them gone.
+        await beginChannelStaging(url);
+
+        let count = 0;
+        let pendingRows: PlaylistChannelRow[] = [];
+        const INSERT_BATCH_SIZE = 250;
+
+        const flushRows = async () => {
+            if (pendingRows.length === 0) return;
+            await stageChannelRows(pendingRows);
+            pendingRows = [];
+        };
+
+        for await (const item of adapter.fetchLineup({
             id: sourceKey,
             kind: 'm3u',
             label: url,
@@ -2174,64 +2244,6 @@ async function updatePlaylist(url: string) {
             priority: 0,
             fetch: { url, timeoutMs: 30000 }
         }, ctx)) {
-            items.push(row);
-        }
-        // A 304 means the playlist is unchanged — not that it is empty. Without
-        // this guard the delete-and-reinsert below would wipe every channel for
-        // this source the first time an upstream answered "not modified".
-        if (ctx.lastFetchNotModified) {
-            const existing = await db.execute({
-                sql: 'SELECT COUNT(*) as c FROM channels WHERE source_url = ?',
-                args: [url]
-            });
-            const kept = Number(existing.rows[0]?.c || 0);
-            emitLog(`Playlist unchanged since last fetch; keeping ${kept} channel(s).`, 'info');
-            return kept;
-        }
-
-        emitLog(formatMemorySnapshot('playlist parsed', process.memoryUsage(), { source: url, items: items.length }), 'info');
-
-        // Cache existing channel state to preserve user settings (enabled, EPG matches)
-        const currentData = await db.execute("SELECT id, name, url, enabled, matched_epg_id, match_type, channel_number, source_url, tvg_id FROM channels");
-        const indexes = buildPlaylistImportIndexes(currentData.rows as any[], url);
-
-        // Delete only channels from this source_url to allow incremental updates
-        await db.execute({
-            sql: "DELETE FROM channels WHERE source_url = ?",
-            args: [url]
-        });
-
-        let count = 0;
-        let pendingRows: PlaylistChannelRow[] = [];
-        const INSERT_BATCH_SIZE = 250;
-
-        const flushRows = async () => {
-            if (pendingRows.length === 0) return;
-            const placeholders = pendingRows.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(',');
-            const args = pendingRows.flatMap((row) => ([
-                row.id,
-                row.name,
-                row.tvg_id,
-                row.tvg_logo,
-                row.group_title,
-                row.url,
-                row.source_url,
-                row.channel_number,
-                row.enabled,
-                row.matched_epg_id,
-                row.match_type
-            ]));
-
-            await db.execute('BEGIN TRANSACTION');
-            await db.execute({
-                sql: `INSERT INTO channels (id, name, tvg_id, tvg_logo, group_title, url, source_url, channel_number, enabled, matched_epg_id, match_type) VALUES ${placeholders}`,
-                args
-            });
-            await db.execute('COMMIT');
-            pendingRows = [];
-        };
-
-        for (const item of items) {
             const record = createPlaylistChannelRecord({
                 name: item.name,
                 url: item.url,
@@ -2250,10 +2262,30 @@ async function updatePlaylist(url: string) {
 
         await flushRows();
 
+        // A 304 means the playlist is unchanged — not that it is empty.
+        if (ctx.lastFetchNotModified) {
+            await discardChannelStaging(url);
+            const existing = await db.execute({
+                sql: 'SELECT COUNT(*) as c FROM channels WHERE source_url = ?',
+                args: [url]
+            });
+            const kept = Number(existing.rows[0]?.c || 0);
+            emitLog(`Playlist unchanged since last fetch; keeping ${kept} channel(s).`, 'info');
+            return kept;
+        }
+
+        const swap = await commitChannelStaging(url);
+        if (!swap.swapped) {
+            emitLog(`Playlist import kept previous channels: ${swap.reason}`, 'warning');
+            return swap.previousRows;
+        }
+
         emitLog(formatMemorySnapshot('playlist import complete', process.memoryUsage(), { source: url, imported: count }), 'info');
         emitLog(`Updated playlist. Total channels: ${count}`, "success");
         return count;
     } catch (e: any) {
+        // The live channel set is untouched — staging is discarded instead.
+        await discardChannelStaging(url).catch(() => { /* best effort */ });
         console.error("Playlist update failed:", e);
         emitLog(`Playlist update failed: ${e.message}`, "error");
         throw e;

@@ -12,6 +12,7 @@ import {
 const LIVE_SCHEMA = [
   'settings',
   'channels',
+  'channels_staging',
   'epg_channels',
   'epg_programs',
   'manual_overrides',
