@@ -439,7 +439,7 @@ app.get('/api/settings', requireAuth, async (req: any, res: any) => {
             settings[row.key as string] = row.value;
         }
         if (!settings.channel_numbering_mode) {
-            settings.channel_numbering_mode = 'auto-group';
+            settings.channel_numbering_mode = DEFAULT_CHANNEL_NUMBERING_MODE;
         }
         if (!settings.metadata_enrichment_enabled) {
             settings.metadata_enrichment_enabled = 'true';
@@ -1185,6 +1185,14 @@ async function shutdown(signal: string): Promise<void> {
 process.on('SIGTERM', () => { void shutdown('SIGTERM'); });
 process.on('SIGINT', () => { void shutdown('SIGINT'); });
 
+/** The numbering modes epg.ts knows how to apply. */
+const CHANNEL_NUMBERING_MODES = ['list', 'auto-group', 'custom-ranges'] as const;
+const DEFAULT_CHANNEL_NUMBERING_MODE = 'auto-group';
+
+function isChannelNumberingMode(value: unknown): boolean {
+    return typeof value === 'string' && (CHANNEL_NUMBERING_MODES as readonly string[]).includes(value);
+}
+
 // GET /api/config - Unified config
 app.get('/api/config', requireAuth, async (req: any, res: any) => {
     try {
@@ -1206,6 +1214,11 @@ app.get('/api/config', requireAuth, async (req: any, res: any) => {
         }
         // Ensure playlist_urls is always an array
         if (!config.playlist_urls) config.playlist_urls = [];
+        // Same default as /api/settings — the two endpoints used to disagree,
+        // so the numbering mode you saw depended on which screen asked.
+        if (!config.channel_numbering_mode) {
+            config.channel_numbering_mode = DEFAULT_CHANNEL_NUMBERING_MODE;
+        }
         res.json(config);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
@@ -1215,7 +1228,10 @@ app.get('/api/config', requireAuth, async (req: any, res: any) => {
 // POST /api/config - Save config & Trigger actions
 app.post('/api/config', requireAuth, async (req: any, res: any) => {
     try {
-        const { playlist_url, playlist_urls, epg_urls, preferred_lang, epg_days } = req.body;
+        const {
+            playlist_url, playlist_urls, epg_urls, preferred_lang, epg_days,
+            channel_numbering_mode, custom_channel_ranges
+        } = req.body;
 
         // Get current playlist url to see if it changed
         const currentRes = await db.execute("SELECT value FROM settings WHERE key = 'playlist_url'");
@@ -1269,6 +1285,37 @@ app.post('/api/config', requireAuth, async (req: any, res: any) => {
             await db.execute({
                 sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('epg_days', ?)",
                 args: [String(epg_days)]
+            });
+        }
+
+        // These were sent by the Settings screen and silently dropped here, so
+        // the channel numbering controls saved nothing while reporting success.
+        // The matching code has always read them (epg.ts) — they were simply
+        // impossible to set from the only UI that offered to set them.
+        if (channel_numbering_mode !== undefined) {
+            if (!isChannelNumberingMode(channel_numbering_mode)) {
+                return res.status(400).json({
+                    error: `channel_numbering_mode must be one of: ${CHANNEL_NUMBERING_MODES.join(', ')}`
+                });
+            }
+            await db.execute({
+                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('channel_numbering_mode', ?)",
+                args: [channel_numbering_mode]
+            });
+        }
+
+        if (custom_channel_ranges !== undefined) {
+            const serialized = typeof custom_channel_ranges === 'string'
+                ? custom_channel_ranges
+                : JSON.stringify(custom_channel_ranges);
+            try {
+                JSON.parse(serialized);
+            } catch {
+                return res.status(400).json({ error: 'custom_channel_ranges must be valid JSON' });
+            }
+            await db.execute({
+                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('custom_channel_ranges', ?)",
+                args: [serialized]
             });
         }
 

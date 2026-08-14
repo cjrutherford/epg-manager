@@ -143,8 +143,20 @@
         </div>
 
         <div class="form-group" style="margin-top:16px;">
-            <label>Channel Numbering Mode</label>
-            <select class="themed-input" [(ngModel)]="channelNumberingMode">
+            <label for="preferred-lang">Preferred Language</label>
+            <select id="preferred-lang" class="themed-input" [(ngModel)]="preferredLang" style="max-width:220px;">
+                @for (language of languages; track language.code) {
+                <option [value]="language.code">{{ language.label }}</option>
+                }
+            </select>
+            <p style="font-size: 0.85em; color: var(--text-secondary); margin-top: 4px;">
+                Preferred language when a channel is matched against several guide entries.
+            </p>
+        </div>
+
+        <div class="form-group" style="margin-top:16px;">
+            <label for="numbering-mode">Channel Numbering Mode</label>
+            <select id="numbering-mode" class="themed-input" [(ngModel)]="channelNumberingMode">
                 <option value="list">List (Sequential from 700+)</option>
                 <option value="auto-group">Auto-Group (Group by category, map to 100 blocks)</option>
                 <option value="custom-ranges">Custom Ranges (Map categories to start numbers)</option>

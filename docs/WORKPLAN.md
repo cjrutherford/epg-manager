@@ -3,7 +3,7 @@
 Single source of truth for the remediation effort. Consolidates the process audit, the UI &
 source-retrieval audit, and the source acquisition architecture into one tracked backlog.
 
-**Status:** Wave 3 complete except S16c (paused) — 12 of 26 done, S12 and S25 partial
+**Status:** Wave 4 started — 14 of 26 done, S16c paused
 **Suite score at baseline:** 2.5 / 5 (process) · 2.3 / 5 (UI)
 **Last updated:** 2026-08-13
 
@@ -212,13 +212,26 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
   New table `admin_sessions` is classified in a new **SYSTEM** reset class, cleared only by `all` —
   clearing it during "reset my data" would sign the admin out mid-flow and read as a bug.
 
-- [ ] **S6 · One HTTP path in the client** — S
-  An Angular `HttpInterceptor` attaches the token and handles 401 centrally — clear session, toast
-  "Session expired, sign in again", route to login. Strip the 45 hand-rolled `authHeaders()` calls.
-  → `client/src/app/services/`, `app.config.ts`
-  - [ ] No component calls `authHeaders()` directly
-  - [ ] An expired session produces one visible prompt, not silent blank panels
-  - [ ] `getRecordings()` and `getActiveRecordings()` return data
+- [x] **S6 · One HTTP path in the client** — S — *done 2026-08-14 (shipped in 1ae7e9d)*
+  `authInterceptor` attaches the token and handles 401 in one place, registered ahead of the existing
+  `serverUrlInterceptor` so it sees relative `/api/` urls.
+  → `client/src/app/services/auth.interceptor.ts`, `auth.service.ts`, `api.service.ts`, `app.config.ts`
+  - [x] No component calls `authHeaders()` directly
+        — 44 call sites removed, helper deleted, 0 occurrences left in `client/src`
+  - [x] An expired session produces one visible prompt, not silent blank panels
+        — browser-verified: revoking a session mid-use swaps the shell to the login form reading
+        "Your session expired — please sign in again", and clears the stored token
+  - [x] `getRecordings()` and `getActiveRecordings()` return data
+        — both previously called auth-required endpoints with no header; they now inherit it
+
+  **Two bugs found while verifying, both mine:** `AdminLayoutComponent` snapshotted `isAuthenticated`
+  once in `ngOnInit`, leaving the admin UI rendered as if signed in with every panel empty; and
+  `handleSessionExpired()` set its notice flag *after* `clearSession()` had already pushed the state
+  change the shell reads, so the login form appeared with no explanation. Both fixed.
+
+  **Bookkeeping note:** this entry sat unchecked until 2026-08-14 even though the work shipped in the
+  wave 2 commit — an earlier scripted edit to this file failed to match and I did not assert on it.
+  The code was always there; the record was wrong.
 
 - [x] **S7 · Draw the viewer / admin line** — M — *done 2026-08-13, pulled forward*
   Replaced `express.static(DB_DIR)` with three explicit mounts: `/files/streams` (viewer),
@@ -335,7 +348,7 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
 
   Verified separately with a fresh context that a genuine second cycle still gets its 304.
 
-- [~] **S25 · Streaming playlist parse** — M — *2 of 3 criteria met, 2026-08-14*
+- [x] **S25 · Streaming playlist parse** — M — *done 2026-08-14 (third criterion accepted, not proven)*
   A line-based streaming M3U parser plus a streaming HTTP fetch, so neither the body nor the parsed
   array is held whole. Replaces `iptv-playlist-parser` on the import path.
   → `src/services/sources/m3u-stream.ts`, `fetcher.ts`, `adapters/m3u.ts`
@@ -346,7 +359,9 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
   - [x] Fetch and parse no longer scale with playlist size
         — 50,000 channels went from **+68.6 MB to +17.5 MB** of heap, a 75% reduction. 150,000
         channels import successfully at +32.3 MB into an empty database.
-  - [ ] **Peak memory is strictly flat** — **not met, and the residual is now identified.**
+  - [x] **Peak memory is strictly flat** — **accepted by Chris on 2026-08-14** as satisfied by the
+        75% reduction, rather than proven. Recording it that way so the distinction survives: the
+        parse and fetch are flat; the residual below is real and unfixed.
         The same 150,000-channel playlist costs +32.3 MB against an empty database and +54.4 MB
         against one already holding 50,150 channels. What still scales is the in-memory preservation
         index — the existing-channel lookup maps and the used-id set that avoid collisions and keep
@@ -436,14 +451,25 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
   - [ ] Every background action appears in job status and can be cancelled
   - [ ] Reported schedule matches the configured schedule
 
-- [ ] **S19 · Close the settings loop** — S
-  Accept and persist every field Settings sends, starting with `channel_numbering_mode` and
-  `custom_channel_ranges`. Fix the guide output URL. Align the numbering default. Add the language
-  selector. Collapse the triplicated FAST preset list.
-  → `src/server.ts`, `settings.component.*`, `playlist-metadata.ts`
-  - [ ] Every control round-trips: change, save, reload, still changed
-  - [ ] Both copied output URLs resolve
-  - [ ] Presets come from one place
+- [x] **S19 · Close the settings loop** — S — *done 2026-08-14*
+  `POST /api/config` now accepts and persists `channel_numbering_mode` and `custom_channel_ranges`,
+  with validation. The numbering default is defined once server-side and both config endpoints report
+  it. Added the language selector for `preferred_lang`, which the API had always accepted with no UI
+  to set it.
+  → `src/server.ts`, `settings.component.*`
+  - [x] Every control round-trips: change, save, reload, still changed
+        — browser-verified: set language to German and numbering to List in the UI, saved, reloaded;
+        both survived in the UI and in `settings`. Invalid values are rejected with a reason
+        (`channel_numbering_mode must be one of: …`, `custom_channel_ranges must be valid JSON`)
+  - [x] Both copied output URLs resolve
+        — `/playlist.m3u` and `/epg.xml` both 200 once generated (404 before, correctly). Fixed in S7;
+        the old `/files/guide.xml` never existed at all
+  - [x] Presets come from one place
+        — zero hardcoded preset urls outside `catalog.ts`; the six FAST presets are served from
+        `GET /api/sources/catalog`. Collapsed in S16
+
+  The numbering feature was never broken — `epg.ts` has always read these settings. They were simply
+  impossible to set from the only screen that offered to set them.
 
 - [ ] **S20 · One DVR, two presentations** — L
   Collapse the duplicate implementations into a shared DVR service plus one component rendering admin
@@ -471,7 +497,7 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
   - [ ] Fetching `/epg.xml` during a rebuild always returns a complete document
   - [ ] Programme count in the file matches the count in the database
 
-- [~] **S12 · Non-destructive playlist import** — M — *2 of 3 criteria met, 2026-08-14, pulled forward*
+- [x] **S12 · Non-destructive playlist import** — M — *done 2026-08-14, pulled forward*
   Imports stream into `channels_staging` and swap per source in one transaction, only once the whole
   playlist has parsed. `/api/sync-playlist` now reloads every configured playlist. Orphaned staging
   rows are cleared at boot.
@@ -484,8 +510,8 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
   - [x] Reload refreshes all configured playlists
         — with two playlists configured, reload reports "Reloading 2 playlist(s)" and returns 350
         channels; previously it refreshed only the legacy single `playlist_url`
-  - [~] **Peak memory is flat with respect to playlist size** — **substantially improved in S25,
-        still not strictly flat.** See S25 for the measurements.
+  - [x] **Peak memory is flat with respect to playlist size** — addressed by S25 and accepted;
+        see S25 for the measurements and the remaining caveat.
 
   **A test of mine was wrong before it was right:** the first mid-import kill appeared to pass, then
   a later reading showed 50,150 channels. `npx ts-node` spawns several matching processes and
@@ -623,4 +649,7 @@ memory, so **restart it after `ng build`** or you will screenshot the previous b
 | 2026-08-14 | S16c | Scope reduced to the file adapter. Xtream deferred: m3u + xmltv already cover portals via their get.php/xmltv.php endpoints, so a bespoke adapter adds little for the credential surface it costs. |
 | 2026-08-14 | S17 | Done. Grab denominator counts only queued channels, so the phase can reach 100%; unsourced channels reported instead of absorbed. Fixed two test-infrastructure gaps that had made the pipeline untestable. 6 new unit tests; suite 321 -> 327. |
 | 2026-08-14 | S18 | Done. Sources screen for both families, registry module, nine API routes. Probe-first add verified in a browser — 30 channels and 1.0 days reported with 0 rows written. Failure surfacing and export/restore round-trip verified. |
+| 2026-08-14 | — | Chris accepted S25's flat-memory objective as satisfied by the 75% reduction. Recorded as accepted rather than proven. |
+| 2026-08-14 | — | Corrected the S6 record: the work shipped in 1ae7e9d but an earlier scripted edit to this file silently failed to match, leaving it unchecked. |
+| 2026-08-14 | S19 | Done. Config endpoint persists the numbering fields it used to drop; language selector added; defaults aligned across both config endpoints. UI round-trip browser-verified. |
 

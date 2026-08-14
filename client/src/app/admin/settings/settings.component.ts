@@ -22,7 +22,9 @@ export class SettingsComponent implements OnInit {
     savingConfig = false;
 
     // Channel Numbering
-    channelNumberingMode: string = 'list';
+    // Matches the server default; these used to disagree, so the value you
+    // saw depended on whether the server had an explicit setting stored.
+    channelNumberingMode: string = 'auto-group';
     customRangesArray: { category: string, startNum: number }[] = [];
 
     // iptv-org browser
@@ -36,6 +38,21 @@ export class SettingsComponent implements OnInit {
 
     // Built-in source catalogue (served by the API — no hardcoded list here)
     builtInPresets: BuiltInPreset[] = [];
+
+    preferredLang = '';
+    readonly languages = [
+        { code: '', label: 'Any language' },
+        { code: 'en', label: 'English' },
+        { code: 'es', label: 'Spanish' },
+        { code: 'fr', label: 'French' },
+        { code: 'de', label: 'German' },
+        { code: 'it', label: 'Italian' },
+        { code: 'pt', label: 'Portuguese' },
+        { code: 'nl', label: 'Dutch' },
+        { code: 'pl', label: 'Polish' },
+        { code: 'ru', label: 'Russian' },
+        { code: 'ar', label: 'Arabic' }
+    ];
 
     // Metadata
     metadataEnabled = false;
@@ -80,6 +97,7 @@ export class SettingsComponent implements OnInit {
             }
 
             this.epgDays = config?.epg_days || 2;
+            this.preferredLang = config?.preferred_lang || '';
             
             // Channel Numbering
             this.channelNumberingMode = config?.channel_numbering_mode || 'auto-group';
@@ -213,11 +231,14 @@ export class SettingsComponent implements OnInit {
                 playlist_urls: this.selectedPlaylists,
                 playlist_url: this.selectedPlaylists[0] || '',
                 epg_days: this.epgDays,
+                preferred_lang: this.preferredLang,
                 channel_numbering_mode: this.channelNumberingMode,
                 custom_channel_ranges: JSON.stringify(rangesObj)
             }).toPromise();
-            this.toast.show('Configuration saved!', 'success');
-        } catch { this.toast.show('Save failed', 'error'); }
+            this.toast.show('Configuration saved', 'success');
+        } catch (e: any) {
+            this.toast.show(e?.error?.error || 'Save failed', 'error');
+        }
         finally {
             this.savingConfig = false;
             this.cdr.detectChanges();
