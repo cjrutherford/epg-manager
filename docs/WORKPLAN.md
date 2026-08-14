@@ -3,7 +3,7 @@
 Single source of truth for the remediation effort. Consolidates the process audit, the UI &
 source-retrieval audit, and the source acquisition architecture into one tracked backlog.
 
-**Status:** Waves 1 and 2 complete — 7 of 25 slices done
+**Status:** Waves 1–2 complete, wave 3 started — 8 of 25 slices done
 **Suite score at baseline:** 2.5 / 5 (process) · 2.3 / 5 (UI)
 **Last updated:** 2026-08-13
 
@@ -249,14 +249,33 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
 > Sources must be honest and extensible before the UI can show them.
 > Full design: see `docs/source-architecture` notes and the published architecture doc.
 
-- [ ] **S15 · Source registry and descriptor model** — M
-  Widen `epg_sources` into `sources` with kind, capabilities and descriptor config. Add staging
-  tables, secrets table, per-source health recording. Backfill existing rows as `scraper-repo` and
-  existing `source_url` values as generated `m3u` descriptors.
-  *Fixes R3, R6.* → `src/db.ts`, `src/services/sources/registry.ts`
-  - [ ] Every existing source and playlist survives migration as a descriptor
-  - [ ] Status and error are recorded per source from real outcomes
-  - [ ] Credentials never appear in API responses or logs
+- [x] **S15 · Source registry and descriptor model** — M — *done 2026-08-14*
+  `epg_sources` renamed to `sources` (data-preserving, idempotent) and widened with `kind`,
+  `provides`, `config_json`, `credential_ref` and per-sync health columns. Added
+  `source_credentials` and `epg_source_channels_staging`. Descriptor model with validation,
+  normalisation, refresh scheduling and redaction in `src/services/sources/descriptor.ts`.
+  *Fixes R3, R6.* → `src/db.ts`, `src/services/sources/descriptor.ts`, `iptv-org.ts`, `server.ts`
+  - [x] Every existing source and playlist survives migration as a descriptor
+        — verified against a database built on the old schema: both guide sources kept their
+        `enabled` state and priority, both configured playlists became `m3u` channel sources with
+        stored descriptors, restart is idempotent (4 rows, no duplication, no errors)
+  - [~] Status and error are recorded per source from real outcomes
+        — implemented: the blanket "everything succeeded" UPDATE is replaced by per-source status
+        derived from what each actually imported (`success` / `empty` / `failed`), with per-site parse
+        errors attributed to their source. **Not yet observed on a real catalogue sync** — that needs
+        a full iptv-org download; will be confirmed during S16.
+  - [x] Credentials never appear in API responses or logs
+        — a source seeded with `http://bob:hunter2@…?password=hunter2` returns zero occurrences of
+        the secret in `/api/epg-sources`; the value stays server-side and the client sees a redacted
+        url plus a `hasCredentials` flag
+
+  Also fixes **R6**: catalogue refresh no longer resets user-set `priority` (it already left
+  `enabled` alone).
+
+  **Deviation:** the workplan said "widen `epg_sources` into `sources`". I did rename it rather than
+  widen in place — the registry now holds playlists too, so keeping the old name would have been the
+  same "name says X, code does Y" drift the audit catalogues. 16 references across 6 files updated;
+  the rename is guarded and idempotent.
 
 - [ ] **S16 · Adapter contract and acquisition core** — L
   The contract, the shared HTTP client (conditional GET, byte caps, timeouts, backoff), the
@@ -494,4 +513,6 @@ memory, so **restart it after `ng build`** or you will screenshot the previous b
 | 2026-08-13 | S7 | Done, pulled forward at user request. `/files` scoped to three explicit mounts; `local.db` no longer reachable (verified anonymously). Favourites/hidden made symmetric. Denied actions now name the reason. |
 | 2026-08-14 | S5 | Done. Sessions persisted hashed with a 168h TTL, boot + hourly sweep, constant-time compare, per-IP throttle. Verified live: survives restart, expires from storage, throttles at 8 failures. 15 new unit tests; suite 215 → 230. |
 | 2026-08-14 | S6 | Done. One interceptor replaces 44 hand-rolled header calls. Browser-verified expiry prompt. Found and fixed two of my own bugs: the shell snapshotted auth state once, and a flag was set after the subject that read it. |
+| 2026-08-14 | — | Committed waves 1–2 as two commits plus a docs commit, no attribution trailers. |
+| 2026-08-14 | S15 | Done. Source registry renamed and widened with descriptors; migration verified against an old-schema database. Per-source status replaces the blanket success UPDATE (R3); user priority preserved on refresh (R6); credentials redacted from API responses. 19 new unit tests; suite 230 → 249. |
 

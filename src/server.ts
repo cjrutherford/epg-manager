@@ -27,6 +27,7 @@ import { mapSystemRecordingRow } from './services/recordings';
 import { dedupeChannelsForDisplay } from './services/channel-dedup';
 import { setOpenCorsHeaders } from './http-headers';
 import { rankEpgSources } from './services/epg-sources';
+import { redactUrl } from './services/sources/descriptor';
 import { checkScopeCoverage, isResetScope, planReset } from './services/reset-scopes';
 import {
     checkThrottle,
@@ -731,6 +732,16 @@ app.get('/api/grab/sources', requireAuth, async (req: any, res: any) => {
     }
 });
 
+/** Pull the fetch url out of a stored descriptor for display, if present. */
+function safeConfigUrl(configJson: string): string {
+    try {
+        const parsed = JSON.parse(configJson);
+        return typeof parsed?.fetch?.url === 'string' ? parsed.fetch.url : '';
+    } catch {
+        return '';
+    }
+}
+
 app.get('/api/epg-sources', requireAuth, async (req: any, res: any) => {
     try {
         const result = await db.execute(`
@@ -740,7 +751,7 @@ app.get('/api/epg-sources', requireAuth, async (req: any, res: any) => {
                 COALESCE(SUM(css.failure_count), 0) as channels_failure,
                 COALESCE(AVG(NULLIF(css.last_program_count, 0)), 0) as avg_programs,
                 MAX(css.last_attempt) as last_attempt
-            FROM epg_sources es
+            FROM sources es
             LEFT JOIN epg_source_channels esc ON esc.source_key = es.key
             LEFT JOIN channel_site_status css
                 ON css.xmltv_id = esc.xmltv_id AND css.site = esc.site
@@ -759,6 +770,11 @@ app.get('/api/epg-sources', requireAuth, async (req: any, res: any) => {
             last_sync_at: row.last_sync_at ? Number(row.last_sync_at) : null,
             last_sync_status: row.last_sync_status || null,
             last_error: row.last_error || null,
+            kind: row.kind || null,
+            provides: row.provides ? String(row.provides).split(',') : [],
+            // Never let a credential-bearing url reach the client.
+            configUrl: row.config_json ? redactUrl(safeConfigUrl(String(row.config_json))) : null,
+            hasCredentials: !!row.credential_ref,
             notes: row.notes || '',
             channels_success: Number(row.channels_success) || 0,
             channels_failure: Number(row.channels_failure) || 0,
@@ -776,7 +792,7 @@ app.post('/api/epg-sources/:key/toggle', requireAuth, async (req: any, res: any)
         const key = String(req.params.key);
         const enabled = req.body?.enabled === true || req.body?.enabled === 1;
         const result = await db.execute({
-            sql: `UPDATE epg_sources SET enabled = ? WHERE key = ?`,
+            sql: `UPDATE sources SET enabled = ? WHERE key = ?`,
             args: [enabled ? 1 : 0, key]
         });
         invalidateIptvOrgCache();
@@ -1989,7 +2005,7 @@ app.get('/api/search-epg', requireAuth, async (req: any, res: any) => {
         const result = await db.execute({
             sql: `SELECT esc.xmltv_id as id, esc.name as display_name, esc.site, esc.source_key
                   FROM epg_source_channels esc
-                  JOIN epg_sources es ON es.key = esc.source_key
+                  JOIN sources es ON es.key = esc.source_key
                   WHERE es.enabled = 1
                   AND es.grab_capable = 1
                   AND (esc.name LIKE ? OR esc.xmltv_id LIKE ?)

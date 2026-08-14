@@ -48,7 +48,7 @@ async function ensureIptvOrgCache(): Promise<IptvOrgCache> {
     const iptvOrgChannels = (await db.execute(`
         SELECT esc.xmltv_id, esc.name, esc.site, esc.site_id, esc.lang, esc.source_key
         FROM epg_source_channels esc
-        JOIN epg_sources es ON es.key = esc.source_key
+        JOIN sources es ON es.key = esc.source_key
         WHERE es.enabled = 1
         AND es.grab_capable = 1
         AND esc.site IS NOT NULL
@@ -64,7 +64,7 @@ async function ensureIptvOrgCache(): Promise<IptvOrgCache> {
             ec.source as source_key,
             'guide' as source_type
         FROM epg_channels ec
-        JOIN epg_sources es ON es.key = ec.source
+        JOIN sources es ON es.key = ec.source
         WHERE es.enabled = 1
         AND ec.id IS NOT NULL
         AND ec.display_name IS NOT NULL

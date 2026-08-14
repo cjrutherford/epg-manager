@@ -114,8 +114,26 @@ export async function initDb() {
 
   await db.execute("CREATE INDEX IF NOT EXISTS idx_iptv_map_name ON iptv_org_map(name)");
 
+  // ── Source registry ──────────────────────────────────────────────
+  // Renamed from `epg_sources`: the registry now holds channel sources
+  // (playlists) alongside guide sources, so the old name described only half
+  // of what it stores. The rename is data-preserving and idempotent.
+  const LEGACY_SOURCES_TABLE = 'epg_sources';
+  try {
+    const existing = await db.execute(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name IN ('sources', '${LEGACY_SOURCES_TABLE}')`
+    );
+    const names = existing.rows.map(r => String(r.name));
+    if (names.includes(LEGACY_SOURCES_TABLE) && !names.includes('sources')) {
+      await db.execute(`ALTER TABLE ${LEGACY_SOURCES_TABLE} RENAME TO sources`);
+      console.log(`[Db] Migrated ${LEGACY_SOURCES_TABLE} -> sources.`);
+    }
+  } catch (e: any) {
+    console.error('[Db] Source registry rename failed:', e.message);
+  }
+
   await db.execute(`
-    CREATE TABLE IF NOT EXISTS epg_sources (
+    CREATE TABLE IF NOT EXISTS sources (
         key TEXT PRIMARY KEY,
         provider TEXT NOT NULL,
         site TEXT NOT NULL,
@@ -131,7 +149,44 @@ export async function initDb() {
         notes TEXT
     )
   `);
-  await db.execute("CREATE INDEX IF NOT EXISTS idx_epg_sources_enabled ON epg_sources(enabled, grab_capable)");
+
+  // Descriptor columns. `kind` names the adapter, `provides` the capabilities,
+  // `config_json` carries the descriptor itself so a source is data, not code.
+  try { await db.execute("ALTER TABLE sources ADD COLUMN kind TEXT"); } catch (e) { }
+  try { await db.execute("ALTER TABLE sources ADD COLUMN provides TEXT"); } catch (e) { }
+  try { await db.execute("ALTER TABLE sources ADD COLUMN config_json TEXT"); } catch (e) { }
+  try { await db.execute("ALTER TABLE sources ADD COLUMN credential_ref TEXT"); } catch (e) { }
+  try { await db.execute("ALTER TABLE sources ADD COLUMN last_sync_duration_ms INTEGER"); } catch (e) { }
+  try { await db.execute("ALTER TABLE sources ADD COLUMN last_row_count INTEGER"); } catch (e) { }
+
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_sources_enabled ON sources(enabled, grab_capable)");
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_sources_kind ON sources(kind)");
+
+  // Credentials live apart from the descriptor and are never returned by the
+  // API — a descriptor references them by id only.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS source_credentials (
+        ref TEXT PRIMARY KEY,
+        label TEXT,
+        secret_json TEXT NOT NULL,
+        created_at INTEGER DEFAULT (unixepoch())
+    )
+  `);
+
+  // Staging for catalogue refreshes: rows land here and are swapped in on
+  // success, so a failed parse can no longer truncate the live catalogue.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS epg_source_channels_staging (
+        source_key TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        name TEXT NOT NULL,
+        xmltv_id TEXT NOT NULL,
+        lang TEXT,
+        site TEXT NOT NULL,
+        site_id TEXT NOT NULL
+    )
+  `);
+  await db.execute("CREATE INDEX IF NOT EXISTS idx_source_channels_staging_key ON epg_source_channels_staging(source_key)");
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS epg_source_channels (
@@ -149,7 +204,7 @@ export async function initDb() {
   await db.execute("CREATE INDEX IF NOT EXISTS idx_epg_source_channels_name ON epg_source_channels(name)");
   await db.execute("CREATE INDEX IF NOT EXISTS idx_epg_source_channels_site ON epg_source_channels(site)");
   await db.execute(`
-    INSERT OR IGNORE INTO epg_sources (key, provider, site, label, enabled, priority, grab_capable, imported_rows, last_sync_status, notes)
+    INSERT OR IGNORE INTO sources (key, provider, site, label, enabled, priority, grab_capable, imported_rows, last_sync_status, notes)
     SELECT
       'iptv-org:' || lower(site),
       'iptv-org',
@@ -172,12 +227,69 @@ export async function initDb() {
     WHERE site IS NOT NULL AND site_id IS NOT NULL
   `);
   await db.execute(`
-    UPDATE epg_sources
+    UPDATE sources
     SET label = 'EPGShare 01',
         priority = 100,
         notes = COALESCE(NULLIF(notes, ''), 'Featured global grab-capable source')
     WHERE key = 'iptv-org:epgshare01.online'
   `);
+
+  // ── Descriptor backfill ──────────────────────────────────────────
+  // Existing rows predate the descriptor model. Classify them so every source
+  // in the registry has a kind and capabilities, and register the configured
+  // playlists as first-class channel sources rather than a settings blob.
+  try {
+    await db.execute(`
+      UPDATE sources
+      SET kind = 'scraper-repo',
+          provides = 'guide'
+      WHERE kind IS NULL AND provider = 'iptv-org'
+    `);
+    await db.execute(`
+      UPDATE sources
+      SET kind = 'xmltv', provides = 'guide'
+      WHERE kind IS NULL
+    `);
+
+    const playlistSetting = await db.execute(
+      "SELECT value FROM settings WHERE key = 'playlist_urls'"
+    );
+    if (playlistSetting.rows.length > 0) {
+      let urls: string[] = [];
+      try { urls = JSON.parse(String(playlistSetting.rows[0].value)); } catch (_) { urls = []; }
+
+      for (const url of urls) {
+        if (!url) continue;
+        const key = `playlist:${url}`;
+        const label = url.split('/').pop() || url;
+        const isLocal = url.startsWith('/files/');
+        await db.execute({
+          sql: `INSERT OR IGNORE INTO sources
+                  (key, provider, site, label, enabled, priority, grab_capable,
+                   kind, provides, config_json, last_sync_status, notes)
+                VALUES (?, ?, ?, ?, 1, 0, 0, 'm3u', 'channels', ?, 'migrated', ?)`,
+          args: [
+            key,
+            isLocal ? 'iptv-org' : 'custom',
+            (() => { try { return new URL(url).hostname; } catch { return 'local'; } })(),
+            label,
+            JSON.stringify({
+              id: key,
+              kind: 'm3u',
+              label,
+              provides: ['channels'],
+              enabled: true,
+              priority: 0,
+              fetch: { url, refresh: '12h', conditional: true }
+            }),
+            'Migrated from playlist_urls'
+          ]
+        });
+      }
+    }
+  } catch (e: any) {
+    console.error('[Db] Source descriptor backfill failed:', e.message);
+  }
 
   // Site status tracking for dynamic retry logic
   await db.execute(`

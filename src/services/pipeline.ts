@@ -72,7 +72,7 @@ export class PipelineQueue {
                 sql: `
                     SELECT esc.xmltv_id, esc.site, esc.site_id, esc.lang
                     FROM epg_source_channels esc
-                    JOIN epg_sources es ON es.key = esc.source_key
+                    JOIN sources es ON es.key = esc.source_key
                     LEFT JOIN channel_site_status css
                       ON css.xmltv_id = esc.xmltv_id AND css.site = esc.site
                     WHERE esc.xmltv_id IN (${placeholders})

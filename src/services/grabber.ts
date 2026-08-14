@@ -219,7 +219,7 @@ export async function grabMissingChannels(xmltvIds: string[], force = false) {
             sql: `
                 SELECT esc.xmltv_id, esc.site, esc.site_id, esc.lang
                 FROM epg_source_channels esc
-                JOIN epg_sources es ON es.key = esc.source_key
+                JOIN sources es ON es.key = esc.source_key
                 WHERE esc.xmltv_id IN (${placeholders})
                 AND es.enabled = 1
                 AND es.grab_capable = 1
@@ -733,7 +733,7 @@ export async function grabChannelInProcess(xmltvId: string, epgDays: string, for
         sql: `
             SELECT m.xmltv_id, m.site, m.site_id, m.lang
             FROM epg_source_channels m
-            JOIN epg_sources es ON es.key = m.source_key
+            JOIN sources es ON es.key = m.source_key
             WHERE m.xmltv_id = ?
             AND es.enabled = 1
             AND es.grab_capable = 1

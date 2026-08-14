@@ -120,6 +120,7 @@ export async function updateIptvOrgData() {
 
         progressBar.start(sites.length, 0, { msg: 'Initializing...' });
 
+        const siteErrors = new Map<string, string>();
         let batch: IptvOrgChannelRow[] = [];
         const BATCH_SIZE = 100;
         let mappedCount = 0;
@@ -150,7 +151,8 @@ export async function updateIptvOrgData() {
                         }
                     });
                 } catch (e: any) {
-                    emitLog(`[DEBUG] Error parsing file ${file} in ${site}: ${e.message}`, "error", true);
+                    emitLog(`Error parsing ${file} in ${site}: ${e.message}`, "error", true);
+                    siteErrors.set(site, e.message);
                 }
             }
         }
@@ -159,7 +161,7 @@ export async function updateIptvOrgData() {
             await insertBatch(batch);
         }
 
-        await refreshIptvOrgSourceImportCounts();
+        await refreshIptvOrgSourceImportCounts(siteErrors);
 
         progressBar.stop();
         emitLog(formatMemorySnapshot('iptv-org update complete', process.memoryUsage(), { mapped: mappedCount, sites: sites.length }), 'info');
@@ -184,7 +186,7 @@ async function upsertIptvOrgSources(sites: string[]) {
         const summary = summaryBySite.get(site);
         const featured = getFeaturedIptvOrgSource(site);
         await db.execute({
-            sql: `INSERT INTO epg_sources (
+            sql: `INSERT INTO sources (
                     key, provider, site, label, enabled, priority, grab_capable,
                     channel_count_estimate, imported_rows, last_sync_at, last_sync_status, last_error, notes
                   )
@@ -193,7 +195,8 @@ async function upsertIptvOrgSources(sites: string[]) {
                     provider = excluded.provider,
                     site = excluded.site,
                     label = excluded.label,
-                    priority = excluded.priority,
+                    -- priority and enabled are the user's to set; a catalogue
+                    -- refresh must not silently reset their choices (R6).
                     grab_capable = 1,
                     channel_count_estimate = excluded.channel_count_estimate,
                     imported_rows = 0,
@@ -215,18 +218,46 @@ async function upsertIptvOrgSources(sites: string[]) {
     }
 }
 
-async function refreshIptvOrgSourceImportCounts() {
+/**
+ * Record the outcome of a catalogue refresh, per source.
+ *
+ * This previously set every iptv-org row to 'success' with a null error in one
+ * blanket UPDATE, whatever had actually happened — so a site whose catalogue
+ * failed to parse still reported success with zero rows, and the Diagnostics
+ * status column could never show a failure. Status is now derived from what
+ * each source actually imported, and per-site parse errors are attributed.
+ */
+async function refreshIptvOrgSourceImportCounts(siteErrors: Map<string, string> = new Map()) {
+    const now = Date.now();
+
     await db.execute({
-        sql: `UPDATE epg_sources
+        sql: `UPDATE sources
               SET imported_rows = (
-                    SELECT COUNT(*) FROM epg_source_channels esc WHERE esc.source_key = epg_sources.key
+                    SELECT COUNT(*) FROM epg_source_channels esc WHERE esc.source_key = sources.key
                   ),
-                  last_sync_status = 'success',
-                  last_error = NULL,
                   last_sync_at = ?
               WHERE provider = ?`,
-        args: [Date.now(), 'iptv-org']
+        args: [now, 'iptv-org']
     });
+
+    // A source that imported nothing did not succeed, whatever the run did overall.
+    await db.execute({
+        sql: `UPDATE sources
+              SET last_sync_status = CASE WHEN imported_rows > 0 THEN 'success' ELSE 'empty' END,
+                  last_error = CASE WHEN imported_rows > 0 THEN NULL
+                                    ELSE 'Source refresh imported no channels' END
+              WHERE provider = ?`,
+        args: ['iptv-org']
+    });
+
+    for (const [site, message] of siteErrors.entries()) {
+        await db.execute({
+            sql: `UPDATE sources
+                  SET last_sync_status = 'failed', last_error = ?
+                  WHERE key = ?`,
+            args: [message.slice(0, 500), buildEpgSourceKey('iptv-org', site)]
+        });
+    }
 }
 
 async function insertBatch(batch: IptvOrgChannelRow[]) {

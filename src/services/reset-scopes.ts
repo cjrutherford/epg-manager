@@ -37,8 +37,10 @@ export const USER_TABLES = [
 /** Collection data — the downloaded corpus and learned source behaviour. */
 export const COLLECTION_TABLES = [
     'iptv_org_map',
-    'epg_sources',
+    'sources',
     'epg_source_channels',
+    'epg_source_channels_staging',
+    'source_credentials',
     'site_status',
     'channel_site_status',
     'channel_grab_status',
