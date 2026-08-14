@@ -44,6 +44,17 @@ export interface BuiltInPresetDto {
     added: boolean;
 }
 
+/** A standing "record every episode of this show on this channel" instruction. */
+export interface SeriesRule {
+    id: number;
+    channel_id: string;
+    series_title: string;
+    channel_name?: string | null;
+    created_at?: number | string | null;
+    /** Episodes this rule currently has booked and still to come. */
+    upcoming_count?: number;
+}
+
 export type ResetScope = 'guide' | 'user' | 'collection' | 'all';
 
 export interface ResetPreview {
@@ -128,6 +139,19 @@ export class ApiService {
 
     cancelRecording(id: number): Observable<any> {
         return this.http.delete(`/api/dvr/${id}`);
+    }
+
+    getSeriesRules(): Observable<SeriesRule[]> {
+        return this.http.get<SeriesRule[]>('/api/dvr/series-rules');
+    }
+
+    deleteSeriesRule(id: number, cancelUpcoming = false): Observable<any> {
+        const query = cancelUpcoming ? '?cancelUpcoming=1' : '';
+        return this.http.delete(`/api/dvr/series-rules/${id}${query}`);
+    }
+
+    runSeriesRules(): Observable<{ success: boolean; scheduled: number }> {
+        return this.http.post<{ success: boolean; scheduled: number }>('/api/dvr/series-rules/run', {});
     }
 
     getConfig(): Observable<any> {

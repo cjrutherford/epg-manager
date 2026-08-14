@@ -3,7 +3,7 @@
 Single source of truth for the remediation effort. Consolidates the process audit, the UI &
 source-retrieval audit, and the source acquisition architecture into one tracked backlog.
 
-**Status:** Wave 4 started — 14 of 26 done, S16c paused
+**Status:** Wave 4 in progress — 16 of 26 done, S16c paused
 **Suite score at baseline:** 2.5 / 5 (process) · 2.3 / 5 (UI)
 **Last updated:** 2026-08-13
 
@@ -70,7 +70,7 @@ Defects are referenced by id from slice descriptions. `D` = process audit, `R` =
 | D1 | Reset unlinks the open SQLite file; misses 6 tables | `server.ts:738` | S3 |
 | D2 | HLS segments never deleted while streaming | `stream.ts:59` | S1 |
 | D3 | No cap on concurrent ffmpeg stream processes | `server.ts:2300` | S1 |
-| D4 | Series Pass wired at 3 layers of 4, never fires | `recorder.ts:440` | S8 |
+| D4 | Series Pass wired at 3 layers of 4, never fires | `recorder.ts:440` | S8 ✅ |
 | D5 | Sessions die on restart; no TTL, no rate limit | `server.ts:44` | S5 |
 | D6 | Path traversal on recording read and delete | `server.ts:1674,1691` | S2 |
 | D7 | Whole data dir is a public static mount — **confirmed exploitable**, `/files/local.db` returns 200 | `server.ts:70` | S7 |
@@ -425,15 +425,33 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
 ### Wave 4 — Make every control do something
 > Close the gap between what the UI offers and what the system does.
 
-- [ ] **S8 · Series Pass end to end** — L
+- [x] **S8 · Series Pass end to end** — L
   Call `autoScheduleSeriesRules()` from the scheduler tick and after every sync; fix its query to
-  respect `manual_overrides`; send `record_series` from both DVR and Watch; add the missing client
+  respect `manual_overrides`; send `record_series` from the DVR screen; add the missing client
   methods and a rules management panel.
-  *Fixes D4.* → `src/recorder.ts`, `api.service.ts`, `dvr.component.*`, `watch.component.ts`
-  - [ ] A rule created today schedules episodes that arrive in tomorrow's guide
-  - [ ] Rules are listable and deletable from the UI
-  - [ ] Re-running the pass never double-books an episode
-  - [ ] Rules work on channels mapped by manual override
+  *Fixes D4.* → `src/services/series-rules.ts` (new), `src/recorder.ts`, `src/server.ts`,
+  `src/services/pipeline.ts`, `api.service.ts`, `dvr.component.*`
+  - [x] A rule created today schedules episodes that arrive in tomorrow's guide
+        — inserted one future episode after the rule existed; the next pass booked exactly it
+  - [x] Rules are listable and deletable from the UI
+        — panel lists each rule with its channel and upcoming count; Stop asks separately whether
+        to also cancel what it has already booked
+  - [x] Re-running the pass never double-books an episode
+        — ran the pass three times against an unchanged guide: 0, 0, 0
+  - [x] Rules work on channels mapped by manual override
+        — a channel with `matched_epg_id` cleared and an override row scheduled correctly; the
+        old query returned nothing for it
+
+  The pass was dead code with three defects, not one: no caller, no future filter, and a join that
+  ignored `manual_overrides`. It now runs at boot, hourly, at the end of every pipeline run, and
+  immediately when a rule is created.
+
+  Dedupe compares start times within a 5-minute window rather than exactly. Found by testing:
+  the endpoint stored the client's timestamp (`...04.690314+00:00`) while the pass computed its
+  own from the guide row, and the same showing was booked twice eight seconds apart.
+
+  Watch's series recording is left alone — it records in the browser, not on the server, so it is
+  not a caller of this rule engine. Reconciling the two DVRs is S20.
 
 - [ ] **S9 · DVR lifecycle correctness** — M
   Mark past-due schedules as missed, add configurable pre/post padding, surface `error_message`,
@@ -652,4 +670,4 @@ memory, so **restart it after `ng build`** or you will screenshot the previous b
 | 2026-08-14 | — | Chris accepted S25's flat-memory objective as satisfied by the 75% reduction. Recorded as accepted rather than proven. |
 | 2026-08-14 | — | Corrected the S6 record: the work shipped in 1ae7e9d but an earlier scripted edit to this file silently failed to match, leaving it unchecked. |
 | 2026-08-14 | S19 | Done. Config endpoint persists the numbering fields it used to drop; language selector added; defaults aligned across both config endpoints. UI round-trip browser-verified. |
-
+| 2026-08-14 | S8 | Done. The series pass had no caller, no future filter, and a join blind to `manual_overrides`; all three fixed and each acceptance criterion verified against a live server on a copy of the real database. Rules panel added with a separate confirmation for cancelling already-booked episodes. Testing surfaced a duplicate-booking bug from comparing timestamps exactly — now a 5-minute window. 18 new unit tests; suite 327 -> 345. |

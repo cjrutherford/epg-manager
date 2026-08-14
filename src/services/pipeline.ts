@@ -364,6 +364,15 @@ export class PipelineQueue {
                     uniqueGrabIds: this.queuedGrabIds.size,
                     uniqueEnrichIds: this.queuedEnrichIds.size
                 }), 'info');
+                // Fresh guide data is the moment a series rule can find new
+                // episodes, so run the pass here rather than making the user
+                // wait for the next hourly tick.
+                import('../recorder.js')
+                    .then(({ autoScheduleSeriesRules }) => autoScheduleSeriesRules())
+                    .then(count => {
+                        if (count > 0) emitLog(`Series rules scheduled ${count} new episode(s)`, 'info');
+                    })
+                    .catch(err => emitLog(`Series pass failed: ${err.message}`, 'error'));
                 this.resolvePipeline();
             }
         }

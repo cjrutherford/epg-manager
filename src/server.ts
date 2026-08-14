@@ -13,7 +13,7 @@ import { enrichProgramsWithMetadata, getEnrichmentStats, clearMetadataCache, isE
 import { PipelineQueue } from './services/pipeline';
 import { getJobStatus, startJob, completeJob, requestJobCancel, loadLastJobStateOnBoot } from './job';
 import { eventBus, emitLog, emitProgress, emitProgressComplete } from './events';
-import { startRecordingScheduler, stopRecordingScheduler, drainRecordings, cancelRecording as cancelRec, getRecordingFilePath, checkScheduledRecordings, startRecording, stopRecording, safeRecordingPath, getFreeSpaceBytes, getVolumeUsage, getRetentionPolicy } from './recorder';
+import { startRecordingScheduler, stopRecordingScheduler, drainRecordings, cancelRecording as cancelRec, getRecordingFilePath, checkScheduledRecordings, startRecording, stopRecording, safeRecordingPath, getFreeSpaceBytes, getVolumeUsage, getRetentionPolicy, autoScheduleSeriesRules } from './recorder';
 import { formatBytes, meetsFreeSpaceFloor } from './services/recording-storage';
 import { StreamManager } from './services/stream';
 import * as fs from 'fs';
@@ -2034,18 +2034,22 @@ app.post('/api/dvr', requireAuth, async (req: any, res: any) => {
             ]
         });
 
-        // Save series rule if requested
+        // Save series rule if requested, and act on it now rather than waiting
+        // for the hourly pass — the user expects the rest of the series to
+        // appear on the schedule immediately.
+        let seriesEpisodesScheduled = 0;
         if (record_series && program_title) {
             await db.execute({
                 sql: `INSERT OR IGNORE INTO dvr_series_rules (channel_id, series_title) VALUES (?, ?)`,
                 args: [channel_id, program_title],
             });
+            seriesEpisodesScheduled = await autoScheduleSeriesRules();
         }
 
         // Check if we need to start it immediately (scheduler checks every 30s)
         checkScheduledRecordings();
 
-        res.json({ success: true });
+        res.json({ success: true, seriesEpisodesScheduled });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -2094,8 +2098,14 @@ app.get('/api/dvr/stream/:filename', async (req: any, res: any) => {
 // ── Series Rules API ──
 app.get('/api/dvr/series-rules', requireAuth, async (req: any, res: any) => {
     try {
+        // upcoming_count tells the user the rule is actually doing something;
+        // a rule with zero upcoming episodes is the symptom they need to see.
         const result = await db.execute(`
-            SELECT r.*, c.name as channel_name
+            SELECT r.*, c.name as channel_name,
+                   (SELECT COUNT(*) FROM scheduled_recordings sr
+                     WHERE sr.channel_id = r.channel_id
+                       AND LOWER(TRIM(sr.program_title)) = LOWER(TRIM(r.series_title))
+                       AND sr.status = 'scheduled') AS upcoming_count
             FROM dvr_series_rules r
             LEFT JOIN channels c ON c.id = r.channel_id
             ORDER BY r.created_at DESC
@@ -2109,11 +2119,45 @@ app.get('/api/dvr/series-rules', requireAuth, async (req: any, res: any) => {
 app.delete('/api/dvr/series-rules/:id', requireAuth, async (req: any, res: any) => {
     try {
         const id = parseInt(req.params.id);
+        const ruleRes = await db.execute({
+            sql: 'SELECT channel_id, series_title FROM dvr_series_rules WHERE id = ?',
+            args: [id],
+        });
+        if (ruleRes.rows.length === 0) {
+            return res.status(404).json({ error: 'No such series rule' });
+        }
+        const rule = ruleRes.rows[0];
+
         await db.execute({
             sql: 'DELETE FROM dvr_series_rules WHERE id = ?',
             args: [id],
         });
-        res.json({ success: true });
+
+        // Episodes already booked stay booked unless the caller says otherwise;
+        // deleting someone's schedule as a side effect of removing a rule is
+        // not a decision this endpoint should make on its own.
+        let cancelled = 0;
+        if (req.query.cancelUpcoming === '1' || req.query.cancelUpcoming === 'true') {
+            const cancelRes = await db.execute({
+                sql: `DELETE FROM scheduled_recordings
+                       WHERE channel_id = ?
+                         AND LOWER(TRIM(program_title)) = LOWER(TRIM(?))
+                         AND status = 'scheduled'`,
+                args: [rule.channel_id, rule.series_title],
+            });
+            cancelled = cancelRes.rowsAffected || 0;
+        }
+
+        res.json({ success: true, cancelled });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/dvr/series-rules/run', requireAuth, async (req: any, res: any) => {
+    try {
+        const scheduled = await autoScheduleSeriesRules();
+        res.json({ success: true, scheduled });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }

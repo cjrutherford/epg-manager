@@ -2,7 +2,7 @@ import { ChangeDetectorRef, Component, OnDestroy, OnInit, Input, Output, EventEm
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
-import { ApiService } from '../../services/api.service';
+import { ApiService, SeriesRule } from '../../services/api.service';
 import { ToastService } from '../../services/toast.service';
 import { ClientRecordingService } from '../../services/client-recording.service';
 import { ClientRecording } from '../../services/client-recording.types';
@@ -40,6 +40,10 @@ export class DvrComponent implements OnInit, OnDestroy {
     recordSeries = false;
     newRec = { channelId: '', title: '', startTime: '', endTime: '' };
 
+    seriesRules: SeriesRule[] = [];
+    showSeriesRules = false;
+    runningSeriesPass = false;
+
     private localRecordingsSub: Subscription | null = null;
 
     constructor(
@@ -67,11 +71,13 @@ export class DvrComponent implements OnInit, OnDestroy {
     async loadAll(): Promise<void> {
         this.loading = true;
         try {
-            const [recordings, storage] = await Promise.all([
+            const [recordings, storage, rules] = await Promise.all([
                 this.api.getDvrSchedules().toPromise().catch(() => []),
                 this.api.getDvrStorage().toPromise().catch(() => null),
+                this.api.getSeriesRules().toPromise().catch(() => []),
                 this.clientRecordings.refresh().catch(() => undefined)
             ]);
+            this.seriesRules = rules || [];
             this.recordings = (recordings || []).map((rec: any) => {
                 let startTime = rec.start_time;
                 let endTime = rec.end_time;
@@ -233,38 +239,36 @@ export class DvrComponent implements OnInit, OnDestroy {
 
         try {
             if (this.recordSeries && this.selectedProgram) {
-                const matchingPrograms = (this.selectedChannelPrograms || []).filter(
-                    (p: any) => p.title === this.selectedProgram.title
-                );
-                let count = 0;
-                for (const p of matchingPrograms) {
-                    const start = this.parseEpgTime(p.start);
-                    const stop = this.parseEpgTime(p.stop);
-                    if (!start || !stop) continue;
-                    if (stop.getTime() < Date.now()) continue;
+                // One call creates the rule and books every future showing the
+                // server can see. The client used to loop the loaded guide
+                // window, so anything arriving later was simply missed.
+                const start = this.parseEpgTime(this.selectedProgram.start);
+                const stop = this.parseEpgTime(this.selectedProgram.stop);
+                const result: any = await this.api.scheduleRecording({
+                    channel_id: this.newRec.channelId,
+                    channel_name: channel?.name,
+                    program_title: this.selectedProgram.title,
+                    start_time: (start || new Date(this.newRec.startTime)).toISOString(),
+                    end_time: (stop || new Date(this.newRec.endTime)).toISOString(),
+                    stream_url: streamUrl,
+                    thumbnail: this.selectedProgram.icon || channel?.logo || channel?.tvg_logo,
+                    sub_title: this.selectedProgram.sub_title,
+                    episode_num: this.selectedProgram.episode_num,
+                    description: this.selectedProgram.description,
+                    rating: this.selectedProgram.rating,
+                    category: this.selectedProgram.category,
+                    record_series: true
+                }).toPromise();
 
-                    if (this.isAlreadyScheduled(this.newRec.channelId, p.start, p.stop)) {
-                        continue;
-                    }
-
-                    await this.api.scheduleRecording({
-                        channel_id: this.newRec.channelId,
-                        channel_name: channel?.name,
-                        program_title: p.title,
-                        start_time: start.toISOString(),
-                        end_time: stop.toISOString(),
-                        stream_url: streamUrl,
-                        thumbnail: p.icon || channel?.logo || channel?.tvg_logo,
-                        sub_title: p.sub_title,
-                        episode_num: p.episode_num,
-                        description: p.description,
-                        rating: p.rating,
-                        category: p.category
-                    }).toPromise();
-                    count++;
-                }
                 this.showScheduleModal = false;
-                this.toast.show(`Scheduled series: ${count} episodes of '${this.selectedProgram.title}'`, 'success');
+                const extra = result?.seriesEpisodesScheduled || 0;
+                this.toast.show(
+                    extra > 0
+                        ? `Recording '${this.selectedProgram.title}' — ${extra} further episode(s) scheduled, and new ones as the guide updates`
+                        : `Recording every episode of '${this.selectedProgram.title}' as the guide updates`,
+                    'success'
+                );
+                await this.loadSeriesRules();
             } else {
                 await this.api.scheduleRecording({
                     channel_id: this.newRec.channelId,
@@ -290,6 +294,62 @@ export class DvrComponent implements OnInit, OnDestroy {
                 ? 'Your session has expired — sign in again to schedule recordings'
                 : e?.error?.error || 'Failed to schedule';
             this.toast.show(detail, 'error');
+        }
+    }
+
+    // ── Series rules ────────────────────────────
+    async loadSeriesRules(): Promise<void> {
+        try {
+            this.seriesRules = (await this.api.getSeriesRules().toPromise()) || [];
+        } catch {
+            this.seriesRules = [];
+        } finally {
+            this.cdr.detectChanges();
+        }
+    }
+
+    toggleSeriesRules(): void {
+        this.showSeriesRules = !this.showSeriesRules;
+        this.cdr.detectChanges();
+    }
+
+    async deleteSeriesRule(rule: SeriesRule): Promise<void> {
+        const upcoming = rule.upcoming_count || 0;
+        if (!confirm(`Stop recording '${rule.series_title}'? Future episodes will no longer be added.`)) return;
+
+        // Asked separately: removing the rule and discarding what it already
+        // booked are different intentions.
+        const cancelUpcoming = upcoming > 0
+            && confirm(`Also cancel the ${upcoming} episode(s) it has already scheduled?`);
+
+        try {
+            const result: any = await this.api.deleteSeriesRule(rule.id, cancelUpcoming).toPromise();
+            this.toast.show(
+                result?.cancelled ? `Series stopped, ${result.cancelled} scheduled episode(s) cancelled` : 'Series stopped',
+                'success'
+            );
+            await this.loadAll();
+        } catch {
+            this.toast.show('Could not stop that series', 'error');
+        }
+    }
+
+    async runSeriesPass(): Promise<void> {
+        this.runningSeriesPass = true;
+        this.cdr.detectChanges();
+        try {
+            const result = await this.api.runSeriesRules().toPromise();
+            const scheduled = result?.scheduled || 0;
+            this.toast.show(
+                scheduled > 0 ? `Scheduled ${scheduled} new episode(s)` : 'No new episodes in the guide yet',
+                scheduled > 0 ? 'success' : 'info'
+            );
+            await this.loadAll();
+        } catch {
+            this.toast.show('Could not check series rules', 'error');
+        } finally {
+            this.runningSeriesPass = false;
+            this.cdr.detectChanges();
         }
     }
 

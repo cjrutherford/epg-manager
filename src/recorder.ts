@@ -7,6 +7,7 @@ import { spawn, ChildProcess } from 'child_process';
 import { db, getSetting } from './db';
 import path from 'path';
 import fs from 'fs';
+import { selectSchedulableEpisodes } from './services/series-rules';
 import {
     DEFAULT_RETENTION,
     evaluateRetention,
@@ -670,83 +671,84 @@ export async function autoScheduleSeriesRules(): Promise<number> {
         const rulesRes = await db.execute('SELECT * FROM dvr_series_rules');
         if (rulesRes.rows.length === 0) return 0;
 
+        const now = Date.now();
         let scheduledCount = 0;
-        for (const rule of rulesRes.rows) {
-            const channelId = rule.channel_id as string;
-            const seriesTitle = (rule.series_title as string).trim().toLowerCase();
 
-            // Find matching upcoming programs from epg_programs for this channel
+        for (const rule of rulesRes.rows) {
+            const channelId = String(rule.channel_id);
+            const seriesTitle = String(rule.series_title || '').trim();
+            if (!seriesTitle) continue;
+
+            // COALESCE the override: a channel mapped by hand carries its guide
+            // under the override id, so joining on matched_epg_id alone meant
+            // series rules never fired for manually mapped channels.
             const progsRes = await db.execute({
-                sql: `SELECT ep.*, c.name as channel_name, c.url as stream_url, c.tvg_logo as channel_logo
-                      FROM epg_programs ep
-                      JOIN channels c ON c.matched_epg_id = ep.channel_id OR c.id = ep.channel_id
+                sql: `SELECT ep.title, ep.start, ep.stop, ep.sub_title, ep.episode_num,
+                             ep.desc, ep.rating, ep.category, ep.icon,
+                             c.name as channel_name, c.url as stream_url, c.tvg_logo as channel_logo
+                      FROM channels c
+                      LEFT JOIN manual_overrides mo ON mo.channel_id = c.id
+                      JOIN epg_programs ep
+                        ON ep.channel_id = COALESCE(mo.epg_id, c.matched_epg_id, c.id)
                       WHERE c.id = ? AND c.enabled = 1
-                        AND LOWER(TRIM(ep.title)) = ?`,
-                args: [channelId, seriesTitle],
+                        AND LOWER(TRIM(ep.title)) = LOWER(TRIM(?))`,
+                args: [channelId, seriesTitle]
             });
 
-            for (const prog of progsRes.rows) {
-                const title = prog.title as string;
-                const startRaw = prog.start as string; // EPG format YYYYMMDDHHMMSS +0000 or ISO
-                const stopRaw = prog.stop as string;
+            if (progsRes.rows.length === 0) continue;
 
-                let startTimeStr = startRaw;
-                let endTimeStr = stopRaw;
+            const existingRes = await db.execute({
+                sql: `SELECT program_title, start_time FROM scheduled_recordings WHERE channel_id = ?`,
+                args: [channelId]
+            });
 
-                // Parse XMLTV dates if needed
-                if (startRaw && startRaw.length >= 14 && !startRaw.includes('-')) {
-                    const year = startRaw.substring(0, 4);
-                    const month = startRaw.substring(4, 6);
-                    const day = startRaw.substring(6, 8);
-                    const hour = startRaw.substring(8, 10);
-                    const min = startRaw.substring(10, 12);
-                    const sec = startRaw.substring(12, 14);
-                    startTimeStr = `${year}-${month}-${day}T${hour}:${min}:${sec}.000Z`;
-                }
-                if (stopRaw && stopRaw.length >= 14 && !stopRaw.includes('-')) {
-                    const year = stopRaw.substring(0, 4);
-                    const month = stopRaw.substring(4, 6);
-                    const day = stopRaw.substring(6, 8);
-                    const hour = stopRaw.substring(8, 10);
-                    const min = stopRaw.substring(10, 12);
-                    const sec = stopRaw.substring(12, 14);
-                    endTimeStr = `${year}-${month}-${day}T${hour}:${min}:${sec}.000Z`;
-                }
+            const chosen = selectSchedulableEpisodes(
+                progsRes.rows.map(row => ({
+                    title: String(row.title),
+                    start: String(row.start),
+                    stop: String(row.stop),
+                    subTitle: row.sub_title ? String(row.sub_title) : null,
+                    episodeNum: row.episode_num ? String(row.episode_num) : null,
+                    description: row.desc ? String(row.desc) : null,
+                    rating: row.rating ? String(row.rating) : null,
+                    category: row.category ? String(row.category) : null,
+                    icon: row.icon ? String(row.icon) : null
+                })),
+                existingRes.rows.map(row => ({
+                    programTitle: String(row.program_title || ''),
+                    startTimeIso: String(row.start_time || '')
+                })),
+                now
+            );
 
-                // Check if already scheduled or recorded
-                const existing = await db.execute({
-                    sql: `SELECT id FROM scheduled_recordings
-                          WHERE channel_id = ? AND program_title = ? AND start_time = ?`,
-                    args: [channelId, title, startTimeStr],
+            const first = progsRes.rows[0];
+            for (const episode of chosen) {
+                await db.execute({
+                    sql: `INSERT INTO scheduled_recordings (
+                            channel_id, channel_name, program_title, start_time, end_time, stream_url,
+                            thumbnail, sub_title, episode_num, description, rating, category, status
+                          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled')`,
+                    args: [
+                        channelId,
+                        first.channel_name || null,
+                        episode.title,
+                        episode.startTimeIso,
+                        episode.endTimeIso,
+                        first.stream_url || '',
+                        episode.icon || first.channel_logo || null,
+                        episode.subTitle || null,
+                        episode.episodeNum || null,
+                        episode.description || null,
+                        episode.rating || null,
+                        episode.category || null
+                    ]
                 });
-
-                if (existing.rows.length === 0) {
-                    await db.execute({
-                        sql: `INSERT INTO scheduled_recordings (
-                                channel_id, channel_name, program_title, start_time, end_time, stream_url,
-                                thumbnail, sub_title, episode_num, description, rating, category, status
-                              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled')`,
-                        args: [
-                            channelId,
-                            prog.channel_name || null,
-                            title,
-                            startTimeStr,
-                            endTimeStr,
-                            prog.stream_url || '',
-                            prog.icon || prog.channel_logo || null,
-                            prog.sub_title || null,
-                            prog.episode_num || null,
-                            prog.desc || null,
-                            prog.rating || null,
-                            prog.category || null,
-                        ],
-                    });
-                    scheduledCount++;
-                }
+                scheduledCount++;
             }
         }
+
         if (scheduledCount > 0) {
-            console.log(`[RECORDER] Auto-scheduled ${scheduledCount} new episodes from series rules.`);
+            console.log(`[RECORDER] Series pass scheduled ${scheduledCount} new episode(s).`);
             checkScheduledRecordings();
         }
         return scheduledCount;
@@ -768,8 +770,10 @@ export function getRecordingFilePath(filename: string): string {
  */
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let retentionInterval: ReturnType<typeof setInterval> | null = null;
+let seriesPassInterval: ReturnType<typeof setInterval> | null = null;
 
 const RETENTION_SWEEP_INTERVAL_MS = 60 * 60 * 1000; // hourly
+const SERIES_PASS_INTERVAL_MS = 60 * 60 * 1000; // hourly
 
 export function startRecordingScheduler(): void {
     if (schedulerInterval) return;
@@ -791,7 +795,15 @@ export function startRecordingScheduler(): void {
     }, RETENTION_SWEEP_INTERVAL_MS);
     applyRetentionPolicy().catch(err => console.error('[RETENTION] Startup sweep failed:', err));
 
-    console.log('[RECORDER] Recording scheduler started (30s interval, hourly retention sweep)');
+    // Series rules are evaluated against whatever guide data exists now, and
+    // again as new data arrives. Nothing called this before, which is why the
+    // feature never did anything (D4).
+    seriesPassInterval = setInterval(() => {
+        autoScheduleSeriesRules().catch(err => console.error('[RECORDER] Series pass failed:', err));
+    }, SERIES_PASS_INTERVAL_MS);
+    autoScheduleSeriesRules().catch(err => console.error('[RECORDER] Startup series pass failed:', err));
+
+    console.log('[RECORDER] Recording scheduler started (30s interval, hourly retention and series pass)');
 }
 
 export function stopRecordingScheduler(): void {
@@ -802,5 +814,9 @@ export function stopRecordingScheduler(): void {
     if (retentionInterval) {
         clearInterval(retentionInterval);
         retentionInterval = null;
+    }
+    if (seriesPassInterval) {
+        clearInterval(seriesPassInterval);
+        seriesPassInterval = null;
     }
 }

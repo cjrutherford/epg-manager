@@ -48,6 +48,52 @@
             </div>
         </div>
 
+        <!-- Series rules: standing instructions, distinct from booked episodes -->
+        <div class="glass-card series-rules-card">
+            <button class="series-rules-header" (click)="toggleSeriesRules()">
+                <span class="series-rules-title">
+                    Series Recordings
+                    <span class="series-rules-count">{{ seriesRules.length }}</span>
+                </span>
+                <span class="series-rules-chevron">{{ showSeriesRules ? '▾' : '▸' }}</span>
+            </button>
+
+            @if (showSeriesRules) {
+            <div class="series-rules-body">
+                @if (seriesRules.length === 0) {
+                <p class="series-rules-empty">
+                    No series recordings. Tick <em>Record entire series</em> when scheduling and every
+                    future episode will be booked automatically as guide data arrives.
+                </p>
+                } @else {
+                <ul class="series-rules-list">
+                    @for (rule of seriesRules; track rule.id) {
+                    <li class="series-rule">
+                        <div class="series-rule-main">
+                            <span class="series-rule-title">{{ rule.series_title }}</span>
+                            <span class="series-rule-meta">
+                                {{ rule.channel_name || rule.channel_id }} ·
+                                @if (rule.upcoming_count) {
+                                    {{ rule.upcoming_count }} episode(s) scheduled
+                                } @else {
+                                    waiting for guide data
+                                }
+                            </span>
+                        </div>
+                        <button class="btn btn-secondary small-btn danger" (click)="deleteSeriesRule(rule)">Stop</button>
+                    </li>
+                    }
+                </ul>
+                }
+                <div class="series-rules-actions">
+                    <button class="btn btn-secondary small-btn" (click)="runSeriesPass()" [disabled]="runningSeriesPass">
+                        {{ runningSeriesPass ? 'Checking…' : 'Check for new episodes' }}
+                    </button>
+                </div>
+            </div>
+            }
+        </div>
+
         @if (recordings.length === 0) {
         <div class="glass-card empty-state">
             <div class="empty-icon">📹</div>
