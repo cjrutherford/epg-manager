@@ -1,0 +1,497 @@
+# Tuner Daemon — Hardening Workplan
+
+Single source of truth for the remediation effort. Consolidates the process audit, the UI &
+source-retrieval audit, and the source acquisition architecture into one tracked backlog.
+
+**Status:** Waves 1 and 2 complete — 7 of 25 slices done
+**Suite score at baseline:** 2.5 / 5 (process) · 2.3 / 5 (UI)
+**Last updated:** 2026-08-13
+
+---
+
+## How this is scored
+
+Each process was scored 1–5 on three axes and combined into a weighted composite.
+
+| Audit | Axes | Weights |
+| :--- | :--- | :--- |
+| Process | Consistency · Survivability · User-friendliness | 0.30 / 0.40 / 0.30 |
+| UI | Truthfulness · Task completion · Craft & access | 0.40 / 0.35 / 0.25 |
+
+Bands: **Critical** < 2.0 · **High** 2.0–2.4 · **Medium** 2.5–3.2 · **Sound** > 3.2
+
+---
+
+## Baseline scores
+
+### Processes (17)
+
+| Process | C | S | U | Score | Band |
+| :--- | :-: | :-: | :-: | :-: | :--- |
+| Series Pass automation | 1 | 1 | 1 | 1.0 | Critical |
+| Authentication & session | 2 | 1 | 2 | 1.6 | Critical |
+| System reset | 3 | 1 | 2 | 1.9 | Critical |
+| DVR recording engine | 2 | 2 | 2 | 2.0 | High |
+| Live stream proxy | 3 | 1 | 3 | 2.2 | High |
+| Recording storage & delivery | 2 | 2 | 3 | 2.3 | High |
+| Job orchestration & progress | 2 | 2 | 3 | 2.3 | High |
+| Playlist ingestion | 3 | 2 | 3 | 2.6 | Medium |
+| Export generation | 3 | 2 | 3 | 2.6 | Medium |
+| Deployment & lifecycle | 3 | 2 | 3 | 2.6 | Medium |
+| Configuration & settings | 2 | 3 | 3 | 2.7 | Medium |
+| Browser-local recording | 2 | 3 | 3 | 2.7 | Medium |
+| Channel matching & overrides | 3 | 3 | 3 | 3.0 | Medium |
+| Metadata enrichment | 3 | 3 | 3 | 3.0 | Medium |
+| EPG source management | 4 | 3 | 3 | 3.3 | Sound |
+| EPG grab pipeline | 3 | 4 | 3 | 3.4 | Sound |
+| Watch playback & guide | 3 | 4 | 4 | 3.7 | Sound |
+
+### UI surfaces (7)
+
+| Screen | T | C | A | Score | Band |
+| :--- | :-: | :-: | :-: | :-: | :--- |
+| Settings | 1 | 2 | 2 | 1.6 | Critical |
+| Diagnostics | 1 | 3 | 3 | 2.2 | High |
+| Channel Manager | 3 | 2 | 2 | 2.4 | High |
+| DVR | 2 | 3 | 2 | 2.4 | High |
+| Admin shell & login | 2 | 3 | 3 | 2.6 | Medium |
+| Dashboard | 3 | 3 | 2 | 2.8 | Medium |
+| Watch | 3 | 4 | 3 | 3.35 | Sound |
+
+---
+
+## Defect register
+
+Defects are referenced by id from slice descriptions. `D` = process audit, `R` = source retrieval,
+`X` = cross-cutting UI.
+
+| ID | Defect | Location | Slice |
+| :-- | :--- | :--- | :-- |
+| D1 | Reset unlinks the open SQLite file; misses 6 tables | `server.ts:738` | S3 |
+| D2 | HLS segments never deleted while streaming | `stream.ts:59` | S1 |
+| D3 | No cap on concurrent ffmpeg stream processes | `server.ts:2300` | S1 |
+| D4 | Series Pass wired at 3 layers of 4, never fires | `recorder.ts:440` | S8 |
+| D5 | Sessions die on restart; no TTL, no rate limit | `server.ts:44` | S5 |
+| D6 | Path traversal on recording read and delete | `server.ts:1674,1691` | S2 |
+| D7 | Whole data dir is a public static mount — **confirmed exploitable**, `/files/local.db` returns 200 | `server.ts:70` | S7 |
+| D8 | Shutdown drops recordings on the floor | `server.ts:842` | S4 |
+| D9 | `epg.xml` written over the file being served | `epg.ts:914` | S11 |
+| R1 | XMLTV ingest path never called | `epg.ts:156` | S16b |
+| R2 | EPGShare direct feeds never fetched | `epg-sources.ts:73` | S16b |
+| R3 | All iptv-org sources marked success regardless | `iptv-org.ts:218` | S15 |
+| R4 | Catalogue deleted before replacement parsed | `iptv-org.ts:86` | S16 |
+| R5 | Grab counter counts channels it never queues | `pipeline.ts:58` | S17 |
+| R6 | Source sync overwrites user-set priority | `iptv-org.ts:186` | S15 |
+| X1 | Accessibility effectively absent | all templates | S22 |
+| X2 | Fonts load from public CDN | `index.html` | S22 |
+| X3 | Nine themes, none light | `styles.css` | S22 |
+| X4 | Feedback vanishes before it can be acted on | `toast.service.ts` | S23 |
+| X5 | Two icon systems, 63 inline styles | all templates | S22 |
+| X6 | Screens fetch overlapping data from divergent endpoints | `api.service.ts` | S21 |
+| X7 | `e2e/ui.spec.ts` is stale and effectively non-functional — asserts the pre-rename app name ("EPG Manager" vs "Tuner Daemon") and assumes a seeded database. Fails on a clean checkout with **and** without changes, so it gates nothing. | `e2e/ui.spec.ts` | S24 |
+
+---
+
+## Backlog
+
+25 slices in 5 waves. Waves are ordered so later work lands on stable ground.
+Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
+
+### Wave 1 — Stop the bleeding
+> Nothing unbounded, nothing destroyed. No new features.
+
+- [x] **S1 · Bound the stream proxy** — M — *done 2026-08-13*
+  Added `delete_segments` + `hls_delete_threshold 6` to the HLS flags, capped concurrent streams at
+  `MAX_ACTIVE_STREAMS` (default 6, env-overridable) with LRU eviction of the least-recently-touched
+  idle session, added a mid-run orphan directory sweep on the existing 10s cleanup tick.
+  *Fixes D2, D3.* → `src/services/stream.ts`, `src/services/stream-limits.ts`, `src/server.ts`
+  - [x] A four-hour session holds a bounded number of `.ts` files
+        — verified empirically: 40s live run retains 5 segments vs 40 on the old flags
+  - [x] Requesting stream N+1 past the cap evicts the oldest idle stream, never the one being watched
+        — `selectStreamToEvict` refuses to evict anything touched in the last 15s; a full house
+        returns 503 `STREAM_LIMIT` rather than cutting off a viewer
+  - [x] Killing the process leaves no orphan directories after next boot
+        — boot purge already existed in `db.ts`; added `sweepOrphanDirs()` so directories orphaned
+        while the server keeps running are reclaimed within 10s of passing a 60s grace period
+
+- [x] **S2 · Harden recording file access and add retention** — M — *done 2026-08-13*
+  One resolver (`resolveRecordingPath`) for all three recording routes; rejects any input carrying a
+  directory component rather than normalising it away. Retention policy engine with four modes,
+  defaulting to **30-day age expiry** (user decision, 2026-08-13). Free-space floor checked at both
+  schedule time and record time. Storage gauge now reports the volume.
+  *Fixes D6.* → `src/server.ts`, `src/recorder.ts`, `src/services/recording-storage.ts`, `dvr.component.*`
+  - [x] Encoded traversal returns 400 on read and delete
+        — verified against a live server: `..%2f`, `%2e%2e%2f`, nested paths and suffix tricks all 400
+        on `/files/recordings/`, `/api/recordings/` and `/api/dvr/stream/`; legitimate filenames still 200
+  - [x] Scheduling below the free-space floor fails at schedule time with a clear reason
+        — `POST /api/dvr` returns 507 `INSUFFICIENT_STORAGE`; `runRecordingSession` re-checks and marks
+        the row failed with the shortfall rather than spawning ffmpeg onto a full disk
+  - [x] Retention prunes oldest-completed first and logs what it removed
+        — only `completed` rows with a file are ever eligible; scheduled/in-flight/failed are excluded
+
+  **Found during S2:** the hardened `/files/recordings/:filename` route was being shadowed by
+  `app.use('/files', express.static(DB_DIR))` registered earlier in the file — `express.static`
+  resolves `recordings/../local.db` *inside its own root* and served the database with a 200.
+  Fixed by registering the validated route ahead of the static mount. **D7 is confirmed exploitable
+  and still open:** `/files/local.db` remains directly downloadable. S7 owns it.
+
+  Retention settings (all optional, defaults shown): `dvr_retention_mode=age`,
+  `dvr_retention_days=30`, `dvr_size_budget_gb=50`, `dvr_min_free_gb=2`.
+  Modes: `age` · `size` · `low-space` · `off`.
+
+- [x] **S3 · Scoped reset that preserves the collection layer** — M — *done 2026-08-13*
+  Four scopes (`guide` / `user` / `collection` / `all`), each truncating a declared table set in place.
+  The database file is never unlinked. `GET /api/reset/preview?scope=` returns row and byte counts
+  before anything is destroyed; the dashboard now opens a scope picker showing those counts instead of
+  a native confirm. Refuses with 409 while a sync is running.
+  *Fixes D1.* → `src/server.ts`, `src/services/reset-scopes.ts`, `dashboard.component.*`
+  - [x] Reset user data leaves `epg_sources`, `epg_source_channels`, `iptv_org_map` and both reliability tables intact
+        — verified live: after `scope=user`, channels/settings/programs 0 while map/src/site/tvmaze all retained
+  - [x] A post-reset sync completes without re-downloading the iptv-org archive
+        — `iptv-org-epg/` survives `guide` and `user`; only `collection` and `all` remove it
+  - [x] Every table in the live schema belongs to exactly one declared scope
+        — `checkScopeCoverage()` asserts it in tests against all 21 tables, and runs at boot to warn
+        if a newly added table is unclassified
+  - [x] The server keeps serving without a restart
+        — `/api/health` 200 after reset, and a subsequent config write lands in the live file
+        (inode unchanged), proving the unlinked-inode bug is gone
+
+  Validated in a real browser: `e2e/reset-scopes.spec.ts`, 5 tests, all passing against the built
+  Angular app — scope options, pre-flight counts, scope switching, cancel-issues-no-request, and
+  confirm-leaves-server-serving.
+
+  **Found by visual inspection (agent-browser), invisible to both suites:**
+  1. The modal shipped with **no CSS at all** — the new `.reset-*` classes had no rules, and Angular
+     scopes component styles so the `.modal-header` / `.modal-actions` / `.close-modal-btn` rules from
+     other components never applied. DOM assertions passed the whole time.
+  2. Once styled, the action buttons **overlapped the preview list by 52px**. Global `.modal-content`
+     makes the element a scroll container (`max-height: 85vh; overflow-y: auto`); combined with
+     `flex-direction: column`, children default to `flex-shrink: 1`, so the preview panel was squashed
+     below its content height and its list overflowed onto the buttons. Fixed with
+     `.reset-modal > * { flex-shrink: 0 }` — measured −72px (clearance) after.
+
+- [x] **S4 · Drain on shutdown** — S — *done 2026-08-13*
+  Five-step drain: stop schedulers and cancel the pipeline → close the HTTP server → SIGINT active
+  recorders and wait for finalisation → kill transcodes → close the database. Unref'd hard-kill timer
+  at `SHUTDOWN_GRACE_MS` (default 30s) so a stop can never hang.
+  *Fixes D8.* → `src/server.ts`, `src/recorder.ts`
+  - [x] `docker stop` during a recording produces a playable file, not a recovered `.part`
+        — end-to-end test against a live HLS source: recorded ~2.5 min, sent SIGTERM mid-capture, got
+        `status=completed`, a single 2.7 MB `.mp4`, no `.part` left, and `ffmpeg -f null -` full decode
+        exit 0 (h264 320x240, 151.9s)
+  - [x] Shutdown completes within the grace period every time
+        — exited in 2s against a 30s grace
+
+  **Also fixed:** `mergeRecordingParts()` spawned the concat and returned immediately, so awaiting it
+  never waited for the merge. Now resolves on the concat's `close`/`error` — without this the drain
+  would have reported success while the output file was still being written.
+  Added `beginRecorderShutdown()` so a dying ffmpeg during shutdown salvages what was captured instead
+  of scheduling a retry into a closing process.
+
+### Wave 2 — Make identity real
+> One auth model, enforced the same way on every surface.
+
+- [x] **S5 · Durable sessions with expiry** — M — *done 2026-08-14*
+  Sessions persist in `admin_sessions`, **stored hashed** (sha256) so a database read cannot hand over
+  live sessions. In-memory index keeps the hot path a map lookup. TTL default 168h
+  (`SESSION_TTL_HOURS`), swept at boot and hourly. Constant-time password compare via length-safe
+  hashing. Per-IP login throttle (8 failures / 15 min, then 429 + `Retry-After`).
+  *Fixes D5.* → `src/server.ts`, `src/db.ts`, `src/services/sessions.ts`
+  - [x] A restart does not log anyone out
+        — same token after restart: `/api/config` 200, `/api/auth/status` `{authenticated:true}`
+  - [x] Tokens stop working after the TTL and are removed from storage
+        — expired row → 401, and 0 rows left after the boot sweep
+  - [x] Repeated bad passwords are throttled
+        — attempts 1–8 return 401, 9+ return 429 with `Retry-After: 900`; the correct password is also
+        refused while blocked, and existing sessions keep working throughout
+
+  Weak-password warning fires at boot when `ADMIN_PASSWORD` is a default, to both the log stream and
+  stderr. **Note:** any `emitLog` before `tui.init()` is never rendered — that is why the original
+  "Initializing database…" line has never appeared either. Worth a cleanup in S14.
+
+  New table `admin_sessions` is classified in a new **SYSTEM** reset class, cleared only by `all` —
+  clearing it during "reset my data" would sign the admin out mid-flow and read as a bug.
+
+- [ ] **S6 · One HTTP path in the client** — S
+  An Angular `HttpInterceptor` attaches the token and handles 401 centrally — clear session, toast
+  "Session expired, sign in again", route to login. Strip the 45 hand-rolled `authHeaders()` calls.
+  → `client/src/app/services/`, `app.config.ts`
+  - [ ] No component calls `authHeaders()` directly
+  - [ ] An expired session produces one visible prompt, not silent blank panels
+  - [ ] `getRecordings()` and `getActiveRecordings()` return data
+
+- [x] **S7 · Draw the viewer / admin line** — M — *done 2026-08-13, pulled forward*
+  Replaced `express.static(DB_DIR)` with three explicit mounts: `/files/streams` (viewer),
+  `/files/recordings/:filename` via the validated resolver (viewer), `/files/iptv-org-playlists`
+  behind `requireAuth` (admin). Everything else under `/files` 404s. Removed the public
+  `/api/debug-channels`. Favourites and hidden channels are viewer scope in both directions.
+  *Fixes D7.* → `src/server.ts`, `watch.component.ts`, `dvr.component.ts`, `settings.component.html`
+  - [x] Reads and writes of the same resource share one auth rule
+        — favourites/hidden verified anonymously: GET 200, POST 200, read-back `["c1"]`, DELETE 200
+  - [x] `local.db` is not fetchable over HTTP
+        — `/files/local.db`, `-wal`, `-shm`, `http-cache/*`, `epg.xml`, `playlist.m3u` and
+        `/files/../local.db` all 404 anonymously; body is `{"error":"Not found"}`
+  - [x] Any denied action shows the reason instead of being swallowed
+        — `describeApiError()` maps 401/403 → "Sign in on the Admin page to schedule server
+        recordings", 507 → the disk shortfall, 409 → already scheduled
+
+  **Scope decisions taken:**
+  - Viewer scope: guide, categories, programmes, stream + keepalive, system recordings list,
+    `/playlist.m3u` and `/epg.xml` (the documented Plex/Jellyfin integration), favourites, hidden.
+  - Admin scope: all configuration, channel management, sync, DVR scheduling, metadata, sources, reset.
+  - **Deviation from the original slice text:** keepalive stays viewer scope. Requiring a session
+    would break anonymous watching, which is the product's core use case; the real mitigation for
+    "anyone can hold a transcode open" is S1's concurrency cap and idle eviction, which is in place.
+  - Settings' export URLs corrected to `/playlist.m3u` and `/epg.xml` — the old `/files/...` copies
+    would have 404'd under the new mounts (and `/files/guide.xml` never existed at all).
+
+### Wave 3 — Source acquisition layer
+> Sources must be honest and extensible before the UI can show them.
+> Full design: see `docs/source-architecture` notes and the published architecture doc.
+
+- [ ] **S15 · Source registry and descriptor model** — M
+  Widen `epg_sources` into `sources` with kind, capabilities and descriptor config. Add staging
+  tables, secrets table, per-source health recording. Backfill existing rows as `scraper-repo` and
+  existing `source_url` values as generated `m3u` descriptors.
+  *Fixes R3, R6.* → `src/db.ts`, `src/services/sources/registry.ts`
+  - [ ] Every existing source and playlist survives migration as a descriptor
+  - [ ] Status and error are recorded per source from real outcomes
+  - [ ] Credentials never appear in API responses or logs
+
+- [ ] **S16 · Adapter contract and acquisition core** — L
+  The contract, the shared HTTP client (conditional GET, byte caps, timeouts, backoff), the
+  normalizer, and stage-and-swap. Port `scraper-repo`, `m3u` and `bundle` onto it so current behaviour
+  runs through the new path unchanged. Retire the triplicated FAST preset list.
+  *Fixes R4.* → `src/services/sources/`, `iptv-org.ts`, `server.ts`
+  - [ ] A full sync produces the same result as before, through adapters
+  - [ ] A failed catalogue sync leaves the previous catalogue intact
+  - [ ] An unchanged feed refreshes with a 304 and no re-parse
+  - [ ] FAST presets exist in exactly one place
+
+- [ ] **S16b · Direct XMLTV ingestion** — M
+  Implement the `xmltv` adapter on the dormant `processEpg` streaming parser. Register EPGShare 01's
+  ten feeds in the built-in catalogue. Merge direct-feed guide data with scraped data under the
+  conflict rules.
+  *Fixes R1, R2.* → `src/services/sources/adapters/xmltv.ts`, `src/services/epg.ts`
+  - [ ] A channel with no scraper coverage gets guide data from a direct feed
+  - [ ] Programmes are attributable to the feed that supplied them
+  - [ ] Disabling a feed removes only its programmes
+
+- [ ] **S16c · Xtream and file adapters** — L
+  Panel API adapter — categories, live streams, guide, credentialed and token-aware — plus the upload
+  adapter for local M3U/XMLTV.
+  → `src/services/sources/adapters/xtream.ts`, `adapters/file.ts`
+  - [ ] A portal URL plus credentials yields both lineup and guide
+  - [ ] Rotated stream tokens are re-resolved at playback and record time
+  - [ ] An uploaded file behaves identically to a fetched one
+
+- [ ] **S17 · Honest grab accounting** — S
+  Count only what is actually queued. Increment `totalToGrab` after source resolution; report ids with
+  no grab-capable source as a distinct "no source" outcome. Stop feeding raw `tvg_id` into the queue.
+  *Fixes R5.* → `src/services/pipeline.ts`
+  - [ ] The grab phase reaches 100% and renders complete on every successful sync
+  - [ ] Channels with no available source are reported and countable
+
+- [ ] **S18 · Sources screen with probe-first add flow** — M
+  One screen for both source families. Add by pasting a URL or portal details; probe reports what was
+  found and the user confirms against real numbers. Per-source health, coverage, priority, cadence,
+  enable/disable, descriptor import/export.
+  → `client/src/app/admin/sources/`, `api.service.ts`, `app.routes.ts`
+  - [ ] Adding any supported source needs no code change
+  - [ ] Probe results are shown before anything is written
+  - [ ] A failing source is visibly failing with its reason
+  - [ ] A configuration can be exported and restored
+
+### Wave 4 — Make every control do something
+> Close the gap between what the UI offers and what the system does.
+
+- [ ] **S8 · Series Pass end to end** — L
+  Call `autoScheduleSeriesRules()` from the scheduler tick and after every sync; fix its query to
+  respect `manual_overrides`; send `record_series` from both DVR and Watch; add the missing client
+  methods and a rules management panel.
+  *Fixes D4.* → `src/recorder.ts`, `api.service.ts`, `dvr.component.*`, `watch.component.ts`
+  - [ ] A rule created today schedules episodes that arrive in tomorrow's guide
+  - [ ] Rules are listable and deletable from the UI
+  - [ ] Re-running the pass never double-books an episode
+  - [ ] Rules work on channels mapped by manual override
+
+- [ ] **S9 · DVR lifecycle correctness** — M
+  Mark past-due schedules as missed, add configurable pre/post padding, surface `error_message`,
+  classify retries by failure type, keep `.part` files when concatenation fails.
+  → `src/recorder.ts`, `dvr.component.html`
+  - [ ] A missed window reports "missed", never "failed: output file not found"
+  - [ ] Padding is honoured on both ends
+  - [ ] Every failed row shows a human-readable cause
+
+- [ ] **S10 · One front door for background work** — L
+  Every mutating background action behind a single job manager with a real queue. Report the actual
+  cron cadence from configuration.
+  → `src/job.ts`, `src/server.ts`, `src/services/pipeline.ts`
+  - [ ] Two conflicting triggers queue instead of overlapping
+  - [ ] Every background action appears in job status and can be cancelled
+  - [ ] Reported schedule matches the configured schedule
+
+- [ ] **S19 · Close the settings loop** — S
+  Accept and persist every field Settings sends, starting with `channel_numbering_mode` and
+  `custom_channel_ranges`. Fix the guide output URL. Align the numbering default. Add the language
+  selector. Collapse the triplicated FAST preset list.
+  → `src/server.ts`, `settings.component.*`, `playlist-metadata.ts`
+  - [ ] Every control round-trips: change, save, reload, still changed
+  - [ ] Both copied output URLs resolve
+  - [ ] Presets come from one place
+
+- [ ] **S20 · One DVR, two presentations** — L
+  Collapse the duplicate implementations into a shared DVR service plus one component rendering admin
+  and overlay modes.
+  → `dvr.component.*`, `watch.component.ts`, `services/dvr.service.ts`
+  - [ ] Scheduling logic exists once
+  - [ ] Both surfaces produce identical results for the same programme
+  - [ ] Failure reasons render wherever a recording is listed
+
+- [ ] **S21 · Channel Manager at real scale** — M
+  Replace the 500-row truncation with virtual scrolling or server-side paging, debounce EPG search,
+  scope search results to the requesting row, precompute match badges, resolve the two edit paths.
+  *Fixes X6.* → `channel-manager.component.*`
+  - [ ] Every channel is reachable at 2,000 channels
+  - [ ] EPG search issues one request per pause, not per keystroke
+  - [ ] Expanding a row never shows another row's candidates
+
+### Wave 5 — Pay down the drift
+> Make the code, the config, and the docs agree.
+
+- [ ] **S11 · Atomic, deterministic exports** — S
+  Temp file plus rename for both exports, `ORDER BY` on the paginated programme query, bind the
+  channel id list, drop the `[DEBUG]` lines from the user log.
+  *Fixes D9.* → `src/services/epg.ts`
+  - [ ] Fetching `/epg.xml` during a rebuild always returns a complete document
+  - [ ] Programme count in the file matches the count in the database
+
+- [ ] **S12 · Non-destructive playlist import** — M
+  Import into a staging set and swap on success. Stream-parse the M3U. Make `/api/sync-playlist`
+  operate on every configured playlist.
+  → `src/server.ts`, `src/services/playlist-import.ts`
+  - [ ] Killing the process mid-import leaves the old channel set intact
+  - [ ] Reload refreshes all configured playlists
+  - [ ] Peak memory is flat with respect to playlist size
+
+- [ ] **S13 · Consolidate configuration** — M
+  Collapse `/api/settings` and `/api/config` into one typed, validated, defaulted contract. Retire the
+  dual `playlist_url` write. Promote operational constants into settings.
+  → `src/server.ts`, `settings.component.*`
+  - [ ] One endpoint, one shape, defaults applied in one place
+  - [ ] Invalid values rejected with a field-level message
+  - [ ] Changing sync cadence takes effect without a restart
+
+- [ ] **S24 · Make the e2e suite mean something** — M
+  `e2e/ui.spec.ts` fails wholesale on a clean checkout — stale assertions from before the rename, and
+  an assumption that channels are already seeded. A suite that fails either way gates nothing, so
+  every future slice ships without UI regression cover. Fix the assertions, add a seeded fixture so
+  data-dependent tests have data, and wire e2e into CI (currently only unit tests run).
+  *Fixes X7.* → `e2e/`, `.github/workflows/ci.yml`, `playwright.config.ts`
+  - [ ] `npx playwright test` passes from a clean checkout against a seeded fixture
+  - [ ] CI runs e2e and fails the build on regression
+  - [ ] No test depends on data a previous test created
+
+- [ ] **S14 · Truth pass on repo and docs** — S
+  Delete the unserved `src/public/` legacy UIs. Correct the README API table. Publish port 4000 in
+  compose, probe both ports in the healthcheck, remove build artefacts from version control.
+  → `README.md`, `Dockerfile`, `docker-compose.yml`, `.gitignore`
+  - [ ] Every endpoint in the README resolves as documented
+  - [ ] No unreachable UI code ships in the image
+  - [ ] The healthcheck fails when either process is down
+
+- [ ] **S22 · Design system and accessibility pass** — L
+  Label every control, give modals dialog semantics with focus trapping and Escape, make clickable
+  cards real buttons, visible focus throughout. Self-host the three fonts in use. Add a light theme
+  driven by `prefers-color-scheme` with manual override, applied during SSR. Retire inline styles,
+  settle on one icon system.
+  *Fixes X1, X2, X3, X5.* → `styles.css`, `index.html`, all templates, `theme.service.ts`
+  - [ ] Every interactive element is keyboard reachable with a visible focus ring
+  - [ ] Modals trap focus, close on Escape, and announce themselves
+  - [ ] The UI renders correctly with no external network access
+  - [ ] Light and dark both pass contrast on text and semantic colours
+
+- [ ] **S23 · Feedback that survives long enough to act on** — M
+  Errors persistent and dismissible, successes transient; pause on hover, cap the queue, announce
+  through a live region. Replace the 12 native confirms with the modal pattern. Disable job-triggering
+  actions while a job runs and say why.
+  *Fixes X4.* → `toast.service.ts`, `toast-container.component.ts`, `dashboard.component.*`
+  - [ ] An error raised while the user is away is still readable when they return
+  - [ ] No native browser dialogs remain
+  - [ ] Actions unavailable during a sync look unavailable and explain themselves
+
+---
+
+## Source acquisition reference
+
+Kept here so the adapter work in Wave 3 has its contract to hand.
+
+### Adapter kinds
+
+| Kind | Speaks | Provides | State |
+| :--- | :--- | :--- | :--- |
+| `m3u` | M3U / M3U8 over HTTP or file | channels | extract existing |
+| `xmltv` | XMLTV, plain or gzipped | guide | connect `processEpg` |
+| `bundle` | Zip/tar of many playlists or guides | channels or guide | extract existing |
+| `scraper-repo` | Site configs via `epg-grabber` | guide | extract existing |
+| `xtream` | Xtream Codes panel API | channels **and** guide | new |
+| `file` | Uploaded M3U or XMLTV | channels or guide | new |
+
+### Contract
+
+```ts
+interface SourceAdapter {
+  kind: SourceKind
+  probe(d: SourceDescriptor, ctx: Ctx): Promise<ProbeResult>
+  syncCatalog(d: SourceDescriptor, ctx: Ctx): Promise<CatalogResult>
+  fetchLineup?(d: SourceDescriptor, ctx: Ctx): AsyncIterable<ChannelRow>
+  fetchGuide?(d: SourceDescriptor, refs: ChannelRef[], w: Window, ctx: Ctx): AsyncIterable<ProgrammeRow>
+}
+```
+
+### Lifecycle
+
+`probe` → `register` → `sync catalogue into staging` → `swap and record` → `refresh conditionally on
+schedule` → `resolve conflicts by provenance`
+
+### Reset data classification (S3)
+
+| Wiped as user data | Preserved as collection data |
+| :--- | :--- |
+| `channels`, `manual_overrides`, `metadata_overrides` | `epg_sources`, `epg_source_channels` |
+| `channel_favorites`, `channel_hidden` | `iptv_org_map` |
+| `scheduled_recordings`, `dvr_series_rules`, recording files | `site_status`, `channel_site_status` |
+| `epg_programs`, `epg_channels` | `tvmaze_cache`, `metadata_cache`, `episode_metadata_cache` |
+| `settings` | `iptv-org-epg` / `iptv-org-playlists` archives |
+| generated `playlist.m3u` / `epg.xml`, stream scratch | `sync_jobs` |
+
+---
+
+## Validation tooling
+
+| Tool | Use | Status |
+| :--- | :--- | :--- |
+| Jest | Pure logic — policy helpers, scope coverage, path resolution | 215 tests, green |
+| Playwright | DOM-level browser assertions, runs in CI | 16 tests, green (`reset-scopes`, `api`) |
+| agent-browser | Visual and layout inspection — catches what DOM assertions can't | installed at `~/.local/share/pnpm/agent-browser` |
+
+`agent-browser` earned its place immediately: in S3 it found two defects that Jest and Playwright both
+passed straight through — a completely unstyled modal, then a 52px overlap between the action buttons
+and the preview list. Use it on any slice that changes UI. Note the SSR server caches the bundle in
+memory, so **restart it after `ng build`** or you will screenshot the previous build.
+
+## Log
+
+| Date | Slice | Note |
+| :--- | :--- | :--- |
+| 2026-08-13 | — | Baseline audits complete. 24 slices across 5 waves. |
+| 2026-08-13 | S1 | Done. Segment retention bounded (40 → 5 in a 40s control test), stream cap with idle-only LRU eviction, orphan sweep. 6 new unit tests; suite 189 → 195, all green. |
+| 2026-08-13 | S2 | Decision: retention defaults to 30-day age expiry. Done. Traversal closed on all three recording routes and verified live; uncovered that `express.static` was shadowing the recordings route and serving `local.db` — route reordered, D7 confirmed exploitable and left to S7. 10 new unit tests; suite 195 → 205, all green. |
+| 2026-08-13 | S3 | Decision applied: user data vs collection data split. Done. 4 scopes, in-place truncation, pre-flight preview, 409 during sync. Verified live that collection data survives a user reset and the server keeps serving. 10 new unit tests + 5 Playwright browser tests; unit suite 205 → 215. |
+| 2026-08-13 | — | Found `e2e/ui.spec.ts` fails on a clean checkout with and without changes (stale post-rename assertions + assumes seeded data). Logged as X7, new slice S24. |
+| 2026-08-13 | S3 | agent-browser visual pass found the reset modal had no CSS, then a 52px button/list overlap from flex-shrink inside a scroll container. Both fixed and re-verified by measurement. |
+| 2026-08-13 | S4 | Done. Five-step drain with hard-kill fallback. Verified end-to-end: SIGTERM mid-recording of a live HLS source yields a completed, fully decodable MP4 in 2s. Also fixed `mergeRecordingParts` resolving before the concat finished. |
+| 2026-08-13 | S7 | Done, pulled forward at user request. `/files` scoped to three explicit mounts; `local.db` no longer reachable (verified anonymously). Favourites/hidden made symmetric. Denied actions now name the reason. |
+| 2026-08-14 | S5 | Done. Sessions persisted hashed with a 168h TTL, boot + hourly sweep, constant-time compare, per-IP throttle. Verified live: survives restart, expires from storage, throttles at 8 failures. 15 new unit tests; suite 215 → 230. |
+| 2026-08-14 | S6 | Done. One interceptor replaces 44 hand-rolled header calls. Browser-verified expiry prompt. Found and fixed two of my own bugs: the shell snapshotted auth state once, and a flag was set after the subject that read it. |
+
