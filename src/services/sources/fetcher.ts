@@ -147,6 +147,66 @@ export async function fetchSource(url: string, options: FetchOptions = {}): Prom
     throw lastError || new Error(`Failed to fetch ${url}`);
 }
 
+export interface StreamResult {
+    notModified: boolean;
+    status: number;
+    /** Chunks as they arrive. Absent on a 304. */
+    stream?: NodeJS.ReadableStream;
+    etag?: string | null;
+    lastModified?: string | null;
+}
+
+/**
+ * Fetch without buffering the body.
+ *
+ * The buffering `fetchSource` is right for documents that have to be parsed
+ * whole (an XMLTV feed, a zip). For line-oriented formats it makes peak memory
+ * scale with file size, so this hands back the stream instead. Gzip is
+ * decompressed inline.
+ */
+export async function fetchSourceStream(url: string, options: FetchOptions = {}): Promise<StreamResult> {
+    const response = await axios.get(url, {
+        responseType: 'stream',
+        timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+        decompress: true,
+        validateStatus: status => (status >= 200 && status < 300) || status === 304,
+        headers: {
+            'User-Agent': USER_AGENT,
+            'Accept-Encoding': 'gzip, deflate',
+            ...buildConditionalHeaders({ etag: options.etag, lastModified: options.lastModified }),
+            ...(options.headers || {})
+        }
+    });
+
+    const etag = headerValue(response.headers, 'etag');
+    const lastModified = headerValue(response.headers, 'last-modified');
+
+    if (isNotModified(response.status)) {
+        return { notModified: true, status: 304, etag, lastModified };
+    }
+
+    let stream: NodeJS.ReadableStream = response.data;
+
+    // A .gz payload is separate from transport encoding, which axios already handled.
+    if (options.gzip) {
+        stream = stream.pipe(zlib.createGunzip());
+    }
+
+    // Enforce the byte cap as bytes arrive — Content-Length can be absent or lie.
+    const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
+    if (maxBytes > 0) {
+        let received = 0;
+        stream.on('data', (chunk: Buffer) => {
+            received += chunk.length;
+            if (exceedsByteCap(received, maxBytes)) {
+                (stream as any).destroy?.(new Error(`Response exceeded the ${maxBytes} byte cap`));
+            }
+        });
+    }
+
+    return { notModified: false, status: response.status, stream, etag, lastModified };
+}
+
 function headerValue(headers: any, name: string): string | null {
     if (!headers) return null;
     const value = headers[name] ?? headers[name.toLowerCase()];

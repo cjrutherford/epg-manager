@@ -8,7 +8,7 @@
 
 import { emitLog } from '../../events';
 import { getAdapter, registerAdapter, registeredKinds, type AdapterContext } from './adapter';
-import { fetchSource, loadValidators, saveValidators } from './fetcher';
+import { fetchSource, fetchSourceStream, loadValidators, saveValidators } from './fetcher';
 import { m3uAdapter } from './adapters/m3u';
 import { bundleAdapter } from './adapters/bundle';
 import { scraperRepoAdapter } from './adapters/scraper-repo';
@@ -64,6 +64,26 @@ export function createAdapterContext(sourceKey: string, options: ContextOptions 
                 : { etag: null, lastModified: null };
 
             const result = await fetchSource(url, {
+                ...fetchOptions,
+                etag: fetchOptions.etag ?? stored.etag,
+                lastModified: fetchOptions.lastModified ?? stored.lastModified
+            });
+            notModified = result.notModified;
+
+            if (useValidators && !result.notModified) {
+                await saveValidators(sourceKey, {
+                    etag: result.etag ?? null,
+                    lastModified: result.lastModified ?? null
+                });
+            }
+            return result;
+        },
+        fetchStream: async (url, fetchOptions = {}) => {
+            const stored = useValidators
+                ? await loadValidators(sourceKey)
+                : { etag: null, lastModified: null };
+
+            const result = await fetchSourceStream(url, {
                 ...fetchOptions,
                 etag: fetchOptions.etag ?? stored.etag,
                 lastModified: fetchOptions.lastModified ?? stored.lastModified

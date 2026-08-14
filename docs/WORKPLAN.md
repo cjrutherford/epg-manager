@@ -3,7 +3,7 @@
 Single source of truth for the remediation effort. Consolidates the process audit, the UI &
 source-retrieval audit, and the source acquisition architecture into one tracked backlog.
 
-**Status:** Waves 1–2 complete, wave 3 in progress — 10 of 25 done, S12 at 2 of 3
+**Status:** Waves 1–2 complete, wave 3 in progress — 10 of 26 done, S12 and S25 partial
 **Suite score at baseline:** 2.5 / 5 (process) · 2.3 / 5 (UI)
 **Last updated:** 2026-08-13
 
@@ -335,13 +335,38 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
 
   Verified separately with a fresh context that a genuine second cycle still gets its 304.
 
-- [ ] **S16c · Xtream and file adapters** — L
-  Panel API adapter — categories, live streams, guide, credentialed and token-aware — plus the upload
-  adapter for local M3U/XMLTV.
-  → `src/services/sources/adapters/xtream.ts`, `adapters/file.ts`
-  - [ ] A portal URL plus credentials yields both lineup and guide
-  - [ ] Rotated stream tokens are re-resolved at playback and record time
-  - [ ] An uploaded file behaves identically to a fetched one
+- [~] **S25 · Streaming playlist parse** — M — *2 of 3 criteria met, 2026-08-14*
+  A line-based streaming M3U parser plus a streaming HTTP fetch, so neither the body nor the parsed
+  array is held whole. Replaces `iptv-playlist-parser` on the import path.
+  → `src/services/sources/m3u-stream.ts`, `fetcher.ts`, `adapters/m3u.ts`
+  - [x] The streaming parser agrees with the library it replaces
+        — equivalence tested on a fixture covering quoted commas in `group-title`, commas in channel
+        names, missing attributes, unicode, and `#EXTGRP`; plus a generated 1,000-channel playlist
+        where name, url, tvg-id and group all match exactly
+  - [x] Fetch and parse no longer scale with playlist size
+        — 50,000 channels went from **+68.6 MB to +17.5 MB** of heap, a 75% reduction. 150,000
+        channels import successfully at +32.3 MB into an empty database.
+  - [ ] **Peak memory is strictly flat** — **not met, and the residual is now identified.**
+        The same 150,000-channel playlist costs +32.3 MB against an empty database and +54.4 MB
+        against one already holding 50,150 channels. What still scales is the in-memory preservation
+        index — the existing-channel lookup maps and the used-id set that avoid collisions and keep
+        user state (enabled, EPG match, channel number). The parse itself is flat.
+        **To close it:** stage raw rows first, then do preservation and collision handling as a SQL
+        join over `channels_staging`, so SQLite holds the index instead of the heap. That is a
+        behavioural change to id assignment and deserves its own slice rather than being bolted on.
+
+- [ ] **S16c · File adapter** — M — *scope reduced, see note*
+  Upload adapter for local M3U/XMLTV — air-gapped setups, hand-curated lineups, testing.
+  → `src/services/sources/adapters/file.ts`
+
+  **Xtream deferred.** Originally bundled here. Two arguments against building it now: the existing
+  `m3u` and `xmltv` adapters already cover the use case, because Xtream panels expose
+  `get.php?...&type=m3u_plus` and `xmltv.php` endpoints that are an ordinary playlist and an
+  ordinary guide feed — a user with a portal can add both today, with credentials redacted by S15.
+  A bespoke adapter would add only category metadata, token refresh and a nicer add-flow. Against
+  that, it is the one kind needing stored credentials, and the protocol's ecosystem skews heavily
+  toward unlicensed resale. Not worth the surface area for the marginal gain. Revisit if a concrete
+  need appears.
 
 - [ ] **S17 · Honest grab accounting** — S
   Count only what is actually queued. Increment `totalToGrab` after source resolution; report ids with
@@ -437,12 +462,8 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
   - [x] Reload refreshes all configured playlists
         — with two playlists configured, reload reports "Reloading 2 playlist(s)" and returns 350
         channels; previously it refreshed only the legacy single `playlist_url`
-  - [ ] **Peak memory is flat with respect to playlist size** — **not met, measured.**
-        150 channels costs +0.5 MB heap; 50,000 channels (a 6.3 MB file) costs **+68.6 MB**.
-        Streaming rows into staging removed the second accumulation, but `iptv-playlist-parser`
-        materialises the whole playlist and the adapter buffers the whole body. Making this flat
-        needs a line-based streaming M3U parser and a streamed HTTP body — worth its own slice
-        rather than a risky swap of a battle-tested parser here.
+  - [~] **Peak memory is flat with respect to playlist size** — **substantially improved in S25,
+        still not strictly flat.** See S25 for the measurements.
 
   **A test of mine was wrong before it was right:** the first mid-import kill appeared to pass, then
   a later reading showed 50,150 channels. `npx ts-node` spawns several matching processes and
@@ -576,4 +597,6 @@ memory, so **restart it after `ng build`** or you will screenshot the previous b
 | 2026-08-14 | S16 | Done. m3u/bundle/scraper-repo implemented behind the contract; playlist import runs through the m3u adapter and was verified live (250 in, 300 after a change). Caught and fixed a regression where a 304 wiped all channels. 13 new unit tests; suite 275 → 288. |
 | 2026-08-14 | S12 | Pulled forward. Staging-and-swap for playlist imports; reload covers every configured playlist. Mid-import kill verified (after correcting a flawed test that killed an npx wrapper). Memory criterion measured and NOT met: +68.6 MB for 50k channels — needs a streaming parser. |
 | 2026-08-14 | S16b | Done. xmltv adapter with a streaming SAX parser and gzip; 2,400 programmes ingested from a gzipped feed with full provenance. Found and fixed two fetch-ordering bugs: probe poisoned the conditional cache, and syncCatalog starved fetchGuide. 14 new unit tests; suite 288 → 302. |
+| 2026-08-14 | S25 | New slice. Streaming M3U parser + streaming fetch, proven equivalent to the library it replaces. 50k channels: +68.6 MB -> +17.5 MB. Strictly-flat criterion still unmet; residual isolated to the in-memory preservation index, with a SQL-join path proposed. 19 new unit tests; suite 302 -> 321. |
+| 2026-08-14 | S16c | Scope reduced to the file adapter. Xtream deferred: m3u + xmltv already cover portals via their get.php/xmltv.php endpoints, so a bespoke adapter adds little for the credential surface it costs. |
 

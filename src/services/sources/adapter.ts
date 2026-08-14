@@ -61,6 +61,17 @@ export interface Window {
 export interface AdapterContext {
     /** Shared HTTP client: conditional GET, byte caps, timeouts, backoff. */
     fetch: SourceFetcher;
+    /**
+     * Streaming variant, for line-oriented formats that must not be buffered.
+     * Same caching and validator handling as `fetch`.
+     */
+    fetchStream: (url: string, options?: {
+        etag?: string | null;
+        lastModified?: string | null;
+        maxBytes?: number;
+        timeoutMs?: number;
+        gzip?: boolean;
+    }) => Promise<StreamFetchResult>;
     /** Resolved credential for this source, if it has one. */
     credentials?: Record<string, string> | null;
     log: (message: string, level?: 'info' | 'warning' | 'error' | 'success') => void;
@@ -75,6 +86,14 @@ export interface FetchResult {
     etag?: string | null;
     lastModified?: string | null;
     bytes: number;
+}
+
+export interface StreamFetchResult {
+    notModified: boolean;
+    status: number;
+    stream?: NodeJS.ReadableStream;
+    etag?: string | null;
+    lastModified?: string | null;
 }
 
 export interface SourceFetcher {

@@ -11,6 +11,7 @@ import * as path from 'path';
 import { parse } from 'iptv-playlist-parser';
 import { DB_DIR } from '../../../db';
 import type { AdapterContext, ChannelRow, ProbeResult, SourceAdapter } from '../adapter';
+import { iterateLines, parseM3ULines } from '../m3u-stream';
 import type { SourceDescriptor } from '../descriptor';
 
 /** Local `/files/...` urls are read off disk; anything else is fetched. */
@@ -117,14 +118,34 @@ export const m3uAdapter: SourceAdapter = {
         }
     },
 
+    /**
+     * Stream the playlist and yield channels as they parse.
+     *
+     * Nothing accumulates — not the body, not the parsed array — so peak memory
+     * is the same for 250 channels as for 50,000.
+     */
     async *fetchLineup(descriptor, ctx): AsyncIterable<ChannelRow> {
-        const { text, notModified } = await readPlaylistText(descriptor, ctx);
-        if (notModified) {
+        const url = descriptor.fetch.url || '';
+        if (!url) throw new Error('Playlist source has no url');
+
+        if (isLocalFilesUrl(url)) {
+            const localPath = resolveLocalFilesPath(url);
+            const handle = fs.createReadStream(localPath, { encoding: 'utf8' });
+            yield* parseM3ULines(iterateLines(handle as unknown as AsyncIterable<string>));
+            return;
+        }
+
+        const result = await ctx.fetchStream(url, {
+            maxBytes: descriptor.fetch.maxBytes,
+            timeoutMs: descriptor.fetch.timeoutMs,
+            gzip: descriptor.fetch.compression === 'gzip'
+        });
+
+        if (result.notModified || !result.stream) {
             ctx.log(`${descriptor.label}: unchanged since last fetch`, 'info');
             return;
         }
-        for (const row of parsePlaylist(text)) {
-            yield row;
-        }
+
+        yield* parseM3ULines(iterateLines(result.stream as AsyncIterable<Buffer>));
     }
 };
