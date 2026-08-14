@@ -75,10 +75,10 @@
                 <div class="action-title">Rebuild Files</div>
                 <div class="action-desc">Regenerate M3U and XMLTV files</div>
             </div>
-            <div class="glass-card action-card danger-card" (click)="resetSystem()">
+            <div class="glass-card action-card danger-card" (click)="openResetModal()">
                 <div class="action-icon">🚨</div>
-                <div class="action-title text-danger">Full Reset</div>
-                <div class="action-desc">Wipe database, overrides, and generated files</div>
+                <div class="action-title text-danger">Reset Data</div>
+                <div class="action-desc">Choose what to clear — guide, your data, or caches</div>
             </div>
         </div>
     </div>
@@ -174,6 +174,75 @@
                         }
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+    }
+
+    <!-- Reset scope picker -->
+    @if (showResetModal) {
+    <div class="modal-backdrop" (click)="closeResetModal()">
+        <div class="modal-content reset-modal" role="dialog" aria-modal="true" aria-labelledby="reset-title"
+            (click)="$event.stopPropagation()">
+            <div class="modal-header">
+                <h2 id="reset-title">Reset data</h2>
+                <button class="close-modal-btn" (click)="closeResetModal()" aria-label="Close">✕</button>
+            </div>
+
+            <p class="reset-intro">
+                Pick what to clear. Downloaded source catalogues and learned source reliability are kept
+                unless you explicitly choose to rebuild them — that keeps the next sync fast.
+            </p>
+
+            <div class="reset-scopes">
+                @for (option of resetScopeOptions; track option.scope) {
+                <button type="button" class="reset-scope-btn"
+                    [class.selected]="resetScope === option.scope"
+                    [class.danger]="option.danger"
+                    [attr.aria-pressed]="resetScope === option.scope"
+                    (click)="selectResetScope(option.scope)">
+                    <span class="reset-scope-label">{{ option.label }}</span>
+                    <span class="reset-scope-blurb">{{ option.blurb }}</span>
+                </button>
+                }
+            </div>
+
+            <div class="reset-preview">
+                @if (resetPreviewLoading) {
+                <div class="reset-preview-loading"><span class="spinner-sm"></span> Checking what this would remove…</div>
+                } @else if (resetPreview) {
+                <div class="reset-preview-head">
+                    This removes <strong>{{ resetPreview.totalRows | number }}</strong> row{{ resetPreview.totalRows === 1 ? '' : 's' }}
+                    @if (resetPreview.totalBytes > 0) {
+                    <span> and <strong>{{ fmtBytes(resetPreview.totalBytes) }}</strong> of files</span>
+                    }
+                </div>
+                @if (resetPreview.tables.length > 0) {
+                <ul class="reset-preview-list">
+                    @for (row of resetPreview.tables; track row.table) {
+                    <li><code>{{ row.table }}</code> <span>{{ row.rows | number }}</span></li>
+                    }
+                </ul>
+                }
+                @if (resetPreview.paths.length > 0) {
+                <ul class="reset-preview-list">
+                    @for (entry of resetPreview.paths; track entry.name) {
+                    <li><code>{{ entry.name }}</code> <span>{{ fmtBytes(entry.bytes) }}</span></li>
+                    }
+                </ul>
+                }
+                @if (resetPreview.totalRows === 0 && resetPreview.totalBytes === 0) {
+                <div class="reset-preview-empty">Nothing to clear in this scope.</div>
+                }
+                }
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn btn-secondary" (click)="closeResetModal()">Cancel</button>
+                <button class="btn btn-danger" (click)="confirmReset()"
+                    [disabled]="resetPreviewLoading || !resetPreview">
+                    {{ resetScopeOptions[0] ? 'Clear ' + resetScopeLabel(resetScope) : 'Clear' }}
+                </button>
             </div>
         </div>
     </div>

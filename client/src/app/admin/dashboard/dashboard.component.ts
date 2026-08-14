@@ -1,9 +1,16 @@
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef, AfterViewChecked, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ApiService } from '../../services/api.service';
+import { ApiService, ResetPreview, ResetScope } from '../../services/api.service';
 import { SseService } from '../../services/sse.service';
 import { ToastService } from '../../services/toast.service';
 import { Subscription } from 'rxjs';
+
+interface ResetScopeOption {
+    scope: ResetScope;
+    label: string;
+    blurb: string;
+    danger: boolean;
+}
 
 interface SyncStage {
     id: string;
@@ -29,6 +36,38 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
     loading = true;
     syncStarted = false;
     progressCollapsed = true;
+
+    showResetModal = false;
+    resetScope: ResetScope = 'guide';
+    resetPreview: ResetPreview | null = null;
+    resetPreviewLoading = false;
+
+    readonly resetScopeOptions: ResetScopeOption[] = [
+        {
+            scope: 'guide',
+            label: 'Clear guide data',
+            blurb: 'Programme listings and grab history. Channels, recordings and downloaded catalogues are kept.',
+            danger: false
+        },
+        {
+            scope: 'user',
+            label: 'Reset my data',
+            blurb: 'Channels, settings, overrides and recordings. Downloaded catalogues are kept, so the next sync is fast.',
+            danger: true
+        },
+        {
+            scope: 'collection',
+            label: 'Rebuild collection cache',
+            blurb: 'Downloaded catalogues and learned source reliability. Your channels and recordings are kept.',
+            danger: false
+        },
+        {
+            scope: 'all',
+            label: 'Erase everything',
+            blurb: 'Every table and every cached file. The next sync starts from nothing.',
+            danger: true
+        }
+    ];
 
     logs: { message: string; level: string; time: Date }[] = [];
     progressBars: Record<string, { current: number; total: number; message: string; completed: boolean }> = {};
@@ -284,15 +323,56 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
         });
     }
 
-    resetSystem(): void {
-        if (!confirm('WARNING: Are you sure you want to reset the system? This will delete all channels, matched guides, manual overrides, cache, and settings. This action cannot be undone!')) {
-            return;
-        }
+    // ── Reset ───────────────────────────────────
+    openResetModal(): void {
+        this.showResetModal = true;
+        this.resetScope = 'guide';
+        this.loadResetPreview();
+    }
+
+    closeResetModal(): void {
+        this.showResetModal = false;
+        this.resetPreview = null;
+        this.cdr.markForCheck();
+    }
+
+    selectResetScope(scope: ResetScope): void {
+        this.resetScope = scope;
+        this.loadResetPreview();
+    }
+
+    loadResetPreview(): void {
+        this.resetPreviewLoading = true;
+        this.resetPreview = null;
+        this.cdr.markForCheck();
+        this.api.previewReset(this.resetScope).subscribe({
+            next: preview => {
+                this.resetPreview = preview;
+                this.resetPreviewLoading = false;
+                this.cdr.markForCheck();
+            },
+            error: () => {
+                this.resetPreviewLoading = false;
+                this.cdr.markForCheck();
+            }
+        });
+    }
+
+    fmtBytes(bytes: number): string {
+        if (!bytes) return '0 B';
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+        return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+    }
+
+    confirmReset(): void {
+        this.showResetModal = false;
         this.loading = true;
-        this.api.resetSystem().subscribe({
+        this.api.resetSystem(this.resetScope).subscribe({
             next: (res) => {
                 if (res.success) {
-                    this.toast.show('System reset successfully!', 'success');
+                    this.toast.show(`Reset complete — ${this.resetScopeLabel(this.resetScope)} cleared`, 'success');
                     this.syncStarted = false;
                     this.loadData();
                 } else {
@@ -301,10 +381,20 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
                 }
             },
             error: (e) => {
-                this.toast.show('Reset failed: ' + e.message, 'error');
+                // 409 means a sync is running — say so rather than "unknown error"
+                this.toast.show(e?.error?.error || 'Reset failed: ' + e.message, 'error');
                 this.loading = false;
             }
         });
+    }
+
+    resetScopeLabel(scope: ResetScope): string {
+        switch (scope) {
+            case 'guide': return 'guide data';
+            case 'user': return 'your data';
+            case 'collection': return 'collection cache';
+            case 'all': return 'everything';
+        }
     }
 
     formatUptime(seconds: number): string {

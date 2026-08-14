@@ -456,3 +456,206 @@
     padding: 20px;
     font-size: 0.85rem;
 }
+/* ── Reset scope picker ─────────────────────────── */
+.reset-modal {
+    max-width: 620px;
+    width: 90%;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+/*
+ * .modal-content (global) already makes this a scroll container with a
+ * max-height. Combined with flex-direction: column that means children are
+ * shrinkable by default — the preview list gets squashed below its content
+ * height and overflows onto the action buttons. Pin every child at its natural
+ * size and let the container scroll instead.
+ */
+.reset-modal > * {
+    flex-shrink: 0;
+}
+
+.reset-modal .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    border-bottom: 1px solid var(--border-subtle);
+    padding-bottom: 14px;
+}
+
+.reset-modal .modal-header h2 {
+    margin: 0;
+    font-size: var(--text-2xl);
+}
+
+.close-modal-btn {
+    background: none;
+    border: none;
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+}
+
+.close-modal-btn:hover,
+.close-modal-btn:focus-visible {
+    color: var(--text-primary);
+    background: var(--bg-surface-hover);
+}
+
+.reset-intro {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.55;
+    color: var(--text-secondary);
+}
+
+.reset-scopes {
+    display: grid;
+    gap: 10px;
+}
+
+.reset-scope-btn {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    text-align: left;
+    padding: 14px 16px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-inset);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, transform 0.15s;
+}
+
+.reset-scope-btn:hover {
+    border-color: rgba(var(--color-primary-rgb), 0.4);
+    background: var(--bg-surface-hover);
+}
+
+.reset-scope-btn:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+.reset-scope-btn.selected {
+    border-color: var(--color-primary);
+    background: var(--color-primary-dim);
+}
+
+.reset-scope-btn.danger.selected {
+    border-color: var(--color-danger);
+    background: rgba(var(--color-danger-rgb), 0.12);
+}
+
+.reset-scope-label {
+    font-weight: 600;
+    font-size: 0.98rem;
+}
+
+.reset-scope-btn.danger .reset-scope-label {
+    color: var(--color-danger);
+}
+
+.reset-scope-blurb {
+    font-size: 0.83rem;
+    line-height: 1.45;
+    color: var(--text-secondary);
+}
+
+.reset-preview {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--bg-inset);
+    padding: 14px 16px;
+    min-height: 76px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.reset-preview-loading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+}
+
+.reset-preview-head {
+    font-size: 0.92rem;
+    color: var(--text-primary);
+}
+
+.reset-preview-head strong {
+    color: var(--color-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+.reset-preview-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 4px;
+}
+
+.reset-preview-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    font-size: 0.83rem;
+    padding: 4px 0;
+    border-bottom: 1px dashed var(--border-subtle);
+}
+
+.reset-preview-list li:last-child {
+    border-bottom: none;
+}
+
+.reset-preview-list code {
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+    background: none;
+    padding: 0;
+}
+
+.reset-preview-list span {
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+.reset-preview-empty {
+    font-size: 0.88rem;
+    color: var(--text-muted);
+}
+
+.reset-modal .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding-top: 4px;
+}
+
+.reset-modal .btn-danger {
+    background: var(--color-danger);
+    border: 1px solid var(--color-danger);
+    color: #fff;
+    font-weight: 600;
+}
+
+.reset-modal .btn-danger:hover:not(:disabled) {
+    filter: brightness(1.1);
+}
+
+.reset-modal .btn-danger:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

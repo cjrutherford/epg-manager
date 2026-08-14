@@ -26,6 +26,9 @@ export class DvrComponent implements OnInit, OnDestroy {
     showScheduleModal = false;
     storageUsed = 0;
     storageTotal = 1;
+    storageFree = 0;
+    storageRecordings = 0;
+    retention: { mode: string; maxAgeDays: number; minFreeBytes: number } | null = null;
 
     // New recording form
     channels: any[] = [];
@@ -66,7 +69,7 @@ export class DvrComponent implements OnInit, OnDestroy {
         try {
             const [recordings, storage] = await Promise.all([
                 this.api.getDvrSchedules().toPromise().catch(() => []),
-                this.api.getDvrStorage().toPromise().catch(() => ({ usedBytes: 0, totalBytes: 1 })),
+                this.api.getDvrStorage().toPromise().catch(() => null),
                 this.clientRecordings.refresh().catch(() => undefined)
             ]);
             this.recordings = (recordings || []).map((rec: any) => {
@@ -86,9 +89,13 @@ export class DvrComponent implements OnInit, OnDestroy {
                     end_time: endTime
                 };
             });
-            const s = storage as { usedBytes: number; totalBytes: number };
-            this.storageUsed = s.usedBytes;
-            this.storageTotal = s.totalBytes;
+            if (storage) {
+                this.storageUsed = storage.usedBytes;
+                this.storageTotal = storage.totalBytes || 1;
+                this.storageFree = storage.freeBytes ?? 0;
+                this.storageRecordings = storage.recordingsBytes ?? 0;
+                this.retention = storage.retention ?? null;
+            }
         } catch { this.recordings = []; }
         finally {
             this.loading = false;
@@ -277,7 +284,13 @@ export class DvrComponent implements OnInit, OnDestroy {
                 this.toast.show('Recording scheduled', 'success');
             }
             await this.loadAll();
-        } catch { this.toast.show('Failed to schedule', 'error'); }
+        } catch (e: any) {
+            // 401 = admin scope, 507 = disk floor, 409 = duplicate — all worth naming
+            const detail = e?.status === 401 || e?.status === 403
+                ? 'Your session has expired — sign in again to schedule recordings'
+                : e?.error?.error || 'Failed to schedule';
+            this.toast.show(detail, 'error');
+        }
     }
 
     async stopRecording(id: number): Promise<void> {
@@ -344,6 +357,20 @@ export class DvrComponent implements OnInit, OnDestroy {
     get storagePct(): number {
         if (!this.storageTotal) return 0;
         return Math.min(100, Math.round((this.storageUsed / this.storageTotal) * 100));
+    }
+
+    get retentionSummary(): string {
+        if (!this.retention) return '';
+        switch (this.retention.mode) {
+            case 'age':
+                return `Recordings are deleted after ${this.retention.maxAgeDays} days`;
+            case 'size':
+                return 'Oldest recordings are deleted to stay within the size budget';
+            case 'low-space':
+                return 'Oldest recordings are deleted only when the disk runs low';
+            default:
+                return 'Recordings are kept until you delete them';
+        }
     }
 
     fmtBytes(bytes: number): string {

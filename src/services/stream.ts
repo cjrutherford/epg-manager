@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { DB_DIR } from '../db';
 import { emitLog } from '../events';
+import { findOrphanStreamDirs, selectStreamToEvict } from './stream-limits';
 
 interface ActiveStream {
     process: ChildProcess;
@@ -12,6 +13,24 @@ interface ActiveStream {
 }
 
 const activeStreams = new Map<string, ActiveStream>();
+
+/** Ceiling on simultaneous transcodes. Each one is an ffmpeg process plus a segment directory. */
+const MAX_ACTIVE_STREAMS = Math.max(1, parseInt(process.env.MAX_ACTIVE_STREAMS || '6', 10));
+/** A stream must be untouched this long before another request may evict it. */
+const MIN_IDLE_BEFORE_EVICT_MS = 15000;
+/** Idle streams are reaped entirely after this long. */
+const STREAM_IDLE_TIMEOUT_MS = 300000;
+/** Grace period before an unclaimed directory counts as abandoned. */
+const ORPHAN_MIN_AGE_MS = 60000;
+
+export class StreamCapacityError extends Error {
+    readonly code = 'STREAM_LIMIT';
+
+    constructor(limit: number) {
+        super(`All ${limit} stream slots are in use. Stop another stream and try again.`);
+        this.name = 'StreamCapacityError';
+    }
+}
 
 export class StreamManager {
     static get streamsDir() {
@@ -39,6 +58,11 @@ export class StreamManager {
             }
             // Manifest not yet ready — fall through to wait below
         } else {
+            // Make room before spawning another transcode. Only genuinely idle
+            // streams are evicted — a full house of active viewers is refused
+            // rather than interrupted.
+            this.ensureCapacityFor(id);
+
             // Clean up any previous directory for this stream
             const strDir = path.join(this.streamsDir, id);
             if (fs.existsSync(strDir)) {
@@ -55,6 +79,10 @@ export class StreamManager {
             //   -hls_time 4:        4-second segments
             //   -hls_list_size 10:  keep 10 segments in the playlist (40s sliding window)
             //   -hls_flags ...:     independent segments + append_list (keeps playlist stable)
+            //                       + delete_segments so files leaving the window are removed;
+            //                       without it a session grows on disk for as long as it runs
+            //   -hls_delete_threshold 6: keep 6 expired segments past the window as slack for
+            //                       clients lagging slightly behind live (~64s on disk total)
             //   -max_muxing_queue_size 2048: handles interleaved streams without dropping
             const ffmpeg = spawn('ffmpeg', [
                 '-y',
@@ -71,7 +99,8 @@ export class StreamManager {
                 '-f', 'hls',
                 '-hls_time',           '4',
                 '-hls_list_size',      '10',
-                '-hls_flags',          'independent_segments+append_list',
+                '-hls_flags',          'independent_segments+append_list+delete_segments',
+                '-hls_delete_threshold', '6',
                 '-hls_segment_type',   'mpegts',
                 '-max_muxing_queue_size', '2048',
                 path.join(strDir, 'index.m3u8')
@@ -164,15 +193,81 @@ export class StreamManager {
         }
     }
 
+    /**
+     * Free a slot for an incoming stream, evicting the least-recently-watched
+     * idle session. Throws when every slot is genuinely in use — refusing a new
+     * stream is better than cutting off someone mid-programme.
+     */
+    private static ensureCapacityFor(incomingId: string) {
+        if (activeStreams.size < MAX_ACTIVE_STREAMS) return;
+
+        const candidates = Array.from(activeStreams.entries()).map(([id, stream]) => ({
+            id,
+            lastAccess: stream.lastAccess
+        }));
+
+        const evictId = selectStreamToEvict(candidates, {
+            now: Date.now(),
+            minIdleMs: MIN_IDLE_BEFORE_EVICT_MS,
+            protectIds: [incomingId]
+        });
+
+        if (!evictId) {
+            emitLog(`Stream request refused: all ${MAX_ACTIVE_STREAMS} slots are actively in use.`, 'warning');
+            throw new StreamCapacityError(MAX_ACTIVE_STREAMS);
+        }
+
+        emitLog(`Evicting idle stream ${evictId} to free a slot (limit ${MAX_ACTIVE_STREAMS}).`, 'info');
+        this.stopStream(evictId);
+    }
+
+    /**
+     * Remove stream directories with no live process behind them. The boot
+     * purge in db.ts handles a clean restart; this catches sessions orphaned
+     * while the server keeps running.
+     */
+    static sweepOrphanDirs() {
+        let entries: fs.Dirent[];
+        try {
+            entries = fs.readdirSync(this.streamsDir, { withFileTypes: true });
+        } catch (_) {
+            return;
+        }
+
+        const dirs = entries
+            .filter(entry => entry.isDirectory())
+            .map(entry => {
+                const dirPath = path.join(this.streamsDir, entry.name);
+                let modifiedMs = 0;
+                try { modifiedMs = fs.statSync(dirPath).mtimeMs; } catch (_) { return null; }
+                return { name: entry.name, modifiedMs };
+            })
+            .filter((dir): dir is { name: string; modifiedMs: number } => dir !== null);
+
+        const orphans = findOrphanStreamDirs(dirs, activeStreams.keys(), {
+            now: Date.now(),
+            minAgeMs: ORPHAN_MIN_AGE_MS
+        });
+
+        for (const name of orphans) {
+            try {
+                fs.rmSync(path.join(this.streamsDir, name), { recursive: true, force: true });
+                console.log(`[StreamManager] Removed orphaned stream directory ${name}.`);
+            } catch (err: any) {
+                console.error(`[StreamManager] Failed to remove orphaned directory ${name}:`, err.message);
+            }
+        }
+    }
+
     static cleanup() {
         const now = Date.now();
         for (const [id, stream] of activeStreams.entries()) {
-            // Stop stream if no access in last 5 minutes (300 seconds)
-            if (now - stream.lastAccess > 300000) {
+            if (now - stream.lastAccess > STREAM_IDLE_TIMEOUT_MS) {
                 console.log(`[StreamManager] Stream ${id} inactive for >5 mins; stopping ffmpeg process.`);
                 this.stopStream(id);
             }
         }
+        this.sweepOrphanDirs();
     }
 }
 

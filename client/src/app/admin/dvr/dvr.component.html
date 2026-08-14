@@ -41,7 +41,9 @@
                 </svg>
                 <div class="storage-labels">
                     <span class="storage-used">{{ fmtBytes(storageUsed) }} used</span>
-                    <span class="storage-total">of {{ fmtBytes(storageTotal) }}</span>
+                    <span class="storage-total">of {{ fmtBytes(storageTotal) }} on disk</span>
+                    <span class="storage-detail">{{ fmtBytes(storageRecordings) }} in recordings · {{ fmtBytes(storageFree) }} free</span>
+                    <span class="storage-detail">{{ retentionSummary }}</span>
                 </div>
             </div>
         </div>

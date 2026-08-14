@@ -4,12 +4,42 @@
  */
 
 import { spawn, ChildProcess } from 'child_process';
-import { db } from './db';
+import { db, getSetting } from './db';
 import path from 'path';
 import fs from 'fs';
+import {
+    DEFAULT_RETENTION,
+    evaluateRetention,
+    formatBytes,
+    meetsFreeSpaceFloor,
+    resolveRecordingPath,
+    type RetentionCandidate,
+    type RetentionMode,
+    type RetentionPolicy
+} from './services/recording-storage';
 
 // Active recording processes
 const activeProcesses = new Map<number, ChildProcess>();
+
+/**
+ * Finalisation work still running after a process exits — merging parts,
+ * writing the completed row. A recording is not safe until these settle, so
+ * shutdown waits on them rather than on the process map alone.
+ */
+const pendingFinalizations = new Set<Promise<void>>();
+
+/** Set once shutdown begins, so a dying ffmpeg is not treated as a retryable failure. */
+let shuttingDown = false;
+
+export function beginRecorderShutdown(): void {
+    shuttingDown = true;
+}
+
+function trackFinalization(task: Promise<void>): void {
+    pendingFinalizations.add(task);
+    task.catch(() => { /* errors are reported by the task itself */ })
+        .finally(() => pendingFinalizations.delete(task));
+}
 
 // Recording output directory
 function getRecordingsDir(): string {
@@ -19,6 +49,126 @@ function getRecordingsDir(): string {
         fs.mkdirSync(dir, { recursive: true });
     }
     return dir;
+}
+
+const GIB = 1024 * 1024 * 1024;
+
+/** Free bytes on the volume holding the recordings directory. */
+export function getFreeSpaceBytes(): number {
+    try {
+        const stats = fs.statfsSync(getRecordingsDir());
+        return stats.bavail * stats.bsize;
+    } catch (_) {
+        // Unknown free space must not block recording — fail open.
+        return Number.POSITIVE_INFINITY;
+    }
+}
+
+/** Total and used bytes for the volume holding the recordings directory. */
+export function getVolumeUsage(): { totalBytes: number; freeBytes: number; usedBytes: number } {
+    try {
+        const stats = fs.statfsSync(getRecordingsDir());
+        const totalBytes = stats.blocks * stats.bsize;
+        const freeBytes = stats.bavail * stats.bsize;
+        return { totalBytes, freeBytes, usedBytes: totalBytes - freeBytes };
+    } catch (_) {
+        return { totalBytes: 0, freeBytes: 0, usedBytes: 0 };
+    }
+}
+
+function parsePositiveNumber(raw: string | null, fallback: number): number {
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+/** Retention configuration, defaulting to 30-day age expiry. */
+export async function getRetentionPolicy(): Promise<RetentionPolicy> {
+    const modeRaw = (await getSetting('dvr_retention_mode')) as RetentionMode | null;
+    const allowed: RetentionMode[] = ['off', 'age', 'size', 'low-space'];
+    const mode = modeRaw && allowed.includes(modeRaw) ? modeRaw : DEFAULT_RETENTION.mode;
+
+    return {
+        mode,
+        maxAgeDays: parsePositiveNumber(await getSetting('dvr_retention_days'), DEFAULT_RETENTION.maxAgeDays),
+        budgetBytes: parsePositiveNumber(await getSetting('dvr_size_budget_gb'), DEFAULT_RETENTION.budgetBytes / GIB) * GIB,
+        minFreeBytes: parsePositiveNumber(await getSetting('dvr_min_free_gb'), DEFAULT_RETENTION.minFreeBytes / GIB) * GIB
+    };
+}
+
+/** Resolve a recording filename to a safe absolute path, or null if it escapes the directory. */
+export function safeRecordingPath(filename: string): string | null {
+    return resolveRecordingPath(getRecordingsDir(), filename, { allowedExtensions: ['.mp4'] });
+}
+
+/**
+ * Timestamp a recording is aged from: when the programme ended, falling back
+ * to when it was scheduled.
+ */
+function completedAtMs(row: Record<string, unknown>): number {
+    const endTime = row.end_time ? Date.parse(String(row.end_time)) : NaN;
+    if (Number.isFinite(endTime)) return endTime;
+    const createdAt = Number(row.created_at);
+    return Number.isFinite(createdAt) && createdAt > 0 ? createdAt * 1000 : 0;
+}
+
+/**
+ * Apply the retention policy. Only completed recordings with a file are ever
+ * eligible; anything scheduled or in flight is left alone.
+ */
+export async function applyRetentionPolicy(): Promise<number> {
+    try {
+        const policy = await getRetentionPolicy();
+        if (policy.mode === 'off') return 0;
+
+        const result = await db.execute(
+            'SELECT id, filename, status, end_time, created_at, file_size FROM scheduled_recordings'
+        );
+
+        const candidates: RetentionCandidate[] = result.rows.map(row => ({
+            id: Number(row.id),
+            filename: row.filename ? String(row.filename) : null,
+            status: String(row.status || ''),
+            completedAtMs: completedAtMs(row as Record<string, unknown>),
+            sizeBytes: Number(row.file_size) || 0
+        }));
+
+        const decision = evaluateRetention(candidates, policy, {
+            now: Date.now(),
+            freeBytes: getFreeSpaceBytes()
+        });
+
+        if (decision.prune.length === 0) return 0;
+
+        let removed = 0;
+        let reclaimed = 0;
+        for (const candidate of decision.prune) {
+            const filePath = candidate.filename ? safeRecordingPath(candidate.filename) : null;
+            if (filePath) {
+                try {
+                    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+                } catch (e: any) {
+                    console.error(`[RETENTION] Failed to delete ${candidate.filename}:`, e.message);
+                    continue;
+                }
+            }
+            await db.execute({
+                sql: 'DELETE FROM scheduled_recordings WHERE id = ?',
+                args: [candidate.id]
+            });
+            reclaimed += candidate.sizeBytes;
+            removed++;
+        }
+
+        if (removed > 0) {
+            console.log(
+                `[RETENTION] Removed ${removed} recording(s) (${decision.reason}), reclaiming ${formatBytes(reclaimed)}.`
+            );
+        }
+        return removed;
+    } catch (e: any) {
+        console.error('[RETENTION] Retention sweep failed:', e.message);
+        return 0;
+    }
 }
 
 /**
@@ -141,6 +291,9 @@ async function mergeRecordingParts(recordingId: number, partPaths: string[]): Pr
         outputPath
     ]);
 
+    // Resolve only once the concat has finished — callers (and shutdown) need
+    // to know the output file is actually written, not just that ffmpeg started.
+    await new Promise<void>((resolve) => {
     concatFfmpeg.on('close', async (code) => {
         try { fs.unlinkSync(txtPath); } catch (_) {}
 
@@ -171,6 +324,12 @@ async function mergeRecordingParts(recordingId: number, partPaths: string[]): Pr
             });
             console.error(`[RECORDER] Concatenation failed for recording ${recordingId}`);
         }
+        resolve();
+    });
+    concatFfmpeg.on('error', (err) => {
+        console.error(`[RECORDER] Concat process error for ${recordingId}:`, err.message);
+        resolve();
+    });
     });
 }
 
@@ -224,6 +383,21 @@ async function runRecordingSession(
         return;
     }
 
+    // Refuse to start writing onto a volume that is already out of room —
+    // ffmpeg would otherwise fail partway and leave an unplayable fragment.
+    const policy = await getRetentionPolicy();
+    const freeBytes = getFreeSpaceBytes();
+    if (!meetsFreeSpaceFloor(freeBytes, policy.minFreeBytes)) {
+        const message = `Not enough free space: ${formatBytes(freeBytes)} available, ${formatBytes(policy.minFreeBytes)} required`;
+        console.warn(`[RECORDER] Recording ${recordingId} blocked — ${message}`);
+        await db.execute({
+            sql: "UPDATE scheduled_recordings SET status = 'failed', error_message = ? WHERE id = ?",
+            args: [message, recordingId],
+        });
+        cleanUpParts(partPaths);
+        return;
+    }
+
     // Set filename if not yet defined
     const sanitize = (s: string) => (s || 'recording').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 60);
     const baseFilename = rec.filename as string || `${sanitize(rec.program_title as string)}_${Date.now()}.mp4`;
@@ -265,31 +439,45 @@ async function runRecordingSession(
         // Optional stderr parser
     });
 
-    ffmpeg.on('close', async (code: number | null) => {
+    ffmpeg.on('close', (code: number | null) => {
         activeProcesses.delete(recordingId);
 
-        const currentRec = await db.execute({
-            sql: 'SELECT status FROM scheduled_recordings WHERE id = ?',
-            args: [recordingId],
-        });
-        if (currentRec.rows.length === 0) return;
-        const currentStatus = currentRec.rows[0].status;
+        // Tracked so shutdown can wait for the file to be finalised, not just
+        // for the process to be gone.
+        trackFinalization((async () => {
+            const currentRec = await db.execute({
+                sql: 'SELECT status FROM scheduled_recordings WHERE id = ?',
+                args: [recordingId],
+            });
+            if (currentRec.rows.length === 0) return;
+            const currentStatus = currentRec.rows[0].status;
 
-        // If recording was stopped/cancelled while this process was running
-        if (currentStatus !== 'recording') {
-            return;
-        }
+            // If recording was stopped/cancelled while this process was running
+            if (currentStatus !== 'recording') {
+                return;
+            }
 
-        if (code === 0 || code === 255) {
-            // Natural ending or clean SIGINT manual stop
-            await mergeRecordingParts(recordingId, partPaths);
-        } else {
+            if (code === 0 || code === 255) {
+                // Natural ending or clean SIGINT manual stop
+                await mergeRecordingParts(recordingId, partPaths);
+                return;
+            }
+
             console.warn(`[RECORDER] Recording ${recordingId} process exited with error code ${code}`);
+
+            // During shutdown a dying ffmpeg is expected — salvage what was
+            // captured instead of scheduling a retry into a closing process.
+            if (shuttingDown) {
+                console.log(`[RECORDER] Shutdown in progress; finalising recording ${recordingId} as captured.`);
+                await mergeRecordingParts(recordingId, partPaths);
+                return;
+            }
 
             // Retry logic
             if (attempt < 5) {
                 console.log(`[RECORDER] Retrying recording ${recordingId} in 5 seconds (attempt ${attempt + 1})...`);
                 setTimeout(() => {
+                    if (shuttingDown) return;
                     runRecordingSession(recordingId, attempt + 1, partPaths).catch(err => {
                         console.error(`[RECORDER] Failed to restart recording session:`, err);
                     });
@@ -302,7 +490,7 @@ async function runRecordingSession(
                     await finalizeSingleFile(recordingId, partPath);
                 }
             }
-        }
+        })());
     });
 
     ffmpeg.on('error', (err: Error) => {
@@ -334,6 +522,46 @@ export async function stopRecording(recordingId: number): Promise<void> {
         // Send SIGINT for graceful shutdown (ffmpeg finalizes the file)
         proc.kill('SIGINT');
     }
+}
+
+/**
+ * Stop every active recording and wait for its file to be finalised.
+ *
+ * ffmpeg finalises an MP4 on SIGINT, so a graceful stop yields a playable file
+ * rather than a fragment the next boot has to salvage. Returns once everything
+ * has settled, or when the timeout expires — whichever comes first.
+ */
+export async function drainRecordings(timeoutMs = 20000): Promise<{ drained: number; timedOut: boolean }> {
+    beginRecorderShutdown();
+
+    const ids = Array.from(activeProcesses.keys());
+    if (ids.length === 0 && pendingFinalizations.size === 0) {
+        return { drained: 0, timedOut: false };
+    }
+
+    console.log(`[RECORDER] Draining ${ids.length} active recording(s)...`);
+    for (const id of ids) {
+        try {
+            activeProcesses.get(id)?.kill('SIGINT');
+        } catch (e: any) {
+            console.error(`[RECORDER] Failed to signal recording ${id}:`, e.message);
+        }
+    }
+
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        if (activeProcesses.size === 0 && pendingFinalizations.size === 0) {
+            console.log(`[RECORDER] Drained ${ids.length} recording(s) cleanly.`);
+            return { drained: ids.length, timedOut: false };
+        }
+        await new Promise(resolve => setTimeout(resolve, 200));
+    }
+
+    console.warn(
+        `[RECORDER] Drain timed out after ${timeoutMs}ms; ${activeProcesses.size} process(es) and ` +
+        `${pendingFinalizations.size} finalisation(s) still pending. Partial files will be recovered on next boot.`
+    );
+    return { drained: ids.length, timedOut: true };
 }
 
 /**
@@ -539,6 +767,9 @@ export function getRecordingFilePath(filename: string): string {
  * Start the recording scheduler (poll every 30 seconds)
  */
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
+let retentionInterval: ReturnType<typeof setInterval> | null = null;
+
+const RETENTION_SWEEP_INTERVAL_MS = 60 * 60 * 1000; // hourly
 
 export function startRecordingScheduler(): void {
     if (schedulerInterval) return;
@@ -554,12 +785,22 @@ export function startRecordingScheduler(): void {
     // Also check immediately
     checkScheduledRecordings();
 
-    console.log('[RECORDER] Recording scheduler started (30s interval)');
+    // Retention runs on its own slower cadence, plus once at startup
+    retentionInterval = setInterval(() => {
+        applyRetentionPolicy().catch(err => console.error('[RETENTION] Sweep failed:', err));
+    }, RETENTION_SWEEP_INTERVAL_MS);
+    applyRetentionPolicy().catch(err => console.error('[RETENTION] Startup sweep failed:', err));
+
+    console.log('[RECORDER] Recording scheduler started (30s interval, hourly retention sweep)');
 }
 
 export function stopRecordingScheduler(): void {
     if (schedulerInterval) {
         clearInterval(schedulerInterval);
         schedulerInterval = null;
+    }
+    if (retentionInterval) {
+        clearInterval(retentionInterval);
+        retentionInterval = null;
     }
 }
