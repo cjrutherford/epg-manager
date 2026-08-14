@@ -40,6 +40,7 @@ export const COLLECTION_TABLES = [
     'sources',
     'epg_source_channels',
     'epg_source_channels_staging',
+    'source_validators',
     'source_credentials',
     'site_status',
     'channel_site_status',

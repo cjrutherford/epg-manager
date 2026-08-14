@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { DB_DIR } from '../db';
+import { findBuiltInByUrl } from './sources/catalog';
 
 export interface PlaylistMetadata {
   url: string;
@@ -85,26 +86,32 @@ export function describePlaylist(url: string, importedCount = 0): PlaylistMetada
     };
   }
 
-  // FAST Platform presets check (e.g. PlutoTV, SamsungTVPlus, Roku, Plex, PBS, Stirr)
-  const lowerUrl = url.toLowerCase();
-  if (lowerUrl.includes('plutotv')) {
-    return { url, name: 'Pluto TV (All Channels)', label: 'Pluto TV', slug: 'pluto-tv', category: 'fast', sourceType: 'remote', host: 'i.mjh.nz', pathSummary: 'PlutoTV/all.m3u8', channelCountEstimate: 350, importedCount };
+  // FAST platform presets come from the built-in catalogue rather than a
+  // second hand-maintained copy of the same list.
+  const builtIn = findBuiltInByUrl(url);
+  if (builtIn) {
+    let host = builtIn.host;
+    let pathSummary = url;
+    try {
+      const parsed = new URL(url);
+      host = parsed.hostname;
+      pathSummary = summarizePath(parsed.pathname);
+    } catch { /* keep the catalogue values */ }
+
+    return {
+      url,
+      name: `${builtIn.label} (All Channels)`,
+      label: builtIn.label,
+      slug: slugify(builtIn.label),
+      category: builtIn.category,
+      sourceType: 'remote',
+      host,
+      pathSummary,
+      channelCountEstimate: builtIn.channelCountEstimate,
+      importedCount
+    };
   }
-  if (lowerUrl.includes('samsungtvplus')) {
-    return { url, name: 'Samsung TV Plus (All Channels)', label: 'Samsung TV Plus', slug: 'samsung-tv-plus', category: 'fast', sourceType: 'remote', host: 'i.mjh.nz', pathSummary: 'SamsungTVPlus/all.m3u8', channelCountEstimate: 280, importedCount };
-  }
-  if (lowerUrl.includes('roku')) {
-    return { url, name: 'Roku Channel (All Channels)', label: 'Roku Channel', slug: 'roku-channel', category: 'fast', sourceType: 'remote', host: 'i.mjh.nz', pathSummary: 'Roku/all.m3u8', channelCountEstimate: 300, importedCount };
-  }
-  if (lowerUrl.includes('/plex/') || lowerUrl.includes('plex.m3u')) {
-    return { url, name: 'Plex TV (All Channels)', label: 'Plex TV', slug: 'plex-tv', category: 'fast', sourceType: 'remote', host: 'i.mjh.nz', pathSummary: 'Plex/all.m3u8', channelCountEstimate: 250, importedCount };
-  }
-  if (lowerUrl.includes('/pbs/')) {
-    return { url, name: 'PBS Live (All Channels)', label: 'PBS Live', slug: 'pbs-live', category: 'fast', sourceType: 'remote', host: 'i.mjh.nz', pathSummary: 'PBS/all.m3u8', channelCountEstimate: 120, importedCount };
-  }
-  if (lowerUrl.includes('/stirr/')) {
-    return { url, name: 'Stirr TV (All Channels)', label: 'Stirr TV', slug: 'stirr-tv', category: 'fast', sourceType: 'remote', host: 'i.mjh.nz', pathSummary: 'Stirr/all.m3u8', channelCountEstimate: 100, importedCount };
-  }
+
 
   try {
     const parsed = new URL(url);

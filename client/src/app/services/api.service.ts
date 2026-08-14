@@ -3,6 +3,18 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { SystemRecording } from './client-recording.types';
 
+export interface BuiltInPresetDto {
+    id: string;
+    kind: string;
+    label: string;
+    provides: string[];
+    category: string;
+    host: string;
+    url: string;
+    channelCountEstimate: number | null;
+    added: boolean;
+}
+
 export type ResetScope = 'guide' | 'user' | 'collection' | 'all';
 
 export interface ResetPreview {
@@ -208,6 +220,10 @@ export class ApiService {
     }
 
     // ── iptv-org Playlists ──────────────────────
+    getSourceCatalog(): Observable<BuiltInPresetDto[]> {
+        return this.http.get<BuiltInPresetDto[]>('/api/sources/catalog');
+    }
+
     getIptvOrgPlaylists(): Observable<any[]> {
         return this.http.get<any[]>('/api/iptv-org/playlists');
     }

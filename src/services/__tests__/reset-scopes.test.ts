@@ -19,6 +19,7 @@ const LIVE_SCHEMA = [
   'sources',
   'epg_source_channels',
   'epg_source_channels_staging',
+  'source_validators',
   'source_credentials',
   'site_status',
   'grab_logs',

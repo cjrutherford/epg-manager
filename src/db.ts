@@ -173,6 +173,17 @@ export async function initDb() {
     )
   `);
 
+  // Cached HTTP validators, so an unchanged feed costs a 304 rather than a
+  // full download and re-parse.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS source_validators (
+        source_key TEXT PRIMARY KEY,
+        etag TEXT,
+        last_modified TEXT,
+        updated_at INTEGER
+    )
+  `);
+
   // Staging for catalogue refreshes: rows land here and are swapped in on
   // success, so a failed parse can no longer truncate the live catalogue.
   await db.execute(`

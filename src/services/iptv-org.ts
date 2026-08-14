@@ -9,6 +9,8 @@ import AdmZip from 'adm-zip';
 import { formatMemorySnapshot } from './memory';
 import { IptvOrgChannelRow, parseIptvOrgChannelsXmlStream } from './iptv-org-parser';
 import { buildEpgSourceKey, getFeaturedIptvOrgSource, parseIptvOrgSitesMarkdown } from './epg-sources';
+import type { CatalogRow } from './sources/adapter';
+import { clearAllStaging, commitStaging, discardStaging, stageRows } from './sources/staging';
 
 const REPO_URL = 'https://github.com/iptv-org/epg.git';
 const DATA_DIR = path.join(DB_DIR, 'iptv-org-epg');
@@ -82,20 +84,11 @@ export async function updateIptvOrgData() {
             DATA_DIR
         );
 
-        // Delete iptv_org_map in chunks to avoid long-running exclusive lock
-        const countResult = await db.execute("SELECT COUNT(*) as c FROM iptv_org_map");
-        const totalRows = Number(countResult.rows[0]?.c || 0);
-        if (totalRows > 0) {
-            emitLog(`Clearing existing iptv_org_map (${totalRows} rows)...`, 'info');
-            const CHUNK = 200;
-            for (let i = 0; i < totalRows; i += CHUNK) {
-                await db.execute({
-                    sql: `DELETE FROM iptv_org_map WHERE rowid IN (SELECT rowid FROM iptv_org_map LIMIT ?)`,
-                    args: [CHUNK]
-                });
-            }
-        }
-        await db.execute({ sql: `DELETE FROM epg_source_channels WHERE provider = ?`, args: ['iptv-org'] });
+        // The live catalogue is deliberately NOT cleared here. It used to be
+        // deleted before the replacement was parsed, so a failed or partial
+        // parse left the corpus truncated and matching ran against the remains
+        // (R4). Rows now go to staging and are swapped in only on success.
+        await clearAllStaging();
 
         if (!fs.existsSync(path.join(DATA_DIR, 'node_modules'))) {
             emitLog("Scraper dependencies missing. Installing...", "info", true);
@@ -147,6 +140,7 @@ export async function updateIptvOrgData() {
 
                         if (batch.length >= BATCH_SIZE) {
                             await insertBatch(batch);
+                            await stageBatch(batch);
                             batch = [];
                         }
                     });
@@ -159,7 +153,17 @@ export async function updateIptvOrgData() {
 
         if (batch.length > 0) {
             await insertBatch(batch);
+            await stageBatch(batch);
         }
+
+        // Parse succeeded — swap each source's staged catalogue into place. A
+        // source whose parse failed keeps whatever it had before.
+        const swapSummary = await commitStagedCatalogs(sites, siteErrors);
+        emitLog(
+            `Catalogue swap: ${swapSummary.swapped} source(s) updated, ` +
+            `${swapSummary.kept} kept previous data, ${swapSummary.failed} failed.`,
+            'info'
+        );
 
         await refreshIptvOrgSourceImportCounts(siteErrors);
 
@@ -172,6 +176,45 @@ export async function updateIptvOrgData() {
         emitLog(`Failed to update IPTV-ORG data: ${e.message}`, "error");
         emitProgress(`Metadata update failed: ${e.message}`, 0, 1, 'metadata');
     }
+}
+
+/**
+ * Swap staged catalogues in, one source at a time. A source that parsed to
+ * nothing keeps its previous rows rather than being emptied — the failure mode
+ * this whole path exists to prevent.
+ */
+async function commitStagedCatalogs(sites: string[], siteErrors: Map<string, string>) {
+    let swapped = 0;
+    let kept = 0;
+    let failed = 0;
+
+    for (const site of sites) {
+        const sourceKey = buildEpgSourceKey('iptv-org', site);
+
+        if (siteErrors.has(site)) {
+            await discardStaging(sourceKey);
+            failed++;
+            continue;
+        }
+
+        try {
+            const result = await commitStaging(sourceKey);
+            if (result.swapped) {
+                swapped++;
+            } else {
+                kept++;
+                if (result.reason) {
+                    emitLog(`[${site}] ${result.reason}`, 'warning');
+                }
+            }
+        } catch (e: any) {
+            emitLog(`[${site}] Catalogue swap failed: ${e.message}`, 'error');
+            await discardStaging(sourceKey).catch(() => { /* best effort */ });
+            failed++;
+        }
+    }
+
+    return { swapped, kept, failed };
 }
 
 async function upsertIptvOrgSources(sites: string[]) {
@@ -257,6 +300,26 @@ async function refreshIptvOrgSourceImportCounts(siteErrors: Map<string, string> 
                   WHERE key = ?`,
             args: [message.slice(0, 500), buildEpgSourceKey('iptv-org', site)]
         });
+    }
+}
+
+/** Stage a batch of parsed catalogue rows, grouped by the source that owns them. */
+async function stageBatch(batch: IptvOrgChannelRow[]) {
+    const bySource = new Map<string, CatalogRow[]>();
+    for (const row of batch) {
+        if (!row.site || !row.site_id) continue;
+        const key = buildEpgSourceKey('iptv-org', String(row.site));
+        if (!bySource.has(key)) bySource.set(key, []);
+        bySource.get(key)!.push({
+            name: row.name,
+            xmltvId: row.xmltv_id,
+            site: String(row.site),
+            siteId: String(row.site_id),
+            lang: row.lang || 'en'
+        });
+    }
+    for (const [sourceKey, rows] of bySource.entries()) {
+        await stageRows(sourceKey, 'iptv-org', rows);
     }
 }
 

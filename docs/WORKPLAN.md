@@ -3,7 +3,7 @@
 Single source of truth for the remediation effort. Consolidates the process audit, the UI &
 source-retrieval audit, and the source acquisition architecture into one tracked backlog.
 
-**Status:** Waves 1–2 complete, wave 3 started — 8 of 25 slices done
+**Status:** Waves 1–2 complete, wave 3 in progress — 9 of 25 slices done
 **Suite score at baseline:** 2.5 / 5 (process) · 2.3 / 5 (UI)
 **Last updated:** 2026-08-13
 
@@ -277,15 +277,40 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
   same "name says X, code does Y" drift the audit catalogues. 16 references across 6 files updated;
   the rename is guarded and idempotent.
 
-- [ ] **S16 · Adapter contract and acquisition core** — L
-  The contract, the shared HTTP client (conditional GET, byte caps, timeouts, backoff), the
-  normalizer, and stage-and-swap. Port `scraper-repo`, `m3u` and `bundle` onto it so current behaviour
-  runs through the new path unchanged. Retire the triplicated FAST preset list.
-  *Fixes R4.* → `src/services/sources/`, `iptv-org.ts`, `server.ts`
-  - [ ] A full sync produces the same result as before, through adapters
-  - [ ] A failed catalogue sync leaves the previous catalogue intact
-  - [ ] An unchanged feed refreshes with a 304 and no re-parse
-  - [ ] FAST presets exist in exactly one place
+- [x] **S16 · Adapter contract and acquisition core** — L — *done 2026-08-14*
+  Contract (`adapter.ts`), fetch policy (`http-policy.ts`), shared HTTP client (`fetcher.ts`),
+  built-in catalogue (`catalog.ts`) and stage-and-swap (`staging.ts`). The iptv-org catalogue
+  refresh now stages and swaps instead of deleting first.
+  *Fixes R4.* → `src/services/sources/`, `iptv-org.ts`, `server.ts`, `playlist-metadata.ts`
+  - [x] A full sync produces the same result as before, through adapters
+        — `m3u`, `bundle` and `scraper-repo` are implemented behind the contract and registered;
+        playlist import now runs through the `m3u` adapter. Verified live against a 250-channel
+        fixture: 250 imported, all with tvg_id, logo, group, url and channel number intact, and a
+        changed playlist correctly re-imported at 300.
+  - [x] A failed catalogue sync leaves the previous catalogue intact
+        — proven three ways: a mid-parse failure leaves the live catalogue at 2 rows; a refresh that
+        parses to nothing refuses to swap and reports "keeping the previous 2 channel(s)"; a good
+        refresh swaps cleanly to 3. Per-source, so one bad site cannot empty another's catalogue.
+  - [x] An unchanged feed refreshes with a 304 and no re-parse
+        — against a live HTTP server: first fetch 200 / 1,277,811 bytes, second fetch **304 / 0 bytes**
+        with `notModified: true`, so the caller skips parsing entirely. Validators cached per source
+        in `source_validators`.
+  - [x] FAST presets exist in exactly one place
+        — the three copies (server.ts `FAST_PRESETS`, the branching in `describePlaylist()`, and the
+        hardcoded buttons in the Settings template) are gone. `catalog.ts` is the only definition;
+        Settings renders from `GET /api/sources/catalog`.
+
+  The catalogue also carries EPGShare 01's ten regional feeds as ordinary entries — previously
+  defined in `epg-sources.ts` with no caller at all (R2). They are wired up by the xmltv adapter
+  in S16b.
+
+  **Regression I introduced and caught by running it:** routing playlist import through the adapter
+  meant an unchanged playlist returned 304, the adapter yielded nothing, and the existing
+  delete-then-reinsert wiped all 250 channels and wrote zero. "Unchanged" and "empty" are not the
+  same thing and an iterable cannot express the difference, so the context now exposes
+  `lastFetchNotModified` and the import skips entirely when nothing changed. Re-verified both ways:
+  unchanged re-sync keeps 250, changed re-sync imports 300. This is a good argument for finishing
+  S12 (non-destructive playlist import) sooner rather than later.
 
 - [ ] **S16b · Direct XMLTV ingestion** — M
   Implement the `xmltv` adapter on the dormant `processEpg` streaming parser. Register EPGShare 01's
@@ -515,4 +540,7 @@ memory, so **restart it after `ng build`** or you will screenshot the previous b
 | 2026-08-14 | S6 | Done. One interceptor replaces 44 hand-rolled header calls. Browser-verified expiry prompt. Found and fixed two of my own bugs: the shell snapshotted auth state once, and a flag was set after the subject that read it. |
 | 2026-08-14 | — | Committed waves 1–2 as two commits plus a docs commit, no attribution trailers. |
 | 2026-08-14 | S15 | Done. Source registry renamed and widened with descriptors; migration verified against an old-schema database. Per-source status replaces the blanket success UPDATE (R3); user priority preserved on refresh (R6); credentials redacted from API responses. 19 new unit tests; suite 230 → 249. |
+| 2026-08-14 | S15 | Committed as 2793af6. |
+| 2026-08-14 | S16 | Partial. Contract, fetch policy, HTTP client, built-in catalogue and stage-and-swap landed; R4 fixed and proven; 304 path proven (1.27 MB → 0 bytes); FAST presets reduced from three copies to one. Adapter port of scraper-repo/m3u/bundle still outstanding. 26 new unit tests; suite 249 → 275. |
+| 2026-08-14 | S16 | Done. m3u/bundle/scraper-repo implemented behind the contract; playlist import runs through the m3u adapter and was verified live (250 in, 300 after a change). Caught and fixed a regression where a 304 wiped all channels. 13 new unit tests; suite 275 → 288. |
 

@@ -43,36 +43,18 @@
                 <span class="presets-desc">Click any provider to add free, legal live channel playlists instantly:</span>
             </div>
             <div class="preset-buttons-grid">
-                <button type="button" class="preset-card-btn" [class.added]="isPlaylistSelected('https://i.mjh.nz/PlutoTV/all.m3u8')" (click)="addPresetPlaylist('https://i.mjh.nz/PlutoTV/all.m3u8')">
-                    <span class="preset-name">📺 Pluto TV</span>
-                    <span class="preset-count">~350 channels</span>
-                    <span class="preset-status">{{ isPlaylistSelected('https://i.mjh.nz/PlutoTV/all.m3u8') ? '✓ Added' : '+ Add Playlist' }}</span>
+                @for (preset of builtInPresets; track preset.id) {
+                <button type="button" class="preset-card-btn" [class.added]="isPlaylistSelected(preset.url)"
+                    [attr.aria-pressed]="isPlaylistSelected(preset.url)"
+                    (click)="addPresetPlaylist(preset.url)">
+                    <span class="preset-name">{{ preset.label }}</span>
+                    <span class="preset-count">~{{ preset.channelCountEstimate }} channels</span>
+                    <span class="preset-status">{{ isPlaylistSelected(preset.url) ? '✓ Added' : '+ Add Playlist' }}</span>
                 </button>
-                <button type="button" class="preset-card-btn" [class.added]="isPlaylistSelected('https://i.mjh.nz/SamsungTVPlus/all.m3u8')" (click)="addPresetPlaylist('https://i.mjh.nz/SamsungTVPlus/all.m3u8')">
-                    <span class="preset-name">📱 Samsung TV Plus</span>
-                    <span class="preset-count">~280 channels</span>
-                    <span class="preset-status">{{ isPlaylistSelected('https://i.mjh.nz/SamsungTVPlus/all.m3u8') ? '✓ Added' : '+ Add Playlist' }}</span>
-                </button>
-                <button type="button" class="preset-card-btn" [class.added]="isPlaylistSelected('https://i.mjh.nz/Roku/all.m3u8')" (click)="addPresetPlaylist('https://i.mjh.nz/Roku/all.m3u8')">
-                    <span class="preset-name">🟣 Roku Channel</span>
-                    <span class="preset-count">~300 channels</span>
-                    <span class="preset-status">{{ isPlaylistSelected('https://i.mjh.nz/Roku/all.m3u8') ? '✓ Added' : '+ Add Playlist' }}</span>
-                </button>
-                <button type="button" class="preset-card-btn" [class.added]="isPlaylistSelected('https://i.mjh.nz/Plex/all.m3u8')" (click)="addPresetPlaylist('https://i.mjh.nz/Plex/all.m3u8')">
-                    <span class="preset-name">⚡ Plex TV</span>
-                    <span class="preset-count">~250 channels</span>
-                    <span class="preset-status">{{ isPlaylistSelected('https://i.mjh.nz/Plex/all.m3u8') ? '✓ Added' : '+ Add Playlist' }}</span>
-                </button>
-                <button type="button" class="preset-card-btn" [class.added]="isPlaylistSelected('https://i.mjh.nz/PBS/all.m3u8')" (click)="addPresetPlaylist('https://i.mjh.nz/PBS/all.m3u8')">
-                    <span class="preset-name">🏛 PBS Live</span>
-                    <span class="preset-count">~120 channels</span>
-                    <span class="preset-status">{{ isPlaylistSelected('https://i.mjh.nz/PBS/all.m3u8') ? '✓ Added' : '+ Add Playlist' }}</span>
-                </button>
-                <button type="button" class="preset-card-btn" [class.added]="isPlaylistSelected('https://i.mjh.nz/Stirr/all.m3u8')" (click)="addPresetPlaylist('https://i.mjh.nz/Stirr/all.m3u8')">
-                    <span class="preset-name">⭐ Stirr TV</span>
-                    <span class="preset-count">~100 channels</span>
-                    <span class="preset-status">{{ isPlaylistSelected('https://i.mjh.nz/Stirr/all.m3u8') ? '✓ Added' : '+ Add Playlist' }}</span>
-                </button>
+                }
+                @if (builtInPresets.length === 0) {
+                <span class="presets-desc">Loading available providers…</span>
+                }
             </div>
         </div>
 

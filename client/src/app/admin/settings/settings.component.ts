@@ -34,6 +34,9 @@ export class SettingsComponent implements OnInit {
     iptvOrgSortKey: 'name' | 'category' | 'channelCount' | 'selected' = 'selected';
     iptvOrgSortDir: 'asc' | 'desc' = 'asc';
 
+    // Built-in source catalogue (served by the API — no hardcoded list here)
+    builtInPresets: BuiltInPreset[] = [];
+
     // Metadata
     metadataEnabled = false;
     metadataStats: any = null;
@@ -57,11 +60,13 @@ export class SettingsComponent implements OnInit {
     async loadAll(): Promise<void> {
         this.loading = true;
         try {
-            const [playlistResponse, config, metaConfig] = await Promise.all([
+            const [playlistResponse, config, metaConfig, catalog] = await Promise.all([
                 this.api.getPlaylists().toPromise().catch(() => []),
                 this.api.getConfig().toPromise().catch(() => ({})),
-                this.api.getMetadataConfig().toPromise().catch(() => ({ enabled: false }))
+                this.api.getMetadataConfig().toPromise().catch(() => ({ enabled: false })),
+                this.api.getSourceCatalog().toPromise().catch(() => [])
             ]);
+            this.builtInPresets = (catalog || []).filter(entry => entry.category === 'fast');
             this.playlists = playlistResponse?.items || [];
             this.playlistSummary = playlistResponse?.summary || { selectedCount: 0, importedChannels: 0, estimatedChannels: 0 };
 
@@ -338,6 +343,14 @@ export class SettingsComponent implements OnInit {
             importedCount: file.importedCount || file.count || 0
         };
     }
+}
+
+interface BuiltInPreset {
+    id: string;
+    label: string;
+    url: string;
+    category: string;
+    channelCountEstimate: number | null;
 }
 
 interface PlaylistViewModel {

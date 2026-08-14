@@ -28,6 +28,8 @@ import { dedupeChannelsForDisplay } from './services/channel-dedup';
 import { setOpenCorsHeaders } from './http-headers';
 import { rankEpgSources } from './services/epg-sources';
 import { redactUrl } from './services/sources/descriptor';
+import { getBuiltInCatalog, getFastSources } from './services/sources/catalog';
+import { createAdapterContext, getAdapter, registerBuiltInAdapters } from './services/sources';
 import { checkScopeCoverage, isResetScope, planReset } from './services/reset-scopes';
 import {
     checkThrottle,
@@ -1539,18 +1541,16 @@ app.get('/api/iptv-org/playlists', requireAuth, async (req: any, res: any) => {
             await updateIptvOrgPlaylists();
         }
         
-        const FAST_PRESETS = [
-            { name: 'Pluto TV (All Channels)', url: 'https://i.mjh.nz/PlutoTV/all.m3u8', category: 'fast', provider: 'plutotv', label: 'Pluto TV', channelCountEstimate: 350 },
-            { name: 'Samsung TV Plus (All Channels)', url: 'https://i.mjh.nz/SamsungTVPlus/all.m3u8', category: 'fast', provider: 'samsung', label: 'Samsung TV Plus', channelCountEstimate: 280 },
-            { name: 'Roku Channel (All Channels)', url: 'https://i.mjh.nz/Roku/all.m3u8', category: 'fast', provider: 'roku', label: 'Roku Channel', channelCountEstimate: 300 },
-            { name: 'Plex TV (All Channels)', url: 'https://i.mjh.nz/Plex/all.m3u8', category: 'fast', provider: 'plex', label: 'Plex TV', channelCountEstimate: 250 },
-            { name: 'PBS (All Channels)', url: 'https://i.mjh.nz/PBS/all.m3u8', category: 'fast', provider: 'pbs', label: 'PBS', channelCountEstimate: 120 },
-            { name: 'Stirr TV (All Channels)', url: 'https://i.mjh.nz/Stirr/all.m3u8', category: 'fast', provider: 'stirr', label: 'Stirr TV', channelCountEstimate: 100 }
-        ];
-
-        const playlists: any[] = FAST_PRESETS.map(preset => ({
-            ...describePlaylist(preset.url),
-            ...preset
+        // Built-in presets come from the source catalogue — one list, not the
+        // three hand-copied ones this used to be.
+        const playlists: any[] = getFastSources().map(source => ({
+            ...describePlaylist(source.fetch.url || ''),
+            name: `${source.label} (All Channels)`,
+            url: source.fetch.url,
+            label: source.label,
+            category: source.category,
+            provider: source.id.replace(/^fast-/, ''),
+            channelCountEstimate: source.channelCountEstimate
         }));
         const folders = ['countries', 'categories', 'languages', 'regions'];
         
@@ -1569,6 +1569,35 @@ app.get('/api/iptv-org/playlists', requireAuth, async (req: any, res: any) => {
             }
         }
         res.json(playlists);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// GET /api/sources/catalog - Built-in sources the UI can offer to add
+app.get('/api/sources/catalog', requireAuth, async (req: any, res: any) => {
+    try {
+        const configured = await db.execute("SELECT key, config_json FROM sources");
+        const configuredUrls = new Set<string>();
+        for (const row of configured.rows) {
+            if (!row.config_json) continue;
+            try {
+                const url = JSON.parse(String(row.config_json))?.fetch?.url;
+                if (url) configuredUrls.add(String(url));
+            } catch (_) { /* skip unparseable descriptors */ }
+        }
+
+        res.json(getBuiltInCatalog().map(source => ({
+            id: source.id,
+            kind: source.kind,
+            label: source.label,
+            provides: source.provides,
+            category: source.category,
+            host: source.host,
+            url: source.fetch.url,
+            channelCountEstimate: source.channelCountEstimate,
+            added: configuredUrls.has(source.fetch.url || '')
+        })));
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -2124,16 +2153,43 @@ app.get('/api/metadata/config', requireAuth, async (req: any, res: any) => {
 async function updatePlaylist(url: string) {
     try {
         emitLog(formatMemorySnapshot('playlist import start', process.memoryUsage(), { source: url }), 'info');
-        let playlistStr = '';
-        if (url.startsWith('/files/')) {
-            const localPath = path.join(DB_DIR, url.replace('/files/', ''));
-            playlistStr = fs.readFileSync(localPath, 'utf8');
-        } else {
-            const response = await axios.get(url, { timeout: 30000 });
-            playlistStr = response.data;
+        // Fetch and parse through the m3u adapter, so playlist ingestion uses
+        // the same contract, HTTP client and conditional-request handling as
+        // every other source kind.
+        registerBuiltInAdapters();
+        const adapter = getAdapter('m3u');
+        if (!adapter?.fetchLineup) {
+            throw new Error('No m3u adapter registered');
         }
-        const playlist = parse(playlistStr);
-        emitLog(formatMemorySnapshot('playlist parsed', process.memoryUsage(), { source: url, items: playlist.items.length }), 'info');
+
+        const sourceKey = `playlist:${url}`;
+        const ctx = createAdapterContext(sourceKey);
+        const items: Array<{ name: string; url: string; tvgId: string; tvgLogo: string; groupTitle: string }> = [];
+        for await (const row of adapter.fetchLineup({
+            id: sourceKey,
+            kind: 'm3u',
+            label: url,
+            provides: ['channels'],
+            enabled: true,
+            priority: 0,
+            fetch: { url, timeoutMs: 30000 }
+        }, ctx)) {
+            items.push(row);
+        }
+        // A 304 means the playlist is unchanged — not that it is empty. Without
+        // this guard the delete-and-reinsert below would wipe every channel for
+        // this source the first time an upstream answered "not modified".
+        if (ctx.lastFetchNotModified) {
+            const existing = await db.execute({
+                sql: 'SELECT COUNT(*) as c FROM channels WHERE source_url = ?',
+                args: [url]
+            });
+            const kept = Number(existing.rows[0]?.c || 0);
+            emitLog(`Playlist unchanged since last fetch; keeping ${kept} channel(s).`, 'info');
+            return kept;
+        }
+
+        emitLog(formatMemorySnapshot('playlist parsed', process.memoryUsage(), { source: url, items: items.length }), 'info');
 
         // Cache existing channel state to preserve user settings (enabled, EPG matches)
         const currentData = await db.execute("SELECT id, name, url, enabled, matched_epg_id, match_type, channel_number, source_url, tvg_id FROM channels");
@@ -2175,13 +2231,13 @@ async function updatePlaylist(url: string) {
             pendingRows = [];
         };
 
-        for (const item of playlist.items) {
+        for (const item of items) {
             const record = createPlaylistChannelRecord({
-                name: item.name || 'Unknown Channel',
+                name: item.name,
                 url: item.url,
-                tvgId: item.tvg.id || '',
-                tvgLogo: item.tvg.logo || '',
-                groupTitle: item.group.title || ''
+                tvgId: item.tvgId,
+                tvgLogo: item.tvgLogo,
+                groupTitle: item.groupTitle
             }, indexes, url, count + 1);
 
             pendingRows.push(record.row);
@@ -2193,7 +2249,6 @@ async function updatePlaylist(url: string) {
         }
 
         await flushRows();
-        playlistStr = '';
 
         emitLog(formatMemorySnapshot('playlist import complete', process.memoryUsage(), { source: url, imported: count }), 'info');
         emitLog(`Updated playlist. Total channels: ${count}`, "success");
