@@ -391,3 +391,57 @@
     opacity: 0.6;
     cursor: default;
 }
+
+/* A note on a completed recording explains why it is short; it is not an error. */
+.recording-error.recording-note {
+    color: var(--text-secondary);
+}
+
+.dvr-settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 18px;
+    margin-top: 16px;
+}
+
+.dvr-setting {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.dvr-setting-label {
+    font-weight: 600;
+    font-size: 0.88rem;
+}
+
+.dvr-setting-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dvr-setting-control input,
+.dvr-setting-control select {
+    flex: 1;
+    min-width: 0;
+    padding: 9px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(0, 0, 0, 0.25);
+    color: inherit;
+    font-family: inherit;
+    font-size: 0.9rem;
+}
+
+.dvr-setting-unit {
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    white-space: nowrap;
+}
+
+.dvr-setting-hint {
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    line-height: 1.45;
+}

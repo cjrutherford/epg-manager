@@ -48,6 +48,86 @@
             </div>
         </div>
 
+        <!-- Recording rules: what the recorder does around and after a programme -->
+        <div class="glass-card series-rules-card">
+            <button class="series-rules-header" (click)="toggleDvrSettings()">
+                <span class="series-rules-title">Recording Settings</span>
+                <span class="series-rules-chevron">{{ showDvrSettings ? '▾' : '▸' }}</span>
+            </button>
+
+            @if (showDvrSettings) {
+            <div class="series-rules-body">
+                <div class="dvr-settings-grid">
+                    <label class="dvr-setting">
+                        <span class="dvr-setting-label">Start recording early</span>
+                        <span class="dvr-setting-control">
+                            <input type="number" min="0" step="30" [(ngModel)]="dvrSettings.padding_start_seconds" />
+                            <span class="dvr-setting-unit">seconds</span>
+                        </span>
+                        <span class="dvr-setting-hint">Covers a programme that starts before the guide says.</span>
+                    </label>
+
+                    <label class="dvr-setting">
+                        <span class="dvr-setting-label">Keep recording after</span>
+                        <span class="dvr-setting-control">
+                            <input type="number" min="0" step="30" [(ngModel)]="dvrSettings.padding_end_seconds" />
+                            <span class="dvr-setting-unit">seconds</span>
+                        </span>
+                        <span class="dvr-setting-hint">Broadcasts overrun; this is what stops the ending being cut off.</span>
+                    </label>
+
+                    <label class="dvr-setting">
+                        <span class="dvr-setting-label">Delete old recordings</span>
+                        <span class="dvr-setting-control">
+                            <select [(ngModel)]="dvrSettings.retention_mode">
+                                <option value="off">Never</option>
+                                <option value="age">When they get old</option>
+                                <option value="size">When they exceed a budget</option>
+                                <option value="low-space">When the disk runs low</option>
+                            </select>
+                        </span>
+                        <span class="dvr-setting-hint">Nothing in progress or scheduled is ever removed.</span>
+                    </label>
+
+                    @if (dvrSettings.retention_mode === 'age') {
+                    <label class="dvr-setting">
+                        <span class="dvr-setting-label">Keep recordings for</span>
+                        <span class="dvr-setting-control">
+                            <input type="number" min="1" [(ngModel)]="dvrSettings.retention_days" />
+                            <span class="dvr-setting-unit">days</span>
+                        </span>
+                    </label>
+                    }
+
+                    @if (dvrSettings.retention_mode === 'size') {
+                    <label class="dvr-setting">
+                        <span class="dvr-setting-label">Recording budget</span>
+                        <span class="dvr-setting-control">
+                            <input type="number" min="1" [(ngModel)]="dvrSettings.size_budget_gb" />
+                            <span class="dvr-setting-unit">GB</span>
+                        </span>
+                    </label>
+                    }
+
+                    <label class="dvr-setting">
+                        <span class="dvr-setting-label">Always leave free</span>
+                        <span class="dvr-setting-control">
+                            <input type="number" min="0" [(ngModel)]="dvrSettings.min_free_gb" />
+                            <span class="dvr-setting-unit">GB</span>
+                        </span>
+                        <span class="dvr-setting-hint">A recording is refused rather than started onto a full disk.</span>
+                    </label>
+                </div>
+
+                <div class="series-rules-actions">
+                    <button class="btn btn-secondary small-btn" (click)="saveDvrSettings()" [disabled]="savingDvrSettings">
+                        {{ savingDvrSettings ? 'Saving…' : 'Save settings' }}
+                    </button>
+                </div>
+            </div>
+            }
+        </div>
+
         <!-- Series rules: standing instructions, distinct from booked episodes -->
         <div class="glass-card series-rules-card">
             <button class="series-rules-header" (click)="toggleSeriesRules()">
@@ -114,7 +194,7 @@
                 </div>
                 <div class="recording-body">
                     <div class="recording-row">
-                        <span class="badge" [class]="getStatusClass(rec.status)">{{ rec.status }}</span>
+                        <span class="badge" [class]="getStatusClass(rec.status)">{{ statusLabel(rec.status) }}</span>
                         <span class="recording-size">{{ recordingSize(rec) }}</span>
                     </div>
                     <h3>{{ rec.program_title }}</h3>
@@ -126,8 +206,8 @@
                     @if (rec.description) {
                     <p class="recording-description">{{ rec.description }}</p>
                     }
-                    @if (rec.error_message) {
-                    <p class="recording-error">{{ rec.error_message }}</p>
+                    @if (failureReason(rec)) {
+                    <p class="recording-error" [class.recording-note]="rec.status === 'completed' || rec.status === 'missed'">{{ failureReason(rec) }}</p>
                     }
                     <div class="recording-actions">
                         @if (rec.status === 'completed' && rec.filename) {
@@ -136,6 +216,9 @@
                         }
                         @if (rec.status === 'recording') {
                         <button class="btn btn-secondary small-btn" (click)="stopRecording(rec.id)">Stop</button>
+                        }
+                        @if (canRetry(rec)) {
+                        <button class="btn btn-secondary small-btn" (click)="retryRecording(rec)">Try again</button>
                         }
                         @if (rec.status === 'scheduled') {
                         <button class="btn btn-secondary small-btn danger" (click)="deleteRecording(rec.id, rec.status)">Cancel</button>
@@ -169,7 +252,7 @@
                 </div>
                 <div class="recording-body">
                     <div class="recording-row">
-                        <span class="badge" [class]="getStatusClass(rec.status)">{{ rec.status }}</span>
+                        <span class="badge" [class]="getStatusClass(rec.status)">{{ statusLabel(rec.status) }}</span>
                         <span class="recording-size">{{ localRecordingSize(rec) }}</span>
                     </div>
                     <h3>{{ rec.programTitle }}</h3>
@@ -181,8 +264,8 @@
                     @if (rec.description) {
                     <p class="recording-description">{{ rec.description }}</p>
                     }
-                    @if (rec.errorMessage) {
-                    <p class="recording-error">{{ rec.errorMessage }}</p>
+                    @if (failureReason(rec)) {
+                    <p class="recording-error" [class.recording-note]="rec.status === 'completed'">{{ failureReason(rec) }}</p>
                     }
                     <div class="recording-actions">
                         @if (rec.status === 'completed') {

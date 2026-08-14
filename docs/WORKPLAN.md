@@ -3,7 +3,7 @@
 Single source of truth for the remediation effort. Consolidates the process audit, the UI &
 source-retrieval audit, and the source acquisition architecture into one tracked backlog.
 
-**Status:** Wave 4 in progress — 16 of 26 done, S16c paused
+**Status:** Wave 4 in progress — 18 of 26 done, S16c paused
 **Suite score at baseline:** 2.5 / 5 (process) · 2.3 / 5 (UI)
 **Last updated:** 2026-08-13
 
@@ -453,13 +453,34 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
   Watch's series recording is left alone — it records in the browser, not on the server, so it is
   not a caller of this rule engine. Reconciling the two DVRs is S20.
 
-- [ ] **S9 · DVR lifecycle correctness** — M
+- [x] **S9 · DVR lifecycle correctness** — M
   Mark past-due schedules as missed, add configurable pre/post padding, surface `error_message`,
   classify retries by failure type, keep `.part` files when concatenation fails.
-  → `src/recorder.ts`, `dvr.component.html`
-  - [ ] A missed window reports "missed", never "failed: output file not found"
-  - [ ] Padding is honoured on both ends
-  - [ ] Every failed row shows a human-readable cause
+  → `src/services/dvr-lifecycle.ts` (new), `src/recorder.ts`, `src/server.ts`, `dvr.component.*`
+  - [x] A missed window reports "missed", never "failed: output file not found"
+        — two rows left behind by an outage came back as `missed` with "the recording window closed
+        about 25 hour(s) before the recorder reached it"; a third, still airing, started 15 minutes
+        late and captured the remainder
+  - [x] Padding is honoured on both ends
+        — with 90s pre / 300s post, a programme due in 60 seconds started immediately and recorded
+        1552s of a 1200s programme
+  - [x] Every failed row shows a human-readable cause
+        — a 404 stream failed once with "the channel has probably moved or been removed"; a refused
+        connection retried at 5s, 10s, 20s, 40s then stopped with "(gave up after 5 attempts)"
+
+  The scheduler used to start ffmpeg against any past-due row regardless of whether the window had
+  closed, which is where "failed: Output file not found" came from — a message describing the
+  symptom and hiding the cause.
+
+  Retries are now classified rather than counted. ffmpeg reports everything as exit 1 plus a line
+  of stderr, which was being discarded; the tail is kept and matched, so a permanent failure stops
+  at once instead of five times over four minutes.
+
+  Retention and padding got an API and a panel. Retention had been read by the recorder since S2
+  but was unreachable from anywhere — the defaults were the only values it could ever have.
+
+  Padding defaults to 0 before / 120s after. Post-padding is what a DVR is expected to do; starting
+  early is left off because it overlaps whatever the channel was showing before.
 
 - [ ] **S10 · One front door for background work** — L
   Every mutating background action behind a single job manager with a real queue. Report the actual
@@ -489,13 +510,33 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
   The numbering feature was never broken — `epg.ts` has always read these settings. They were simply
   impossible to set from the only screen that offered to set them.
 
-- [ ] **S20 · One DVR, two presentations** — L
+- [x] **S20 · One DVR, two presentations** — L
   Collapse the duplicate implementations into a shared DVR service plus one component rendering admin
   and overlay modes.
-  → `dvr.component.*`, `watch.component.ts`, `services/dvr.service.ts`
-  - [ ] Scheduling logic exists once
-  - [ ] Both surfaces produce identical results for the same programme
-  - [ ] Failure reasons render wherever a recording is listed
+  → `services/dvr.service.ts` (new), `services/dvr-format.ts` (new), `dvr.component.*`,
+  `watch.component.*`
+  - [x] Scheduling logic exists once
+        — no `clientRecordings.schedule` or `api.scheduleRecording` call remains outside DvrService;
+        the four scheduling paths across the two components are now one
+  - [x] Both surfaces produce identical results for the same programme
+        — "Record Series" from Watch while signed in produced a server rule and 5 server rows, the
+        same as the admin screen; signed out, the same action produced 1 browser recording and 0
+        server rows
+  - [x] Failure reasons render wherever a recording is listed
+        — a missed recording shows "Missed" with its reason in both the admin list and the Watch
+        overlay, in the muted note colour rather than error red
+
+  Two recorders, not two copies of one: the server's survives a closed tab, the browser's is all an
+  anonymous viewer has. DvrService picks between them and says which one it used, instead of the two
+  screens each assuming a different answer.
+
+  The consolidation found a live drift rather than just duplication. Watch's `parseEpgTime` stripped
+  everything after the timestamp — including the `+0200` — and read every programme as UTC, while
+  the DVR screen's copy applied the offset. The same feed placed shows in different hours depending
+  on which screen you looked at.
+
+  The framework-free half is a separate module so jest can reach it; `roots` now includes
+  `client/src/app/services`. That is the first client-side unit test in the repo.
 
 - [ ] **S21 · Channel Manager at real scale** — M
   Replace the 500-row truncation with virtual scrolling or server-side paging, debounce EPG search,
@@ -671,3 +712,5 @@ memory, so **restart it after `ng build`** or you will screenshot the previous b
 | 2026-08-14 | — | Corrected the S6 record: the work shipped in 1ae7e9d but an earlier scripted edit to this file silently failed to match, leaving it unchecked. |
 | 2026-08-14 | S19 | Done. Config endpoint persists the numbering fields it used to drop; language selector added; defaults aligned across both config endpoints. UI round-trip browser-verified. |
 | 2026-08-14 | S8 | Done. The series pass had no caller, no future filter, and a join blind to `manual_overrides`; all three fixed and each acceptance criterion verified against a live server on a copy of the real database. Rules panel added with a separate confirmation for cancelling already-booked episodes. Testing surfaced a duplicate-booking bug from comparing timestamps exactly — now a 5-minute window. 18 new unit tests; suite 327 -> 345. |
+| 2026-08-14 | S9 | Done. Missed is now a state of its own, padding is configurable and honoured by both the scheduler and the recorder, and ffmpeg failures are classified from stderr instead of retried blindly five times. Retention finally got a UI — it had been readable-only since S2. Every criterion measured against a live server on a copy of the real database. 36 new unit tests. |
+| 2026-08-14 | S20 | Done. One DvrService; four scheduling paths across two components became one. Verified both branches in a browser: signed in, Watch produces server rows identical to the admin screen; signed out, it produces browser recordings. Found that Watch's time parser discarded the UTC offset while the DVR screen's applied it. First client-side unit tests in the repo (jest roots widened). 26 new tests; suite 345 -> 407. |

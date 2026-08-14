@@ -51,7 +51,10 @@ export function resolveRecordingPath(
     return resolved;
 }
 
-export type RetentionMode = 'off' | 'age' | 'size' | 'low-space';
+/** The retention modes, as data so the API can validate against them. */
+export const RETENTION_MODES = ['off', 'age', 'size', 'low-space'] as const;
+
+export type RetentionMode = typeof RETENTION_MODES[number];
 
 export interface RetentionPolicy {
     mode: RetentionMode;

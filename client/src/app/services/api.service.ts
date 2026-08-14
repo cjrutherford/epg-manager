@@ -72,7 +72,9 @@ export interface DvrStorage {
     totalBytes: number;
     freeBytes: number;
     recordingsBytes: number;
-    retention: { mode: string; maxAgeDays: number; minFreeBytes: number };
+    retention: { mode: string; maxAgeDays: number; minFreeBytes: number; budgetBytes?: number };
+    /** Seconds recorded before and after each programme. */
+    padding?: { startSeconds: number; endSeconds: number };
 }
 
 @Injectable({ providedIn: 'root' })
@@ -139,6 +141,10 @@ export class ApiService {
 
     cancelRecording(id: number): Observable<any> {
         return this.http.delete(`/api/dvr/${id}`);
+    }
+
+    retryRecording(id: number): Observable<any> {
+        return this.http.post(`/api/dvr/${id}/retry`, {});
     }
 
     getSeriesRules(): Observable<SeriesRule[]> {
@@ -229,6 +235,10 @@ export class ApiService {
     // ── DVR Scheduler (scheduled recordings) ────
     getDvrSchedules(): Observable<any[]> {
         return this.http.get<any[]>('/api/dvr');
+    }
+
+    saveDvrSettings(settings: any): Observable<any> {
+        return this.http.post('/api/dvr/settings', settings);
     }
 
     getDvrStorage(): Observable<DvrStorage> {

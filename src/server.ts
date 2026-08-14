@@ -13,8 +13,9 @@ import { enrichProgramsWithMetadata, getEnrichmentStats, clearMetadataCache, isE
 import { PipelineQueue } from './services/pipeline';
 import { getJobStatus, startJob, completeJob, requestJobCancel, loadLastJobStateOnBoot } from './job';
 import { eventBus, emitLog, emitProgress, emitProgressComplete } from './events';
-import { startRecordingScheduler, stopRecordingScheduler, drainRecordings, cancelRecording as cancelRec, getRecordingFilePath, checkScheduledRecordings, startRecording, stopRecording, safeRecordingPath, getFreeSpaceBytes, getVolumeUsage, getRetentionPolicy, autoScheduleSeriesRules } from './recorder';
-import { formatBytes, meetsFreeSpaceFloor } from './services/recording-storage';
+import { startRecordingScheduler, stopRecordingScheduler, drainRecordings, cancelRecording as cancelRec, getRecordingFilePath, checkScheduledRecordings, startRecording, stopRecording, safeRecordingPath, getFreeSpaceBytes, getVolumeUsage, getRetentionPolicy, getRecordingPadding, autoScheduleSeriesRules } from './recorder';
+import { RETENTION_MODES, formatBytes, meetsFreeSpaceFloor } from './services/recording-storage';
+import { classifySchedule, parseWindow } from './services/dvr-lifecycle';
 import { StreamManager } from './services/stream';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -2183,6 +2184,97 @@ app.delete('/api/dvr/:id', requireAuth, async (req: any, res: any) => {
     }
 });
 
+// POST /api/dvr/:id/retry - Put a failed or missed recording back on the schedule.
+// Only meaningful while the window is still open, which the classifier decides
+// rather than the caller.
+app.post('/api/dvr/:id/retry', requireAuth, async (req: any, res: any) => {
+    try {
+        const id = parseInt(req.params.id);
+        const result = await db.execute({
+            sql: 'SELECT status, start_time, end_time FROM scheduled_recordings WHERE id = ?',
+            args: [id],
+        });
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'No such recording' });
+        }
+
+        const rec = result.rows[0];
+        if (rec.status !== 'failed' && rec.status !== 'missed') {
+            return res.status(409).json({ error: `Only a failed or missed recording can be retried (this one is ${rec.status})` });
+        }
+
+        const verdict = classifySchedule(
+            parseWindow(rec.start_time as string, rec.end_time as string),
+            Date.now(),
+            await getRecordingPadding()
+        );
+        if (verdict.action === 'missed') {
+            return res.status(409).json({ error: 'That programme has finished — there is nothing left to record' });
+        }
+
+        await db.execute({
+            sql: "UPDATE scheduled_recordings SET status = 'scheduled', error_message = NULL WHERE id = ?",
+            args: [id],
+        });
+        checkScheduledRecordings();
+
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// POST /api/dvr/settings - Retention and padding.
+// These were read by the recorder from the moment retention landed but there
+// was nowhere to set them; the defaults were the only reachable values.
+app.post('/api/dvr/settings', requireAuth, async (req: any, res: any) => {
+    try {
+        const { retention_mode, retention_days, size_budget_gb, min_free_gb,
+                padding_start_seconds, padding_end_seconds } = req.body || {};
+
+        const writes: Array<[string, string]> = [];
+
+        if (retention_mode !== undefined) {
+            if (!RETENTION_MODES.includes(retention_mode)) {
+                return res.status(400).json({ error: `retention_mode must be one of: ${RETENTION_MODES.join(', ')}` });
+            }
+            writes.push(['dvr_retention_mode', String(retention_mode)]);
+        }
+
+        const numeric: Array<[string, any, string, number]> = [
+            ['dvr_retention_days', retention_days, 'retention_days', 1],
+            ['dvr_size_budget_gb', size_budget_gb, 'size_budget_gb', 1],
+            ['dvr_min_free_gb', min_free_gb, 'min_free_gb', 0],
+            ['dvr_padding_start_seconds', padding_start_seconds, 'padding_start_seconds', 0],
+            ['dvr_padding_end_seconds', padding_end_seconds, 'padding_end_seconds', 0]
+        ];
+
+        for (const [key, raw, label, min] of numeric) {
+            if (raw === undefined) continue;
+            const value = Number(raw);
+            if (!Number.isFinite(value) || value < min) {
+                return res.status(400).json({ error: `${label} must be a number of at least ${min}` });
+            }
+            writes.push([key, String(Math.floor(value))]);
+        }
+
+        for (const [key, value] of writes) {
+            await db.execute({
+                sql: 'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+                args: [key, value]
+            });
+        }
+
+        res.json({
+            success: true,
+            retention: await getRetentionPolicy(),
+            padding: await getRecordingPadding()
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // GET /api/dvr/storage - Volume usage, plus the share taken by recordings
 app.get('/api/dvr/storage', requireAuth, async (req: any, res: any) => {
     try {
@@ -2210,8 +2302,10 @@ app.get('/api/dvr/storage', requireAuth, async (req: any, res: any) => {
             retention: {
                 mode: policy.mode,
                 maxAgeDays: policy.maxAgeDays,
-                minFreeBytes: policy.minFreeBytes
-            }
+                minFreeBytes: policy.minFreeBytes,
+                budgetBytes: policy.budgetBytes
+            },
+            padding: await getRecordingPadding()
         });
     } catch (e: any) {
         res.status(500).json({ error: e.message });

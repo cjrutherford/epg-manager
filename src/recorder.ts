@@ -9,6 +9,17 @@ import path from 'path';
 import fs from 'fs';
 import { selectSchedulableEpisodes } from './services/series-rules';
 import {
+    appendStderr,
+    classifyFfmpegFailure,
+    classifySchedule,
+    describeExhausted,
+    parseWindow,
+    resolvePadding,
+    retryDelayMs,
+    shouldRetry,
+    type RecordingPadding
+} from './services/dvr-lifecycle';
+import {
     DEFAULT_RETENTION,
     evaluateRetention,
     formatBytes,
@@ -94,6 +105,14 @@ export async function getRetentionPolicy(): Promise<RetentionPolicy> {
         budgetBytes: parsePositiveNumber(await getSetting('dvr_size_budget_gb'), DEFAULT_RETENTION.budgetBytes / GIB) * GIB,
         minFreeBytes: parsePositiveNumber(await getSetting('dvr_min_free_gb'), DEFAULT_RETENTION.minFreeBytes / GIB) * GIB
     };
+}
+
+/** Configured pre/post recording padding. */
+export async function getRecordingPadding(): Promise<RecordingPadding> {
+    return resolvePadding(
+        await getSetting('dvr_padding_start_seconds'),
+        await getSetting('dvr_padding_end_seconds')
+    );
 }
 
 /** Resolve a recording filename to a safe absolute path, or null if it escapes the directory. */
@@ -229,13 +248,13 @@ async function finalizeSingleFile(recordingId: number, singlePath?: string): Pro
         } else {
             await db.execute({
                 sql: 'UPDATE scheduled_recordings SET status = ?, error_message = ? WHERE id = ?',
-                args: ['failed', 'Output file not found', recordingId],
+                args: ['failed', 'No video was captured — the stream produced no data before the recording ended', recordingId],
             });
         }
     } catch (e: any) {
         await db.execute({
             sql: 'UPDATE scheduled_recordings SET status = ?, error_message = ? WHERE id = ?',
-            args: ['failed', `Finalization error: ${e.message}`, recordingId],
+            args: ['failed', `The recording could not be saved to disk: ${e.message}`, recordingId],
         });
     }
 }
@@ -265,7 +284,7 @@ async function mergeRecordingParts(recordingId: number, partPaths: string[]): Pr
     if (existingParts.length === 0) {
         await db.execute({
             sql: 'UPDATE scheduled_recordings SET status = ?, error_message = ? WHERE id = ?',
-            args: ['failed', 'No valid parts recorded', recordingId],
+            args: ['failed', 'No video was captured — every attempt produced an empty file', recordingId],
         });
         return;
     }
@@ -314,14 +333,20 @@ async function mergeRecordingParts(recordingId: number, partPaths: string[]): Pr
             } catch (e: any) {
                 await db.execute({
                     sql: 'UPDATE scheduled_recordings SET status = ?, error_message = ? WHERE id = ?',
-                    args: ['failed', `Concat finalization error: ${e.message}`, recordingId],
+                    args: ['failed', `The joined recording could not be saved: ${e.message}`, recordingId],
                 });
             }
         } else {
             // Failed to concat, keep parts but mark as failed
+            // The parts are deliberately left on disk — they are the only
+            // copy of what was captured, and joining can be retried.
             await db.execute({
                 sql: 'UPDATE scheduled_recordings SET status = ?, error_message = ? WHERE id = ?',
-                args: ['failed', `Concatenation failed with code ${code}`, recordingId],
+                args: [
+                    'failed',
+                    `The ${existingParts.length} captured segments could not be joined into one file (ffmpeg exited ${code}). The segments have been kept on disk.`,
+                    recordingId
+                ],
             });
             console.error(`[RECORDER] Concatenation failed for recording ${recordingId}`);
         }
@@ -362,7 +387,7 @@ async function runRecordingSession(
     });
     if (channelRes.rows.length > 0 && channelRes.rows[0].enabled === 0) {
         await db.execute({
-            sql: "UPDATE scheduled_recordings SET status = 'failed', error_message = 'Channel is disabled' WHERE id = ?",
+            sql: "UPDATE scheduled_recordings SET status = 'failed', error_message = 'The channel was disabled before this recording could start' WHERE id = ?",
             args: [recordingId],
         });
         cleanUpParts(partPaths);
@@ -370,19 +395,34 @@ async function runRecordingSession(
     }
 
     const streamUrl = (channelRes.rows.length > 0 && channelRes.rows[0].url) ? (channelRes.rows[0].url as string) : (rec.stream_url as string);
-    const endTime = new Date(rec.end_time as string);
-    const now = new Date();
 
-    const durationSec = Math.floor((endTime.getTime() - now.getTime()) / 1000);
-    if (durationSec < 10) {
-        // Schedule ended or too close to end
+    // The same window arithmetic the scheduler uses, so padding is honoured by
+    // the process that actually records rather than only by the one that starts it.
+    const padding = await getRecordingPadding();
+    const verdict = classifySchedule(
+        parseWindow(rec.start_time as string, rec.end_time as string),
+        Date.now(),
+        padding
+    );
+
+    if (verdict.action !== 'start') {
+        // The window closed. Anything already captured is worth keeping; only a
+        // session that never wrote a byte is a miss.
         if (partPaths.length > 0) {
             await mergeRecordingParts(recordingId, partPaths);
         } else {
-            await finalizeSingleFile(recordingId);
+            const reason = verdict.action === 'missed'
+                ? verdict.reason
+                : 'Missed — the recording window closed before capture began';
+            await db.execute({
+                sql: "UPDATE scheduled_recordings SET status = 'missed', error_message = ? WHERE id = ?",
+                args: [reason, recordingId],
+            });
         }
         return;
     }
+
+    const durationSec = verdict.durationSeconds;
 
     // Refuse to start writing onto a volume that is already out of room —
     // ffmpeg would otherwise fail partway and leave an unplayable fragment.
@@ -436,8 +476,11 @@ async function runRecordingSession(
 
     activeProcesses.set(recordingId, ffmpeg);
 
+    // ffmpeg reports the actual cause of a failure here and nowhere else, so
+    // the tail is kept to explain the failure rather than discarded.
+    let stderrTail = '';
     ffmpeg.stderr?.on('data', (data: Buffer) => {
-        // Optional stderr parser
+        stderrTail = appendStderr(stderrTail, data.toString());
     });
 
     ffmpeg.on('close', (code: number | null) => {
@@ -464,7 +507,8 @@ async function runRecordingSession(
                 return;
             }
 
-            console.warn(`[RECORDER] Recording ${recordingId} process exited with error code ${code}`);
+            const failure = classifyFfmpegFailure(code, stderrTail);
+            console.warn(`[RECORDER] Recording ${recordingId} exited with code ${code}: ${failure.reason}`);
 
             // During shutdown a dying ffmpeg is expected — salvage what was
             // captured instead of scheduling a retry into a closing process.
@@ -474,22 +518,48 @@ async function runRecordingSession(
                 return;
             }
 
-            // Retry logic
-            if (attempt < 5) {
-                console.log(`[RECORDER] Retrying recording ${recordingId} in 5 seconds (attempt ${attempt + 1})...`);
+            // A 404 or a full disk will fail identically five times over; only
+            // retry what could plausibly succeed on a second attempt.
+            if (shouldRetry(failure, attempt)) {
+                const delay = retryDelayMs(attempt);
+                console.log(`[RECORDER] Retrying recording ${recordingId} in ${delay / 1000}s (attempt ${attempt + 1}): ${failure.reason}`);
+                await db.execute({
+                    sql: 'UPDATE scheduled_recordings SET error_message = ? WHERE id = ?',
+                    args: [`${failure.reason} — retrying (attempt ${attempt + 1})`, recordingId],
+                });
                 setTimeout(() => {
                     if (shuttingDown) return;
                     runRecordingSession(recordingId, attempt + 1, partPaths).catch(err => {
                         console.error(`[RECORDER] Failed to restart recording session:`, err);
                     });
-                }, 5000);
-            } else {
-                console.error(`[RECORDER] Recording ${recordingId} failed after max retries`);
-                if (partPaths.length > 1) {
-                    await mergeRecordingParts(recordingId, partPaths);
+                }, delay);
+                return;
+            }
+
+            const summary = failure.retryable ? describeExhausted(failure, attempt) : failure.reason;
+            console.error(`[RECORDER] Recording ${recordingId} not retried: ${summary}`);
+
+            // Whatever was captured before the failure is still worth keeping.
+            const captured = partPaths.filter(p => {
+                try { return fs.existsSync(p) && fs.statSync(p).size > 0; } catch (_) { return false; }
+            });
+
+            if (captured.length > 0) {
+                if (captured.length > 1) {
+                    await mergeRecordingParts(recordingId, captured);
                 } else {
-                    await finalizeSingleFile(recordingId, partPath);
+                    await finalizeSingleFile(recordingId, captured[0]);
                 }
+                // Finalisation marks it completed; the reason explains why it is short.
+                await db.execute({
+                    sql: 'UPDATE scheduled_recordings SET error_message = ? WHERE id = ?',
+                    args: [`Recording ended early: ${summary}`, recordingId],
+                });
+            } else {
+                await db.execute({
+                    sql: "UPDATE scheduled_recordings SET status = 'failed', error_message = ? WHERE id = ?",
+                    args: [summary, recordingId],
+                });
             }
         })());
     });
@@ -599,19 +669,44 @@ export async function cancelRecording(recordingId: number): Promise<void> {
  * Check for scheduled recordings that should start now
  */
 export async function checkScheduledRecordings(): Promise<void> {
-    const now = new Date().toISOString();
+    const now = Date.now();
+    const padding = await getRecordingPadding();
 
-    const result = await db.execute({
-        sql: `SELECT id FROM scheduled_recordings
-              WHERE status = 'scheduled' AND start_time <= ?`,
-        args: [now],
-    });
+    // Every scheduled row is examined, not just those whose start has passed:
+    // pre-padding can make a row due before its advertised start.
+    const result = await db.execute(
+        `SELECT id, start_time, end_time, program_title FROM scheduled_recordings WHERE status = 'scheduled'`
+    );
 
     for (const row of result.rows) {
+        const id = row.id as number;
+        const verdict = classifySchedule(
+            parseWindow(row.start_time as string, row.end_time as string),
+            now,
+            padding
+        );
+
+        if (verdict.action === 'wait') continue;
+
+        if (verdict.action === 'missed') {
+            // The window closed without us. Saying so is the whole point:
+            // starting ffmpeg against a window that has already passed used to
+            // produce "failed: Output file not found".
+            console.warn(`[RECORDER] Recording ${id} ("${row.program_title}") missed — ${verdict.reason}`);
+            await db.execute({
+                sql: "UPDATE scheduled_recordings SET status = 'missed', error_message = ? WHERE id = ?",
+                args: [verdict.reason, id],
+            });
+            continue;
+        }
+
         try {
-            await startRecording(row.id as number);
+            if (verdict.lateBySeconds > 0) {
+                console.warn(`[RECORDER] Starting recording ${id} ${Math.round(verdict.lateBySeconds / 60)} minute(s) late; capturing the remainder.`);
+            }
+            await startRecording(id);
         } catch (e: any) {
-            console.error(`[RECORDER] Failed to start recording ${row.id}:`, e.message);
+            console.error(`[RECORDER] Failed to start recording ${id}:`, e.message);
         }
     }
 }
@@ -645,7 +740,7 @@ export async function cleanupStaleRecordings(): Promise<void> {
                             await mergeRecordingParts(id, parts);
                         }
                         await db.execute({
-                            sql: "UPDATE scheduled_recordings SET error_message = 'Recovered partial recording after server restart' WHERE id = ?",
+                            sql: "UPDATE scheduled_recordings SET error_message = 'The server restarted mid-recording; what had been captured was recovered' WHERE id = ?",
                             args: [id],
                         });
                         continue;
@@ -657,7 +752,7 @@ export async function cleanupStaleRecordings(): Promise<void> {
 
             await db.execute({
                 sql: 'UPDATE scheduled_recordings SET status = ?, error_message = ? WHERE id = ?',
-                args: ['failed', 'Process lost (server restart)', id],
+                args: ['failed', 'The server stopped while this was recording and nothing had been written to disk yet', id],
             });
         }
     }

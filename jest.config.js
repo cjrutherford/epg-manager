@@ -1,7 +1,10 @@
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  roots: ['<rootDir>/src'],
+  // The client's framework-free modules are tested here too: they hold shared
+  // decision logic (the DVR vocabulary) that was previously only reachable
+  // through a component, and so was never asserted on.
+  roots: ['<rootDir>/src', '<rootDir>/client/src/app/services'],
   testMatch: ['**/__tests__/**/*.test.ts', '**/*.test.ts'],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   // NodeNext requires .js specifiers in relative imports; strip them so jest
@@ -14,6 +17,7 @@ module.exports = {
   },
   collectCoverageFrom: [
     'src/**/*.ts',
+    'client/src/app/services/dvr-format.ts',
     '!src/**/*.d.ts',
     '!src/debug_*.ts',
     '!src/scripts/**',

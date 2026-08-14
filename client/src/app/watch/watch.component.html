@@ -295,7 +295,7 @@
                 <div class="recording-body">
                   <div class="recording-row">
                     <span class="recording-status" [class]="rec.status">{{
-                      rec.status
+                      recordingStatusLabel(rec.status)
                     }}</span>
                     @if (isDocumentHidden && rec.status === "recording") {
                       <span class="recording-risk">background best-effort</span>
@@ -311,8 +311,8 @@
                       fmtRecordingTime(recordingStart(rec), recordingEnd(rec))
                     }}
                   </p>
-                  @if (rec.errorMessage) {
-                    <p class="recording-error">{{ rec.errorMessage }}</p>
+                  @if (failureReason(rec)) {
+                    <p class="recording-error" [class.recording-note]="rec.status === 'completed'">{{ failureReason(rec) }}</p>
                   }
                   <div class="recording-foot">
                     <span>{{ rec.segmentCount }} segments</span>
@@ -392,7 +392,7 @@
                 <div class="recording-body">
                   <div class="recording-row">
                     <span class="recording-status" [class]="rec.status">{{
-                      rec.status
+                      recordingStatusLabel(rec.status)
                     }}</span>
                   </div>
                   <h3>{{ recordingTitle(rec) }}</h3>
@@ -405,8 +405,8 @@
                       fmtRecordingTime(recordingStart(rec), recordingEnd(rec))
                     }}
                   </p>
-                  @if (rec.error_message) {
-                    <p class="recording-error">{{ rec.error_message }}</p>
+                  @if (failureReason(rec)) {
+                    <p class="recording-error" [class.recording-note]="rec.status === 'completed' || rec.status === 'missed'">{{ failureReason(rec) }}</p>
                   }
                   <div class="recording-foot">
                     <span>Server DVR</span>

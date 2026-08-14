@@ -456,6 +456,17 @@ video:fullscreen {
     color: var(--color-danger);
 }
 
+/* A missed window is not a fault, so it is not painted as one. */
+.recording-status.missed {
+    background: rgba(var(--color-info-rgb), 0.18);
+    color: var(--color-info);
+}
+
+/* On a completed recording the message explains why it is short. */
+.recording-error.recording-note {
+    color: var(--text-secondary);
+}
+
 .recording-risk {
     color: var(--color-warning);
     font-size: 0.72rem;

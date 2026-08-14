@@ -10,6 +10,7 @@ import { ThemeService, Theme } from '../services/theme.service';
 import { LucideAngularModule } from 'lucide-angular';
 import { ToastService } from '../services/toast.service';
 import { ClientRecordingService } from '../services/client-recording.service';
+import { DvrService } from '../services/dvr.service';
 import { ClientRecording, SystemRecording } from '../services/client-recording.types';
 
 interface Channel {
@@ -242,6 +243,7 @@ export class WatchComponent implements OnInit, OnDestroy {
         private themeService: ThemeService,
         private toast: ToastService,
         private clientRecordings: ClientRecordingService,
+        private dvr: DvrService,
         @Inject(PLATFORM_ID) platformId: Object,
         private cdr: ChangeDetectorRef
     ) {
@@ -599,17 +601,17 @@ export class WatchComponent implements OnInit, OnDestroy {
     }
 
     scheduleRecording(channelId: string, programTitle: string, startTime: string, endTime: string): void {
-        const ch = this.channels.find(c => c.id === channelId);
-        if (!ch) return;
-        this.clientRecordings.schedule({
-            channelId,
-            channelName: ch.name,
-            channelLogo: ch.logo,
-            programTitle,
-            startTime,
-            endTime,
-            streamUrl: ch.stream_url
-        }).then(() => this.loadRecordings()).catch(() => {});
+        const channel = this.channels.find(c => c.id === channelId);
+        if (!channel) return;
+        this.dvr.schedule({
+            channel,
+            programme: { title: programTitle, start: startTime, stop: endTime }
+        })
+            .then(outcome => {
+                this.toast.show(outcome.message, 'success');
+                return this.loadRecordings();
+            })
+            .catch(e => this.toast.show(this.dvr.describeError(e), 'error'));
     }
 
     cancelSchedule(recordingId: string | number): void {
@@ -1363,57 +1365,44 @@ export class WatchComponent implements OnInit, OnDestroy {
             return;
         }
 
-        try {
-            const canRecordSeries = this.isSeriesCandidate(this.watchScheduleSelectedProgram, this.watchSchedulePrograms);
-            if (this.watchScheduleRecordSeries && this.watchScheduleSelectedProgram && canRecordSeries) {
-                const matchingPrograms = this.watchSchedulePrograms.filter(program => program.title === this.watchScheduleSelectedProgram.title);
-                let count = 0;
-                for (const program of matchingPrograms) {
-                    if (this.getRecordingForProgram(channel.id, program.start, program.stop)) continue;
-                    const start = this.parseEpgTime(program.start);
-                    const stop = this.parseEpgTime(program.stop);
-                    if (!start || !stop || stop.getTime() < Date.now()) continue;
-                    await this.clientRecordings.schedule({
-                        channelId: channel.id,
-                        channelName: channel.name,
-                        channelLogo: channel.logo,
-                        programTitle: program.title,
-                        subTitle: program.sub_title,
-                        episodeNum: program.episode_num,
-                        description: program.description,
-                        thumbnail: program.icon || channel.logo,
-                        category: program.category,
-                        rating: program.rating,
-                        startTime: start.toISOString(),
-                        endTime: stop.toISOString(),
-                        streamUrl: channel.stream_url
-                    });
-                    count++;
-                }
-                this.toast.show(`Scheduled ${count} local recordings`, 'success');
-            } else {
-                await this.clientRecordings.schedule({
-                    channelId: channel.id,
-                    channelName: channel.name,
-                    channelLogo: channel.logo,
-                    programTitle: this.watchSchedule.title,
-                    subTitle: this.watchScheduleSelectedProgram?.sub_title,
-                    episodeNum: this.watchScheduleSelectedProgram?.episode_num,
-                    description: this.watchScheduleSelectedProgram?.description,
-                    thumbnail: this.watchScheduleSelectedProgram?.icon || channel.logo,
-                    category: this.watchScheduleSelectedProgram?.category,
-                    rating: this.watchScheduleSelectedProgram?.rating,
-                    startTime: new Date(this.watchSchedule.startTime).toISOString(),
-                    endTime: new Date(this.watchSchedule.endTime).toISOString(),
-                    streamUrl: channel.stream_url
-                });
-                this.toast.show('Local recording scheduled', 'success');
+        const selected = this.watchScheduleSelectedProgram;
+        const wantsSeries = this.watchScheduleRecordSeries
+            && !!selected
+            && this.isSeriesCandidate(selected, this.watchSchedulePrograms);
+
+        // The same request shape the admin screen sends. DvrService decides
+        // where it goes: the server when signed in, this browser otherwise.
+        const programme = wantsSeries
+            ? {
+                title: selected.title,
+                start: selected.start,
+                stop: selected.stop,
+                sub_title: selected.sub_title,
+                episode_num: selected.episode_num,
+                description: selected.description,
+                category: selected.category,
+                rating: selected.rating,
+                icon: selected.icon
             }
+            : {
+                title: this.watchSchedule.title,
+                start: new Date(this.watchSchedule.startTime).toISOString(),
+                stop: new Date(this.watchSchedule.endTime).toISOString(),
+                sub_title: selected?.sub_title,
+                episode_num: selected?.episode_num,
+                description: selected?.description,
+                category: selected?.category,
+                rating: selected?.rating,
+                icon: selected?.icon
+            };
+
+        try {
+            const outcome = await this.dvr.schedule({ channel, programme, series: wantsSeries });
+            this.toast.show(outcome.message, 'success');
             this.showWatchScheduleModal = false;
             await this.loadRecordings();
         } catch (error) {
-            console.error('Failed to schedule local recording', error);
-            this.toast.show('Failed to schedule local recording', 'error');
+            this.toast.show(this.dvr.describeError(error, 'Failed to schedule that recording'), 'error');
         }
     }
 
@@ -1421,18 +1410,19 @@ export class WatchComponent implements OnInit, OnDestroy {
         return 'programTitle' in rec ? rec.programTitle : rec.program_title;
     }
 
+    // Shared with the admin DVR screen through DvrService — these were
+    // separate copies that had already begun to diverge.
     isSeriesCandidate(program: any, programs: any[] = []): boolean {
-        if (!program?.title) return false;
-        if (program.episode_num || program.sub_title) return true;
+        return this.dvr.isSeriesCandidate(program, programs);
+    }
 
-        const category = String(program.category || '').toLowerCase();
-        const blockedCategories = ['movie', 'film', 'sports', 'news', 'event', 'special', 'shopping'];
-        if (blockedCategories.some(blocked => category.includes(blocked))) return false;
+    /** The reason a recording ended as it did, from either recorder. */
+    failureReason(rec: any): string | null {
+        return this.dvr.failureReason(rec);
+    }
 
-        const showCategories = ['series', 'show', 'entertainment', 'comedy', 'drama', 'animation', 'kids', 'documentary'];
-        const title = String(program.title).trim().toLowerCase();
-        const repeatCount = programs.filter(candidate => String(candidate?.title || '').trim().toLowerCase() === title).length;
-        return repeatCount > 1 && showCategories.some(showCategory => category.includes(showCategory));
+    recordingStatusLabel(status: string): string {
+        return this.dvr.statusLabel(status);
     }
 
     recordingChannel(rec: ClientRecording | SystemRecording): string {
@@ -1469,11 +1459,7 @@ export class WatchComponent implements OnInit, OnDestroy {
     }
 
     fmtBytes(bytes: number): string {
-        if (!bytes) return '0 B';
-        if (bytes < 1024) return bytes + ' B';
-        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-        if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
-        return (bytes / 1024 / 1024 / 1024).toFixed(1) + ' GB';
+        return this.dvr.formatBytes(bytes);
     }
 
     // ── Volume ──────────────────────────────────
@@ -1534,17 +1520,13 @@ export class WatchComponent implements OnInit, OnDestroy {
     }
 
     // ── Program Helpers ─────────────────────────
+    /**
+     * Shared with the DVR screen. This copy used to discard everything after
+     * the timestamp — including the `+0200` — and read every programme as UTC,
+     * so a non-UTC feed placed shows in the wrong hour here but not there.
+     */
     parseEpgTime(str: string): Date | null {
-        if (!str) return null;
-        // Support ISO 8601 strings (from fillProgramGaps placeholders) as well as XMLTV format
-        if (str.includes('-') || str.includes('T')) {
-            const d = new Date(str);
-            return isNaN(d.getTime()) ? null : d;
-        }
-        const clean = str.replace(/\s.+$/, '');
-        const y = clean.slice(0, 4), mo = clean.slice(4, 6), d = clean.slice(6, 8);
-        const h = clean.slice(8, 10), mi = clean.slice(10, 12), s = clean.slice(12, 14);
-        return new Date(Date.UTC(+y, +mo - 1, +d, +h, +mi, +s));
+        return this.dvr.parseEpgTime(str);
     }
 
     fmtTime(date: Date): string {
@@ -1855,90 +1837,32 @@ export class WatchComponent implements OnInit, OnDestroy {
         this.contextMenu.visible = false;
         this.cdr.markForCheck();
         try {
-            const start = this.parseEpgTime(program.start);
-            const stop = this.parseEpgTime(program.stop);
-            const data = {
-                channelId: channel.id,
-                channelName: channel.name,
-                channelLogo: channel.logo,
-                programTitle: program.title,
-                subTitle: program.sub_title,
-                episodeNum: program.episode_num,
-                description: program.description,
-                thumbnail: program.icon || channel.logo,
-                category: program.category,
-                rating: program.rating,
-                startTime: start ? start.toISOString() : program.start,
-                endTime: stop ? stop.toISOString() : program.stop,
-                streamUrl: channel.stream_url
-            };
-            await this.clientRecordings.schedule(data);
+            const outcome = await this.dvr.schedule({ channel, programme: program });
             await this.loadRecordings();
-            this.toast.show(`Scheduled recording for '${program.title}'`, 'success');
+            this.toast.show(outcome.message, 'success');
         } catch (e) {
-            console.error('Failed to schedule recording', e);
-            this.toast.show(this.describeApiError(e, 'Failed to schedule recording'), 'error');
+            this.toast.show(this.dvr.describeError(e, 'Failed to schedule recording'), 'error');
         }
-    }
-
-    /**
-     * Turn a failed API call into something the viewer can act on. Server DVR is
-     * admin scope, so an anonymous viewer gets 401 — saying "failed" leaves them
-     * with no idea that signing in is what's missing.
-     */
-    private describeApiError(error: any, fallback: string): string {
-        const status = error?.status;
-        if (status === 401 || status === 403) {
-            return 'Sign in on the Admin page to schedule server recordings';
-        }
-        if (status === 507) {
-            return error?.error?.error || 'Not enough free disk space to record';
-        }
-        if (status === 409) {
-            return error?.error?.error || 'That recording is already scheduled';
-        }
-        return error?.error?.error || fallback;
     }
 
     async recordSeries(channel: Channel, program: any) {
         this.contextMenu.visible = false;
         this.cdr.markForCheck();
+
         if (!this.isSeriesCandidate(program, channel.programs || [])) {
             this.toast.show('Series recording is only available for shows with episode metadata', 'warning');
             return;
         }
+
         try {
-            const matchingPrograms = (channel.programs || []).filter((p: any) => p.title === program.title);
-            let count = 0;
-            for (const p of matchingPrograms) {
-                if (this.getRecordingForProgram(channel.id, p.start, p.stop)) {
-                    continue;
-                }
-                const start = this.parseEpgTime(p.start);
-                const stop = this.parseEpgTime(p.stop);
-                const data = {
-                    channelId: channel.id,
-                    channelName: channel.name,
-                    channelLogo: channel.logo,
-                    programTitle: p.title,
-                    subTitle: p.sub_title,
-                    episodeNum: p.episode_num,
-                    description: p.description,
-                    thumbnail: p.icon || channel.logo,
-                    category: p.category,
-                    rating: p.rating,
-                    startTime: start ? start.toISOString() : p.start,
-                    endTime: stop ? stop.toISOString() : p.stop,
-                    streamUrl: channel.stream_url
-                };
-                await this.clientRecordings.schedule(data);
-                count++;
-            }
+            // One request. The server keeps the rule and books episodes as the
+            // guide grows; looping the loaded window here only ever caught what
+            // was already on screen.
+            const outcome = await this.dvr.schedule({ channel, programme: program, series: true });
+            this.toast.show(outcome.message, 'success');
             await this.loadRecordings();
-            this.toast.show(`Scheduled series: ${count} episodes of '${program.title}'`, 'success');
         } catch (e) {
-            console.error('Failed to schedule series', e);
-            this.toast.show(this.describeApiError(e, 'Failed to schedule series'), 'error');
+            this.toast.show(this.dvr.describeError(e, 'Failed to schedule that series'), 'error');
         }
     }
 
