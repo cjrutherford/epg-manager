@@ -393,3 +393,15 @@
 .preset-card-btn.added .preset-status {
     color: var(--color-success);
 }
+
+/* Field-level validation, so a rejected save points at what is wrong. */
+.field-error {
+    margin-top: 6px;
+    color: var(--color-danger);
+    font-size: 0.8rem;
+    line-height: 1.45;
+}
+
+.field-invalid {
+    border-color: var(--color-danger) !important;
+}

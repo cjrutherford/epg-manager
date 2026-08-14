@@ -17,11 +17,14 @@ import {
 } from './job';
 import { DEFAULT_SYNC_CRON, describeCron, isValidCron, nextCronRun, resolveSyncCron } from './services/cron-schedule';
 import { isJobKind, JOB_LABELS } from './services/job-queue';
+import {
+    applyDefaults, getSettingDefinition, serializeSetting, summariseErrors, validateSettings
+} from './services/settings-schema';
 import { eventBus, emitLog, emitProgress, emitProgressComplete } from './events';
 import { startRecordingScheduler, stopRecordingScheduler, drainRecordings, cancelRecording as cancelRec, getRecordingFilePath, checkScheduledRecordings, startRecording, stopRecording, safeRecordingPath, getFreeSpaceBytes, getVolumeUsage, getRetentionPolicy, getRecordingPadding, autoScheduleSeriesRules } from './recorder';
 import { RETENTION_MODES, formatBytes, meetsFreeSpaceFloor } from './services/recording-storage';
 import { classifySchedule, parseWindow } from './services/dvr-lifecycle';
-import { StreamManager } from './services/stream';
+import { StreamManager, setMaxActiveStreams } from './services/stream';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
@@ -437,22 +440,11 @@ export async function applySyncSchedule(expression?: string): Promise<string> {
     return resolved;
 }
 
+// Kept as an alias of /api/config. It returned a different shape of the same
+// table, which is how the two ever came to disagree.
 app.get('/api/settings', requireAuth, async (req: any, res: any) => {
     try {
-        const result = await db.execute("SELECT * FROM settings");
-        const settings: any = {};
-        for (const row of result.rows) {
-            settings[row.key as string] = row.value;
-        }
-        if (!settings.channel_numbering_mode) {
-            settings.channel_numbering_mode = DEFAULT_CHANNEL_NUMBERING_MODE;
-        }
-        if (!settings.metadata_enrichment_enabled) {
-            settings.metadata_enrichment_enabled = 'true';
-        }
-        // Legacy field ignored
-        settings.epg_urls = [];
-        res.json(settings);
+        res.json(await readConfiguration());
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -1147,6 +1139,8 @@ async function startServer() {
 
     const cron = await applySyncSchedule();
     emitLog(`Automation schedule: ${describeCron(cron)}`, 'info');
+
+    await applyOperationalSettings();
     await verifyResetScopeCoverage();
     await loadSessionsOnBoot();
 
@@ -1292,156 +1286,109 @@ function isChannelNumberingMode(value: unknown): boolean {
 }
 
 // GET /api/config - Unified config
+/**
+ * The configuration, in the one shape every caller gets.
+ *
+ * `/api/settings` and `/api/config` used to return overlapping, differently
+ * defaulted views of the same table: one applied the enrichment default and the
+ * other did not, one parsed `playlist_urls` into an array and the other returned
+ * the raw JSON string. Both now go through the schema.
+ */
+async function readConfiguration(): Promise<Record<string, unknown>> {
+    const settingsRes = await db.execute("SELECT key, value FROM settings");
+    const rows: Record<string, string | null> = {};
+    for (const row of settingsRes.rows) {
+        rows[String(row.key)] = row.value === null ? null : String(row.value);
+    }
+
+    const config = applyDefaults(rows);
+
+    // Derived, never stored twice: `playlist_url` was written alongside
+    // `playlist_urls` on every save, so the two could disagree about which
+    // playlist was "the" one.
+    const urls = Array.isArray(config.playlist_urls) ? config.playlist_urls as string[] : [];
+    config.playlist_url = urls[0] || '';
+
+    // Legacy field, still returned so older clients do not break.
+    config.epg_urls = [];
+
+    // Reported from the live schedule rather than the stored string, so a value
+    // that failed to apply cannot be reported as if it had.
+    config.sync_cron = getSyncCronExpression();
+
+    return config;
+}
+
 app.get('/api/config', requireAuth, async (req: any, res: any) => {
     try {
-        const settingsRes = await db.execute("SELECT * FROM settings");
-        const config: any = {};
-        for (const row of settingsRes.rows) {
-            if (row.key === 'epg_urls') {
-                config.epg_urls = [];
-            } else if (row.key === 'playlist_urls') {
-                // Parse JSON array for the client
-                try {
-                    config.playlist_urls = JSON.parse(String(row.value));
-                } catch {
-                    config.playlist_urls = [];
-                }
-            } else {
-                config[row.key as string] = row.value;
-            }
-        }
-        // Ensure playlist_urls is always an array
-        if (!config.playlist_urls) config.playlist_urls = [];
-        // Same default as /api/settings — the two endpoints used to disagree,
-        // so the numbering mode you saw depended on which screen asked.
-        if (!config.channel_numbering_mode) {
-            config.channel_numbering_mode = DEFAULT_CHANNEL_NUMBERING_MODE;
-        }
-        config.sync_cron = getSyncCronExpression();
-        res.json(config);
+        res.json(await readConfiguration());
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
 });
 
-// POST /api/config - Save config & Trigger actions
-app.post('/api/config', requireAuth, async (req: any, res: any) => {
+/**
+ * Save configuration. One validated path for every setting.
+ *
+ * This used to destructure six named fields, write each with its own ad-hoc
+ * check, and silently drop anything it did not recognise — which is how the
+ * channel numbering controls came to report success while saving nothing (S19).
+ * The schema decides what exists, what type it is and what counts as valid.
+ */
+const saveConfiguration = async (req: any, res: any) => {
     try {
-        const {
-            playlist_url, playlist_urls, epg_urls, preferred_lang, epg_days,
-            channel_numbering_mode, custom_channel_ranges, sync_cron
-        } = req.body;
+        const body = { ...(req.body || {}) };
 
-        // Get current playlist url to see if it changed
-        const currentRes = await db.execute("SELECT value FROM settings WHERE key = 'playlist_url'");
-        const currentUrl = currentRes.rows.length > 0 ? currentRes.rows[0].value : null;
-
-        // Playlist URLs management
-        if (playlist_urls && Array.isArray(playlist_urls)) {
-            await db.execute({
-                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('playlist_urls', ?)",
-                args: [JSON.stringify(playlist_urls)]
-            });
-            // Set playlist_url to first entry for backward compatibility
-            if (playlist_urls.length > 0) {
-                await db.execute({
-                    sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('playlist_url', ?)",
-                    args: [playlist_urls[0]]
-                });
-            }
+        // `playlist_url` is derived from `playlist_urls` on read, so accept it
+        // from older clients by folding it into the list rather than storing a
+        // second copy that can disagree.
+        if (body.playlist_url && !Array.isArray(body.playlist_urls)) {
+            const existing = await getConfiguredPlaylistUrls();
+            body.playlist_urls = existing.includes(body.playlist_url)
+                ? existing
+                : [...existing, body.playlist_url];
         }
+        delete body.playlist_url;
+        delete body.epg_urls; // legacy, ignored
 
-        if (playlist_url && !(playlist_urls && Array.isArray(playlist_urls))) {
-            // Legacy: single playlist_url provided without playlist_urls array
-            const currentUrlsStr = await getSetting('playlist_urls');
-            let urls: string[] = [];
-            try { urls = currentUrlsStr ? JSON.parse(currentUrlsStr) : []; } catch (_) { }
-
-            if (!urls.includes(playlist_url)) {
-                urls.push(playlist_url);
-                await db.execute({
-                    sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('playlist_urls', ?)",
-                    args: [JSON.stringify(urls)]
-                });
-            }
-
-            await db.execute({
-                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('playlist_url', ?)",
-                args: [playlist_url]
+        const result = validateSettings(body);
+        if (!result.ok) {
+            // Field-level, so a form can mark the offending inputs instead of
+            // showing one opaque failure.
+            return res.status(400).json({
+                error: summariseErrors(result.errors),
+                errors: result.errors
             });
         }
 
-        // Legacy epg_urls ignored
-
-        if (preferred_lang !== undefined) {
+        for (const [key, value] of Object.entries(result.values)) {
+            const definition = getSettingDefinition(key)!;
             await db.execute({
-                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('preferred_lang', ?)",
-                args: [preferred_lang]
+                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                args: [key, serializeSetting(definition, value)]
             });
         }
 
-        if (epg_days !== undefined) {
-            await db.execute({
-                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('epg_days', ?)",
-                args: [String(epg_days)]
-            });
+        // The cadence takes effect immediately; nothing here needs a restart.
+        if (result.values.sync_cron !== undefined) {
+            await applySyncSchedule(String(result.values.sync_cron));
+            emitLog(`Automation schedule changed to: ${describeCron(String(result.values.sync_cron))}`, 'info');
         }
 
-        // These were sent by the Settings screen and silently dropped here, so
-        // the channel numbering controls saved nothing while reporting success.
-        // The matching code has always read them (epg.ts) — they were simply
-        // impossible to set from the only UI that offered to set them.
-        if (channel_numbering_mode !== undefined) {
-            if (!isChannelNumberingMode(channel_numbering_mode)) {
-                return res.status(400).json({
-                    error: `channel_numbering_mode must be one of: ${CHANNEL_NUMBERING_MODES.join(', ')}`
-                });
-            }
-            await db.execute({
-                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('channel_numbering_mode', ?)",
-                args: [channel_numbering_mode]
-            });
+        if (result.values.max_active_streams !== undefined) {
+            await applyOperationalSettings();
         }
 
-        if (custom_channel_ranges !== undefined) {
-            const serialized = typeof custom_channel_ranges === 'string'
-                ? custom_channel_ranges
-                : JSON.stringify(custom_channel_ranges);
-            try {
-                JSON.parse(serialized);
-            } catch {
-                return res.status(400).json({ error: 'custom_channel_ranges must be valid JSON' });
-            }
-            await db.execute({
-                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('custom_channel_ranges', ?)",
-                args: [serialized]
-            });
-        }
-
-        // The automation cadence. Rescheduled immediately, so what the
-        // dashboard reports and what the server will actually do stay the same
-        // thing without a restart.
-        if (sync_cron !== undefined) {
-            const expression = String(sync_cron).trim();
-            if (!isValidCron(expression)) {
-                return res.status(400).json({
-                    error: 'sync_cron must be a five-field cron expression, e.g. "0 2,14 * * *"'
-                });
-            }
-            await db.execute({
-                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('sync_cron', ?)",
-                args: [expression]
-            });
-            await applySyncSchedule(expression);
-            emitLog(`Automation schedule changed to: ${describeCron(expression)}`, 'info');
-        }
-
-        res.json({ success: true });
+        res.json({ success: true, config: await readConfiguration() });
     } catch (e: any) {
         console.error(e);
         res.status(500).json({ error: e.message });
     }
-});
+};
+
+// Both paths, one handler — no chance of them drifting apart again.
+app.post('/api/config', requireAuth, saveConfiguration);
+app.post('/api/settings', requireAuth, saveConfiguration);
 
 // GET /api/mapping - Get all current channels and their match status
 app.get('/api/mapping', requireAuth, async (req: any, res: any) => {
@@ -2602,13 +2549,37 @@ app.get('/api/metadata/config', requireAuth, async (req: any, res: any) => {
  * Supports multiple playlists - merges and deduplicates channels
  */
 /** Every configured playlist url, preferring the array and falling back to the legacy single key. */
+/**
+ * Push settings that live in module state into the modules that use them, so a
+ * saved value takes effect without a restart. `MAX_ACTIVE_STREAMS` was an
+ * environment variable only — reachable to whoever ran the container, and to
+ * nobody else.
+ */
+async function applyOperationalSettings(): Promise<void> {
+    const config = await readConfiguration();
+    const requested = Number(config.max_active_streams);
+    const applied = setMaxActiveStreams(requested);
+    if (applied !== requested) {
+        // Mirrored to the console: at boot this runs before tui.init(), so an
+        // emitLog alone would never be rendered.
+        const message = `Stream limit stays at ${applied}: MAX_ACTIVE_STREAMS is set in the environment (setting asks for ${requested}).`;
+        console.warn(`[Config] ${message}`);
+        emitLog(message, 'warning');
+    } else {
+        console.log(`[Config] Stream limit: ${applied} concurrent transcodes.`);
+    }
+}
+
 async function getConfiguredPlaylistUrls(): Promise<string[]> {
     const urlsStr = await getSetting('playlist_urls');
     let urls: string[] = [];
     try { urls = urlsStr ? JSON.parse(urlsStr) : []; } catch (_) { urls = []; }
 
-    const single = await getSetting('playlist_url');
-    if (single && !urls.includes(single)) urls.unshift(single);
+    // `playlist_url` is no longer written — it is derived from this list on
+    // read. Still consulted here so a database written by an older build does
+    // not lose its playlist.
+    const legacy = await getSetting('playlist_url');
+    if (legacy && !urls.includes(legacy)) urls.unshift(legacy);
 
     return urls.filter(Boolean);
 }

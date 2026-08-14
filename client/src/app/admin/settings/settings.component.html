@@ -139,12 +139,20 @@
 
         <div class="form-group" style="margin-top:16px;">
             <label>EPG Data Duration (days)</label>
-            <input type="number" class="themed-input" [(ngModel)]="epgDays" min="1" max="14" style="width:100px;">
+            <input type="number" class="themed-input" [(ngModel)]="epgDays" min="1" max="14" style="width:100px;"
+                [class.field-invalid]="fieldErrors['epg_days']">
+            @if (fieldErrors['epg_days']) {
+            <div class="field-error">{{ fieldErrors['epg_days'] }}</div>
+            }
         </div>
 
         <div class="form-group" style="margin-top:16px;">
             <label for="preferred-lang">Preferred Language</label>
-            <select id="preferred-lang" class="themed-input" [(ngModel)]="preferredLang" style="max-width:220px;">
+            @if (fieldErrors['preferred_lang']) {
+            <div class="field-error">{{ fieldErrors['preferred_lang'] }}</div>
+            }
+            <select id="preferred-lang" class="themed-input" [(ngModel)]="preferredLang" style="max-width:220px;"
+                [class.field-invalid]="fieldErrors['preferred_lang']">
                 @for (language of languages; track language.code) {
                 <option [value]="language.code">{{ language.label }}</option>
                 }
@@ -156,7 +164,11 @@
 
         <div class="form-group" style="margin-top:16px;">
             <label for="numbering-mode">Channel Numbering Mode</label>
-            <select id="numbering-mode" class="themed-input" [(ngModel)]="channelNumberingMode">
+            @if (fieldErrors['channel_numbering_mode'] || fieldErrors['custom_channel_ranges']) {
+            <div class="field-error">{{ fieldErrors['channel_numbering_mode'] || fieldErrors['custom_channel_ranges'] }}</div>
+            }
+            <select id="numbering-mode" class="themed-input" [(ngModel)]="channelNumberingMode"
+                [class.field-invalid]="fieldErrors['channel_numbering_mode']">
                 <option value="list">List (Sequential from 700+)</option>
                 <option value="auto-group">Auto-Group (Group by category, map to 100 blocks)</option>
                 <option value="custom-ranges">Custom Ranges (Map categories to start numbers)</option>

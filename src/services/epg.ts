@@ -6,6 +6,7 @@ import Fuse from 'fuse.js';
 import { emitLog, emitProgress, emitProgressComplete, eventBus } from '../events';
 import { startJob, completeJob } from '../job';
 import * as fs from 'fs';
+import { createAtomicWriteStream, writeFileAtomic } from './atomic-write';
 import * as path from 'path';
 import sax from 'sax';
 import { StringDecoder } from 'string_decoder';
@@ -938,7 +939,9 @@ export async function generatePlaylistAndEpg(): Promise<{ playlistCount: number,
         const epgId = String(r.effective_epg_id);
         m3u += `#EXTINF:-1 tvg-id="${epgId}"${chNum} tvg-logo="${logo}" group-title="${group}",${getText(String(r.name))}\n${r.url}\n`;
     }
-    fs.writeFileSync(path.join(DB_DIR, 'playlist.m3u'), m3u);
+    // Written through a temp file and renamed: a player fetching /playlist.m3u
+    // mid-rebuild used to receive whatever had been flushed so far.
+    writeFileAtomic(path.join(DB_DIR, 'playlist.m3u'), m3u);
     const m3uSize = (m3u.length / 1024).toFixed(1);
     emitLog(`Generated playlist.m3u: ${matchedChannels.length} channels, ${m3uSize} KB`, "success");
 
@@ -953,86 +956,116 @@ export async function generatePlaylistAndEpg(): Promise<{ playlistCount: number,
     // Get unique EPG IDs for querying program data
     const allEpgIds = [...new Set(epgChannelList.map(c => String(c.id)))];
 
-    // Debug: Check what's in the database
-    emitLog(`[DEBUG] Checking epg_programs table...`, "info");
-    const debugProgCount = await db.execute(`SELECT COUNT(*) as c FROM epg_programs`);
-    emitLog(`[DEBUG] Total programs in epg_programs: ${debugProgCount.rows[0].c}`, "info");
-
-    // Debug: Check a sample of channel_ids in epg_programs
-    const debugSample = await db.execute(`SELECT DISTINCT channel_id FROM epg_programs LIMIT 10`);
-    emitLog(`[DEBUG] Sample channel_ids in epg_programs: ${JSON.stringify(debugSample.rows.map(r => r.channel_id))}`, "info");
-
-    // Debug: Show what IDs we're querying with
-    emitLog(`[DEBUG] Querying with IDs: ${allEpgIds.slice(0, 5).join(', ')}...`, "info");
-
     let epgProgramCount = 0;
 
     if (allEpgIds.length > 0) {
         emitLog(`Generating epg.xml for ${allEpgIds.length} channels (all enabled)...`, "info");
-        const idList = allEpgIds.map(id => `'${String(id).replace(/'/g, "''")}'`).join(",");
-        const fileStream = fs.createWriteStream(path.join(DB_DIR, 'epg.xml'));
-        fileStream.write('<?xml version="1.0" encoding="UTF-8"?>\n<tv>\n');
 
-        // First, write channel info from epg_channels table (if available)
-        const epgChannelsData = await db.execute(`SELECT * FROM epg_channels WHERE id IN (${idList})`);
-        const epgChannelMap = new Map(epgChannelsData.rows.map(c => [String(c.id), c]));
-
-        // Write all channel entries - use epg_channels data if available, otherwise use playlist data
-        for (const ch of epgChannelList) {
-            const epgData = epgChannelMap.get(String(ch.id));
-            const displayName = epgData?.display_name || ch.name;
-            const icon = epgData?.icon || ch.logo;
-            let channelXml = `  <channel id="${getText(ch.id)}"><display-name>${getText(displayName)}</display-name>`;
-            if (icon) channelXml += `<icon src="${getText(icon)}" />`;
-            channelXml += `</channel>\n`;
-            fileStream.write(channelXml);
+        // The id set goes into a table rather than being interpolated into the
+        // SQL. It used to be built by hand-escaping quotes into a literal
+        // `IN (...)` list — around 40 KB of SQL for 1,500 channels, and correct
+        // only for as long as the escaping was.
+        await db.execute(`CREATE TABLE IF NOT EXISTS export_channel_ids (id TEXT PRIMARY KEY)`);
+        await db.execute(`DELETE FROM export_channel_ids`);
+        for (let i = 0; i < allEpgIds.length; i += 500) {
+            const batch = allEpgIds.slice(i, i + 500);
+            await db.execute({
+                sql: `INSERT OR IGNORE INTO export_channel_ids (id) VALUES ${batch.map(() => '(?)').join(',')}`,
+                args: batch
+            });
         }
 
-        // Get total program count for progress
-        const countRes = await db.execute(`SELECT COUNT(*) as c FROM epg_programs WHERE channel_id IN (${idList})`);
-        epgProgramCount = Number(countRes.rows[0].c);
-        emitLog(`Writing ${epgProgramCount.toLocaleString()} programs to epg.xml...`, "info");
+        const stream = createAtomicWriteStream(path.join(DB_DIR, 'epg.xml'));
+        try {
+            await stream.write('<?xml version="1.0" encoding="UTF-8"?>\n<tv>\n');
 
-        // Write programs in batches - join with TVMaze cache for enriched metadata
-        for (let offset = 0; offset < epgProgramCount; offset += 5000) {
-            const progs = await db.execute(`
-                SELECT p.*, 
-                       tc.genres as tvmaze_genres, 
-                       tc.rating as tvmaze_rating
-                FROM epg_programs p
-                LEFT JOIN tvmaze_cache tc ON p.tmdb_id = tc.tvmaze_id
-                WHERE p.channel_id IN (${idList}) 
-                LIMIT 5000 OFFSET ${offset}
-            `);
-            for (const p of progs.rows) {
-                let xml = `  <programme start="${p.start}" stop="${p.stop}" channel="${getText(p.channel_id)}">`;
-                xml += `<title>${getText(p.title)}</title>`;
-                if (p.sub_title) xml += `<sub-title>${getText(p.sub_title)}</sub-title>`;
-                if (p.desc) xml += `<desc>${getText(p.desc)}</desc>`;
-                if (p.episode_num) xml += `<episode-num system="onscreen">${getText(p.episode_num)}</episode-num>`;
+            // First, write channel info from epg_channels table (if available)
+            const epgChannelsData = await db.execute(
+                `SELECT * FROM epg_channels WHERE id IN (SELECT id FROM export_channel_ids)`
+            );
+            const epgChannelMap = new Map(epgChannelsData.rows.map(c => [String(c.id), c]));
 
-                // Use TVMaze genres if available, fallback to original category
-                const categories = p.tvmaze_genres || p.category;
-                if (categories) {
-                    const cats = String(categories).split(', ');
-                    for (const cat of cats) {
-                        xml += `<category>${getText(cat)}</category>`;
-                    }
-                }
-
-                // Use TVMaze rating if available, fallback to original
-                const rating = p.tvmaze_rating || p.rating;
-                if (rating) xml += `<rating><value>${getText(rating)}</value></rating>`;
-                if (p.icon) xml += `<icon src="${getText(p.icon)}" />`;
-                xml += `</programme>\n`;
-                fileStream.write(xml);
+            // Write all channel entries - use epg_channels data if available, otherwise use playlist data
+            for (const ch of epgChannelList) {
+                const epgData = epgChannelMap.get(String(ch.id));
+                const displayName = epgData?.display_name || ch.name;
+                const icon = epgData?.icon || ch.logo;
+                let channelXml = `  <channel id="${getText(ch.id)}"><display-name>${getText(displayName)}</display-name>`;
+                if (icon) channelXml += `<icon src="${getText(icon)}" />`;
+                channelXml += `</channel>\n`;
+                await stream.write(channelXml);
             }
+
+            // Get total program count for progress
+            const countRes = await db.execute(
+                `SELECT COUNT(*) as c FROM epg_programs WHERE channel_id IN (SELECT id FROM export_channel_ids)`
+            );
+            epgProgramCount = Number(countRes.rows[0].c);
+            emitLog(`Writing ${epgProgramCount.toLocaleString()} programs to epg.xml...`, "info");
+
+            // Write programs in batches - join with TVMaze cache for enriched metadata
+            let written = 0;
+            for (let offset = 0; offset < epgProgramCount; offset += 5000) {
+                const progs = await db.execute({
+                    // ORDER BY is required, not cosmetic: LIMIT/OFFSET without one
+                    // has no defined order in SQLite, so successive pages could
+                    // repeat rows and skip others. That is why the programme count
+                    // in the file did not have to match the count in the database.
+                    sql: `
+                        SELECT p.*,
+                               tc.genres as tvmaze_genres,
+                               tc.rating as tvmaze_rating
+                        FROM epg_programs p
+                        LEFT JOIN tvmaze_cache tc ON p.tmdb_id = tc.tvmaze_id
+                        WHERE p.channel_id IN (SELECT id FROM export_channel_ids)
+                        ORDER BY p.channel_id, p.start, p.title
+                        LIMIT 5000 OFFSET ?
+                    `,
+                    args: [offset]
+                });
+                for (const p of progs.rows) {
+                    let xml = `  <programme start="${p.start}" stop="${p.stop}" channel="${getText(p.channel_id)}">`;
+                    xml += `<title>${getText(p.title)}</title>`;
+                    if (p.sub_title) xml += `<sub-title>${getText(p.sub_title)}</sub-title>`;
+                    if (p.desc) xml += `<desc>${getText(p.desc)}</desc>`;
+                    if (p.episode_num) xml += `<episode-num system="onscreen">${getText(p.episode_num)}</episode-num>`;
+
+                    // Use TVMaze genres if available, fallback to original category
+                    const categories = p.tvmaze_genres || p.category;
+                    if (categories) {
+                        const cats = String(categories).split(', ');
+                        for (const cat of cats) {
+                            xml += `<category>${getText(cat)}</category>`;
+                        }
+                    }
+
+                    // Use TVMaze rating if available, fallback to original
+                    const rating = p.tvmaze_rating || p.rating;
+                    if (rating) xml += `<rating><value>${getText(rating)}</value></rating>`;
+                    if (p.icon) xml += `<icon src="${getText(p.icon)}" />`;
+                    xml += `</programme>\n`;
+                    await stream.write(xml);
+                }
+                written += progs.rows.length;
+            }
+
+            await stream.write('</tv>');
+            await stream.commit();
+
+            // The count is what was actually written, not what was expected.
+            if (written !== epgProgramCount) {
+                emitLog(`epg.xml wrote ${written.toLocaleString()} of ${epgProgramCount.toLocaleString()} expected programmes`, "warning");
+            }
+            epgProgramCount = written;
+        } catch (e: any) {
+            // The previous epg.xml stays in place rather than being replaced by
+            // a truncated one.
+            await stream.abort();
+            emitLog(`epg.xml generation failed, previous file kept: ${e.message}`, "error");
+            throw e;
+        } finally {
+            await db.execute(`DELETE FROM export_channel_ids`).catch(() => { /* best effort */ });
         }
-        fileStream.write('</tv>');
-        await new Promise<void>((resolve, reject) => {
-            fileStream.end(() => resolve());
-            fileStream.on('error', reject);
-        });
     }
 
     const epgPath = path.join(DB_DIR, 'epg.xml');

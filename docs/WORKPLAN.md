@@ -3,7 +3,7 @@
 Single source of truth for the remediation effort. Consolidates the process audit, the UI &
 source-retrieval audit, and the source acquisition architecture into one tracked backlog.
 
-**Status:** Wave 4 complete — 20 of 26 done, S16c paused, S24 held
+**Status:** Wave 5 in progress — 22 of 26 done, S16c paused, S24 held
 **Suite score at baseline:** 2.5 / 5 (process) · 2.3 / 5 (UI)
 **Last updated:** 2026-08-13
 
@@ -76,7 +76,7 @@ Defects are referenced by id from slice descriptions. `D` = process audit, `R` =
 | D6 | Path traversal on recording read and delete | `server.ts:1674,1691` | S2 |
 | D7 | Whole data dir is a public static mount — **confirmed exploitable**, `/files/local.db` returns 200 | `server.ts:70` | S7 |
 | D8 | Shutdown drops recordings on the floor | `server.ts:842` | S4 |
-| D9 | `epg.xml` written over the file being served | `epg.ts:914` | S11 |
+| D9 | `epg.xml` written over the file being served | `epg.ts:914` | S11 ✅ |
 | R1 | XMLTV ingest path never called | `epg.ts:156` | S16b |
 | R2 | EPGShare direct feeds never fetched | `epg-sources.ts:73` | S16b |
 | R3 | All iptv-org sources marked success regardless | `iptv-org.ts:218` | S15 |
@@ -582,12 +582,28 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
 ### Wave 5 — Pay down the drift
 > Make the code, the config, and the docs agree.
 
-- [ ] **S11 · Atomic, deterministic exports** — S
+- [x] **S11 · Atomic, deterministic exports** — S
   Temp file plus rename for both exports, `ORDER BY` on the paginated programme query, bind the
   channel id list, drop the `[DEBUG]` lines from the user log.
-  *Fixes D9.* → `src/services/epg.ts`
-  - [ ] Fetching `/epg.xml` during a rebuild always returns a complete document
-  - [ ] Programme count in the file matches the count in the database
+  *Fixes D9.* → `src/services/atomic-write.ts` (new), `src/services/epg.ts`
+  - [x] Fetching `/epg.xml` during a rebuild always returns a complete document
+        — measured both ways. Sampling the served file every 4ms through a 60,000-programme rebuild:
+        **unmodified main passed through 0 bytes, 2.9 MB and 18.5 MB** before reaching 30.1 MB;
+        with the fix, 6,158 samples showed **one size throughout**. 400 HTTP fetches during a live
+        rebuild returned 0 truncated documents
+  - [x] Programme count in the file matches the count in the database
+        — 12,000 in the file, 12,000 in the database, document well-formed to the closing `</tv>`
+
+  D9 is closed and was never theoretical: the export streamed straight onto the path being served,
+  so any client fetching mid-rebuild received an empty or half-written guide.
+
+  `LIMIT/OFFSET` had no `ORDER BY`. SQLite gives no ordering guarantee without one, so successive
+  pages could repeat rows and skip others — which is exactly how the count in the file could differ
+  from the count in the database. The export now also reports what it actually wrote rather than
+  what it expected to write.
+
+  The channel id set moved from a hand-escaped `IN (...)` literal — roughly 40 KB of SQL for 1,500
+  channels, correct only for as long as the escaping was — into a table the query joins against.
 
 - [x] **S12 · Non-destructive playlist import** — M — *done 2026-08-14, pulled forward*
   Imports stream into `channels_staging` and swap per source in one transaction, only once the whole
@@ -610,13 +626,35 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
   `pgrep | head -1` had killed a wrapper while the real server finished the import. Re-run killing
   every matching pid and confirming the API was unreachable before trusting the numbers.
 
-- [ ] **S13 · Consolidate configuration** — M
+- [x] **S13 · Consolidate configuration** — M
   Collapse `/api/settings` and `/api/config` into one typed, validated, defaulted contract. Retire the
   dual `playlist_url` write. Promote operational constants into settings.
-  → `src/server.ts`, `settings.component.*`
-  - [ ] One endpoint, one shape, defaults applied in one place
-  - [ ] Invalid values rejected with a field-level message
-  - [ ] Changing sync cadence takes effect without a restart
+  → `src/services/settings-schema.ts` (new), `src/server.ts`, `src/services/stream.ts`,
+  `settings.component.*`
+  - [x] One endpoint, one shape, defaults applied in one place
+        — `/api/config` and `/api/settings` now return **byte-identical** responses, 16 typed keys,
+        every default declared once in the schema
+  - [x] Invalid values rejected with a field-level message
+        — four bad fields in one request produced four named messages and **nothing was written**;
+        an unknown key is named rather than stored. The Settings form marks the offending input and
+        says "Not saved — 1 setting(s) need attention"
+  - [x] Changing sync cadence takes effect without a restart
+        — carried by S10 and re-verified: `15 4 * * 1-5` reported back as "At 04:15 on Monday,
+        Tuesday, Wednesday, Thursday, Friday", next run 2026-08-17T08:15Z
+
+  The two endpoints had disagreed about their own table: one defaulted `metadata_enrichment_enabled`
+  and the other did not; one parsed `playlist_urls` into an array and the other returned the raw JSON
+  string. Whichever screen asked first decided what the application believed.
+
+  Values are typed on the way out, not returned as strings — `epg_days` is a number, not `"7"`.
+
+  `playlist_url` is no longer written. It was stored alongside `playlist_urls` on every save and
+  could disagree with it; it is now derived from the list on read, with the legacy row still honoured
+  for databases written by older builds.
+
+  `MAX_ACTIVE_STREAMS` was promoted from an environment variable into a setting, changeable live.
+  The environment still wins where it is set: an operator capping a container's load should not have
+  it raised from a web form.
 
 - [ ] **S24 · Make the e2e suite mean something** — M — ⏸ **HELD** *(2026-08-14, Chris)*
   Deliberately deferred, to be subdivided into smaller slices later. Not to be raised again as a
@@ -754,3 +792,6 @@ memory, so **restart it after `ng build`** or you will screenshot the previous b
 | 2026-08-14 | S10 | Done. One queue behind all four background actions; rebuild-files no longer rewrites output files underneath a running sync. Cadence is configurable and everything reported about it derives from the expression actually scheduled. 39 new unit tests. |
 | 2026-08-14 | X8 | Found while verifying S10, and **pre-existing**: `import('./grabber.js')` does not resolve when the server runs from source, so `npm run dev` died the moment a sync reached the grab stage. Confirmed on unmodified main by stashing. Made static (nothing was circular) and added process-level guards so background work can no longer take the server down. |
 | 2026-08-14 | S21 | Done. Virtual scrolling replaces the 500-row truncation — verified against 1,490 real channels that the last row now matches the API's last row. Search debounced to one request per pause (17 keystrokes -> 1 request) and scoped per row. Badges computed once instead of per change detection. 20 new unit tests; suite 407 -> 466. |
+| 2026-08-14 | S11 | Done. Both exports go through a temp file and a rename. D9 proven exploitable before the fix and closed after: sampling the served `epg.xml` every 4ms during a rebuild showed 0 / 2.9 MB / 18.5 MB on unmodified main, and a single size across 6,158 samples afterwards. Paging given an `ORDER BY`, the id list moved out of interpolated SQL, `[DEBUG]` lines removed. 11 new unit tests. |
+| 2026-08-14 | S13 | Done. One schema owns every setting's type, default and validation; `/api/config` and `/api/settings` now return identical typed responses. Field-level rejection surfaced in the Settings form. The dual `playlist_url` write retired. `MAX_ACTIVE_STREAMS` promoted to a live setting with the environment still overriding. 26 new unit tests; suite 466 -> 503. |
+| 2026-08-14 | — | Hit the S5 trap again: `applyOperationalSettings` logs before `tui.init()`, so its message was invisible. Mirrored to the console, as the weak-password warning already was. |

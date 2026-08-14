@@ -14,8 +14,30 @@ interface ActiveStream {
 
 const activeStreams = new Map<string, ActiveStream>();
 
-/** Ceiling on simultaneous transcodes. Each one is an ffmpeg process plus a segment directory. */
-const MAX_ACTIVE_STREAMS = Math.max(1, parseInt(process.env.MAX_ACTIVE_STREAMS || '6', 10));
+/**
+ * Ceiling on simultaneous transcodes. Each one is an ffmpeg process plus a
+ * segment directory.
+ *
+ * Configurable at runtime, but `MAX_ACTIVE_STREAMS` in the environment still
+ * wins: an operator capping a container's load should not have it silently
+ * raised from the settings screen.
+ */
+const ENV_STREAM_LIMIT = process.env.MAX_ACTIVE_STREAMS
+    ? Math.max(1, parseInt(process.env.MAX_ACTIVE_STREAMS, 10))
+    : null;
+
+let maxActiveStreams = ENV_STREAM_LIMIT ?? 6;
+
+export function getMaxActiveStreams(): number {
+    return maxActiveStreams;
+}
+
+/** Returns the limit actually in force, which may differ if the env pins it. */
+export function setMaxActiveStreams(value: number): number {
+    if (ENV_STREAM_LIMIT !== null) return ENV_STREAM_LIMIT;
+    if (Number.isFinite(value) && value >= 1) maxActiveStreams = Math.floor(value);
+    return maxActiveStreams;
+}
 /** A stream must be untouched this long before another request may evict it. */
 const MIN_IDLE_BEFORE_EVICT_MS = 15000;
 /** Idle streams are reaped entirely after this long. */
@@ -199,7 +221,7 @@ export class StreamManager {
      * stream is better than cutting off someone mid-programme.
      */
     private static ensureCapacityFor(incomingId: string) {
-        if (activeStreams.size < MAX_ACTIVE_STREAMS) return;
+        if (activeStreams.size < maxActiveStreams) return;
 
         const candidates = Array.from(activeStreams.entries()).map(([id, stream]) => ({
             id,
@@ -213,11 +235,11 @@ export class StreamManager {
         });
 
         if (!evictId) {
-            emitLog(`Stream request refused: all ${MAX_ACTIVE_STREAMS} slots are actively in use.`, 'warning');
-            throw new StreamCapacityError(MAX_ACTIVE_STREAMS);
+            emitLog(`Stream request refused: all ${maxActiveStreams} slots are actively in use.`, 'warning');
+            throw new StreamCapacityError(maxActiveStreams);
         }
 
-        emitLog(`Evicting idle stream ${evictId} to free a slot (limit ${MAX_ACTIVE_STREAMS}).`, 'info');
+        emitLog(`Evicting idle stream ${evictId} to free a slot (limit ${maxActiveStreams}).`, 'info');
         this.stopStream(evictId);
     }
 

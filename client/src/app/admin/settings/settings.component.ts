@@ -219,6 +219,9 @@ export class SettingsComponent implements OnInit {
         }
     }
 
+    /** Per-field messages from the last rejected save, keyed by setting name. */
+    fieldErrors: Record<string, string> = {};
+
     async saveConfig(): Promise<void> {
         this.savingConfig = true;
         try {
@@ -227,17 +230,30 @@ export class SettingsComponent implements OnInit {
                 if (item.category.trim()) rangesObj[item.category.trim()] = item.startNum;
             }
 
+            // playlist_url is derived from the list server-side now, so it is
+            // no longer sent as a second copy that could disagree with it.
             await this.api.saveConfig({
                 playlist_urls: this.selectedPlaylists,
-                playlist_url: this.selectedPlaylists[0] || '',
                 epg_days: this.epgDays,
                 preferred_lang: this.preferredLang,
                 channel_numbering_mode: this.channelNumberingMode,
                 custom_channel_ranges: JSON.stringify(rangesObj)
             }).toPromise();
+            this.fieldErrors = {};
             this.toast.show('Configuration saved', 'success');
         } catch (e: any) {
-            this.toast.show(e?.error?.error || 'Save failed', 'error');
+            // The API names each offending field, so the form can point at them
+            // rather than showing one opaque failure.
+            const errors: { field: string; message: string }[] = e?.error?.errors || [];
+            this.fieldErrors = {};
+            for (const item of errors) this.fieldErrors[item.field] = item.message;
+
+            this.toast.show(
+                errors.length > 0
+                    ? `Not saved — ${errors.length} setting(s) need attention`
+                    : (e?.error?.error || 'Save failed'),
+                'error'
+            );
         }
         finally {
             this.savingConfig = false;
