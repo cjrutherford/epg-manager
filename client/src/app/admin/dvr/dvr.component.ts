@@ -1,4 +1,5 @@
 import { ChangeDetectorRef, Component, OnDestroy, OnInit, Input, Output, EventEmitter } from '@angular/core';
+import { ModalFocusDirective } from '../../services/modal-focus.directive';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
@@ -11,7 +12,7 @@ import { DvrService } from '../../services/dvr.service';
 @Component({
     selector: 'app-dvr',
     standalone: true,
-    imports: [CommonModule, FormsModule],
+    imports: [CommonModule, FormsModule, ModalFocusDirective],
     templateUrl: './dvr.component.html',
     styleUrl: './dvr.component.css'
 })

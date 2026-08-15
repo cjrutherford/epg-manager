@@ -1,4 +1,5 @@
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef, HostListener, CUSTOM_ELEMENTS_SCHEMA, Inject, PLATFORM_ID, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
+import { ModalFocusDirective } from '../services/modal-focus.directive';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -29,7 +30,7 @@ interface Channel {
 @Component({
     selector: 'app-watch',
     standalone: true,
-    imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule],
+    imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule, ModalFocusDirective],
     schemas: [CUSTOM_ELEMENTS_SCHEMA],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './watch.component.html',

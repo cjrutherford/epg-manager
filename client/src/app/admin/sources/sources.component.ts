@@ -1,4 +1,5 @@
 import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
+import { ModalFocusDirective } from '../../services/modal-focus.directive';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService, ProbeResult, SourceRecord } from '../../services/api.service';
@@ -9,7 +10,7 @@ type Family = 'all' | 'channels' | 'guide';
 @Component({
     selector: 'app-sources',
     standalone: true,
-    imports: [CommonModule, FormsModule],
+    imports: [CommonModule, FormsModule, ModalFocusDirective],
     templateUrl: './sources.component.html',
     styleUrl: './sources.component.css'
 })

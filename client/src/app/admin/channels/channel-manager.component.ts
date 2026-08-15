@@ -1,4 +1,5 @@
 import { ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
+import { ModalFocusDirective } from '../../services/modal-focus.directive';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
@@ -8,7 +9,7 @@ import { computeWindow } from './channel-window';
 @Component({
     selector: 'app-channel-manager',
     standalone: true,
-    imports: [CommonModule, FormsModule],
+    imports: [CommonModule, FormsModule, ModalFocusDirective],
     templateUrl: './channel-manager.component.html',
     styleUrl: './channel-manager.component.css'
 })

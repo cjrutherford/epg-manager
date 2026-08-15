@@ -1,4 +1,5 @@
 import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
+import { ModalFocusDirective } from '../../services/modal-focus.directive';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
@@ -8,7 +9,7 @@ import { LucideAngularModule } from 'lucide-angular';
 @Component({
     selector: 'app-diagnostics',
     standalone: true,
-    imports: [CommonModule, FormsModule, LucideAngularModule],
+    imports: [CommonModule, FormsModule, LucideAngularModule, ModalFocusDirective],
     templateUrl: './diagnostics.component.html',
     styleUrl: './diagnostics.component.css'
 })

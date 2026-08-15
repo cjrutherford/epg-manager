@@ -253,9 +253,9 @@
     <!-- Rematch Override Modal -->
     @if (showRematchModal) {
     <div class="modal-backdrop" (click)="showRematchModal = false">
-        <div class="modal-content" (click)="$event.stopPropagation()">
+        <div class="modal-content" appModalFocus (dismiss)="showRematchModal = false" aria-labelledby="diagnostics-modal-title" (click)="$event.stopPropagation()">
             <div class="modal-header">
-                <h2>EPG Manual Rematch</h2>
+                <h2 id="diagnostics-modal-title">EPG Manual Rematch</h2>
                 <button class="close-modal-btn" (click)="showRematchModal = false">✕</button>
             </div>
             

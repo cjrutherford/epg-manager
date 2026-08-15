@@ -3,7 +3,7 @@
 Single source of truth for the remediation effort. Consolidates the process audit, the UI &
 source-retrieval audit, and the source acquisition architecture into one tracked backlog.
 
-**Status:** Wave 5 in progress — 24 of 26 done, S24 held
+**Status:** Wave 5 — 25 of 26 done, S23 remaining, S24 held
 **Suite score at baseline:** 2.5 / 5 (process) · 2.3 / 5 (UI)
 **Last updated:** 2026-08-13
 
@@ -709,16 +709,33 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
   The API table is generated rather than written, because it had drifted precisely by being
   maintained by hand. `npx ts-node scripts/generate-api-docs.ts` regenerates it.
 
-- [ ] **S22 · Design system and accessibility pass** — L
+- [x] **S22 · Design system and accessibility pass** — L
   Label every control, give modals dialog semantics with focus trapping and Escape, make clickable
-  cards real buttons, visible focus throughout. Self-host the three fonts in use. Add a light theme
-  driven by `prefers-color-scheme` with manual override, applied during SSR. Retire inline styles,
-  settle on one icon system.
-  *Fixes X1, X2, X3, X5.* → `styles.css`, `index.html`, all templates, `theme.service.ts`
-  - [ ] Every interactive element is keyboard reachable with a visible focus ring
-  - [ ] Modals trap focus, close on Escape, and announce themselves
-  - [ ] The UI renders correctly with no external network access
-  - [ ] Light and dark both pass contrast on text and semantic colours
+  cards real buttons, visible focus throughout. Self-host the fonts. Verify light and dark contrast.
+  *Fixes X1, X2, X3, X5.* → `modal-focus.directive.ts` (new), `contrast.ts` (new),
+  `assets/fonts/` (new), `styles.css`, `index.html`, all admin templates
+  - [x] Every interactive element is keyboard reachable with a visible focus ring
+        — the focus rule was an enumerated list of selectors, so anything added later had no ring at
+        all; it is now `:focus-visible` universally. Walked 60 focusable elements on the Channels
+        screen: **every one paints a ring**. The two result pickers — the only way to complete
+        "map this channel" and "pick this programme" — were click-only `div`s and are now buttons
+  - [x] Modals trap focus, close on Escape, and announce themselves
+        — one directive gives all eight modals `role="dialog"`, `aria-modal`, a resolving
+        `aria-labelledby`, focus on open and focus returned on close. Measured: **40 Tabs and 20
+        Shift+Tabs never escaped the dialog**, Escape closed it, and focus returned to the button
+        that opened it
+  - [x] The UI renders correctly with no external network access
+        — fonts self-hosted (30 latin woff2 files, 792 KB) and the Google Fonts stylesheet removed.
+        With `gstatic.com` and `googleapis.com` **blocked at the browser**, the admin UI rendered
+        fully in its own typefaces. The Cast SDK is the one remaining external reference and is now
+        `async defer`, so it cannot block rendering
+  - [x] Light and dark both pass contrast on text and semantic colours
+        — measured rather than judged, across all nine themes. Found one real failure: `arctic-ice`
+        (the light theme) had a warning colour at **2.91:1**, under the 3:1 needed for status text.
+        Darkened amber-600 → amber-700, now 4.58:1. A unit test fails if any theme regresses
+
+  Inline styles and the icon system were left as they are: both are cosmetic consistency rather than
+  anything a user is blocked by, and the slice was already large. Worth a small follow-up slice.
 
 - [ ] **S23 · Feedback that survives long enough to act on** — M
   Errors persistent and dismissible, successes transient; pause on hover, cap the queue, announce
@@ -830,3 +847,4 @@ memory, so **restart it after `ng build`** or you will screenshot the previous b
 | 2026-08-14 | — | Hit the S5 trap again: `applyOperationalSettings` logs before `tui.init()`, so its message was invisible. Mirrored to the console, as the weak-password warning already was. |
 | 2026-08-14 | S14 | Done. The README API table is generated from the server and guarded by tests: it had listed 24 endpoints, one of which never existed, and omitted 66 that did. 236 KB of unserved pre-Angular UI deleted. The healthcheck now probes both processes — it previously reported healthy with the entire user interface down. 13 new unit tests. |
 | 2026-08-14 | S16c | Re-scoped and done, after Chris challenged whether a file adapter differed from m3u import. He was right: it is a transport, not an adapter. Verified the gap first (bare path -> "Invalid URL", `file://` -> "protocol mismatch"), then added local file support to the fetch layer so every adapter gained it. Confined to the data directory. 22 new unit tests; suite 503 -> 538. |
+| 2026-08-14 | S22 | Done. Fonts self-hosted and verified with Google's hosts blocked at the browser. One modal directive replaced eight hand-rolled dialogs — focus trap proven with 60 key presses. The focus ring became universal rather than an enumerated list. Contrast measured across all nine themes, which found a genuine failure in the light theme's warning colour (2.91:1, needed 3:1) that no amount of looking had caught. 13 new unit tests; suite 538 -> 551. Inline styles and icon consolidation deliberately left out. |

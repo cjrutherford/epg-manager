@@ -1,3 +1,5 @@
+@import './assets/fonts.css';
+
 /* ===========================================
    Tuner Daemon — Cinematic Noir Theme
    Refined aesthetic: warm amber accents, film grain depth, editorial typography
@@ -260,8 +262,10 @@ body.theme-arctic-ice {
     --color-success-rgb: 22, 163, 74;
     --color-danger: #dc2626;
     --color-danger-rgb: 220, 38, 38;
-    --color-warning: #d97706;
-    --color-warning-rgb: 217, 119, 6;
+    /* amber-700, not amber-600: on this theme's near-white background the
+       lighter amber measured 2.91:1, under the 3:1 needed for status text. */
+    --color-warning: #b45309;
+    --color-warning-rgb: 180, 83, 9;
     --color-info: #2563eb;
     --color-info-rgb: 37, 99, 235;
     --text-primary: #0f172a;
@@ -519,6 +523,17 @@ textarea:focus,
     outline: none;
 }
 
+/* Every focusable element, not an enumerated list of them. The list version
+   meant any control added later — or any element given a tabindex — had no
+   visible focus at all, which a keyboard user experiences as the ring simply
+   vanishing partway through the page. */
+:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px rgba(var(--color-primary-rgb), 0.15);
+    border-radius: var(--radius-sm);
+}
+
 .btn:focus-visible,
 .btn-primary:focus-visible,
 .btn-secondary:focus-visible,
@@ -531,6 +546,13 @@ textarea:focus-visible,
     outline: 2px solid var(--color-primary);
     outline-offset: 2px;
     box-shadow: 0 0 0 4px rgba(var(--color-primary-rgb), 0.15);
+}
+
+/* A dialog takes focus on open so it announces itself; that is not something
+   the user chose to focus, so it should not draw a ring. */
+[role="dialog"]:focus-visible {
+    outline: none;
+    box-shadow: none;
 }
 
 .btn::before {

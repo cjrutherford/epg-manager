@@ -288,13 +288,13 @@
     <!-- Schedule Modal -->
     @if (showScheduleModal) {
     <div class="modal-backdrop" (click)="showScheduleModal = false">
-        <div class="modal-content" (click)="$event.stopPropagation()">
-            <h2>Schedule Recording</h2>
+        <div class="modal-content" appModalFocus (dismiss)="showScheduleModal = false" aria-labelledby="schedule-recording-title" (click)="$event.stopPropagation()">
+            <h2 id="schedule-recording-title">Schedule Recording</h2>
             <div class="form-grid">
                 <div class="form-group">
-                    <label>Channel</label>
-                    <input type="text" class="themed-input w-full" [(ngModel)]="channelSearchQuery" placeholder="Filter channels..." style="margin-bottom: 6px;">
-                    <select class="themed-select w-full" [(ngModel)]="newRec.channelId" (change)="onChannelSelect()">
+                    <label for="rec-channel">Channel</label>
+                    <input type="text" class="themed-input w-full" aria-label="Filter the channel list" [(ngModel)]="channelSearchQuery" placeholder="Filter channels..." style="margin-bottom: 6px;">
+                    <select id="rec-channel" class="themed-select w-full" [(ngModel)]="newRec.channelId" (change)="onChannelSelect()">
                         <option value="">Select Channel...</option>
                         @for (ch of filteredChannels; track ch.id) {
                         <option [value]="ch.id">{{ ch.channel_number ? ch.channel_number + '. ' : '' }}{{ ch.name }}
@@ -305,12 +305,14 @@
                 
                 @if (selectedChannelPrograms.length > 0) {
                 <div class="form-group" style="grid-column: 1 / -1; margin-top: 4px;">
-                    <label>Program Guide Search</label>
+                    <label for="rec-program-search">Program Guide Search</label>
                     <div style="background: rgba(var(--color-primary-rgb),0.02); border: 1px solid rgba(var(--color-primary-rgb),0.12); border-radius: var(--radius-md); padding: 12px; display: flex; flex-direction: column; gap: 10px;">
-                        <input type="text" class="themed-input w-full" [(ngModel)]="programSearchQuery" placeholder="Search programs by title...">
+                        <input id="rec-program-search" type="text" class="themed-input w-full" [(ngModel)]="programSearchQuery" placeholder="Search programs by title...">
                         <div style="max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding-right: 4px;">
                             @for (prog of filteredPrograms; track prog.start) {
-                            <div (click)="selectProgramFromGuide(prog)" 
+                            <button type="button" (click)="selectProgramFromGuide(prog)"
+                                 [attr.aria-pressed]="selectedProgram === prog"
+                                 [style.width]="'100%'" [style.text-align]="'left'" [style.font]="'inherit'" [style.color]="'inherit'"
                                  [style.background]="selectedProgram === prog ? 'rgba(var(--color-primary-rgb), 0.15)' : 'rgba(255,255,255,0.02)'"
                                  [style.border-color]="selectedProgram === prog ? 'var(--color-primary)' : 'rgba(var(--color-primary-rgb), 0.08)'"
                                  style="padding: 6px 10px; border: 1px solid; border-radius: var(--radius-sm); cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; transition: all 0.15s;">
@@ -323,7 +325,7 @@
                                 @if (selectedProgram === prog) {
                                 <span style="color: var(--color-primary); font-weight: 600; font-size: 0.75rem;">Selected</span>
                                 }
-                            </div>
+                            </button>
                             }
                         </div>
                     </div>
@@ -337,17 +339,17 @@
                 }
 
                 <div class="form-group">
-                    <label>Program Title</label>
-                    <input type="text" class="themed-input w-full" [(ngModel)]="newRec.title"
+                    <label for="rec-title">Program Title</label>
+                    <input id="rec-title" type="text" class="themed-input w-full" [(ngModel)]="newRec.title"
                         placeholder="Recording name...">
                 </div>
                 <div class="form-group">
-                    <label>Start Time</label>
-                    <input type="datetime-local" class="themed-input w-full" [(ngModel)]="newRec.startTime">
+                    <label for="rec-start">Start Time</label>
+                    <input id="rec-start" type="datetime-local" class="themed-input w-full" [(ngModel)]="newRec.startTime">
                 </div>
                 <div class="form-group">
-                    <label>End Time</label>
-                    <input type="datetime-local" class="themed-input w-full" [(ngModel)]="newRec.endTime">
+                    <label for="rec-end">End Time</label>
+                    <input id="rec-end" type="datetime-local" class="themed-input w-full" [(ngModel)]="newRec.endTime">
                 </div>
             </div>
             <div class="modal-actions">
@@ -362,9 +364,9 @@
 <!-- Server Recording Playback Modal -->
 @if (playingServerRec) {
 <div class="modal-backdrop" (click)="closeVideoModal()">
-    <div class="modal-content" (click)="$event.stopPropagation()" style="max-width: 800px; width: 90%; padding: 20px;">
+    <div class="modal-content" appModalFocus (dismiss)="closeVideoModal()" aria-labelledby="play-recording-title" (click)="$event.stopPropagation()" style="max-width: 800px; width: 90%; padding: 20px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <h3 style="margin: 0; font-size: 1.1rem; color: var(--text-primary);">{{ playingServerRec.program_title }}</h3>
+            <h3 id="play-recording-title" style="margin: 0; font-size: 1.1rem; color: var(--text-primary);">{{ playingServerRec.program_title }}</h3>
             <button class="btn btn-secondary small-btn" (click)="closeVideoModal()">✕ Close</button>
         </div>
         <video [src]="'/api/dvr/stream/' + playingServerRec.filename" controls autoplay style="width: 100%; max-height: 70vh; border-radius: var(--radius-md); background: #000;"></video>

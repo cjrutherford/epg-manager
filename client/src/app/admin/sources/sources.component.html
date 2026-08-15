@@ -106,7 +106,7 @@
     <!-- Add source: probe before anything is written -->
     @if (showAddModal) {
     <div class="modal-backdrop" (click)="closeAdd()">
-        <div class="modal-content source-modal" role="dialog" aria-modal="true" aria-labelledby="add-source-title"
+        <div class="modal-content source-modal" appModalFocus (dismiss)="closeAdd()" aria-labelledby="add-source-title"
             (click)="$event.stopPropagation()">
             <div class="modal-header">
                 <h2 id="add-source-title">Add a source</h2>
@@ -193,7 +193,7 @@
     <!-- Export / import -->
     @if (showExportModal) {
     <div class="modal-backdrop" (click)="closeExport()">
-        <div class="modal-content source-modal" role="dialog" aria-modal="true" aria-labelledby="export-title"
+        <div class="modal-content source-modal" appModalFocus (dismiss)="closeExport()" aria-labelledby="export-title"
             (click)="$event.stopPropagation()">
             <div class="modal-header">
                 <h2 id="export-title">Export / import sources</h2>

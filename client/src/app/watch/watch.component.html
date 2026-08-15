@@ -1485,9 +1485,9 @@
   <!-- Server Connection Modal -->
   @if (serverSettingsOpen) {
     <div class="modal-backdrop" (click)="serverSettingsOpen = false">
-      <div class="modal-content glass-card" (click)="$event.stopPropagation()">
+      <div class="modal-content glass-card" appModalFocus (dismiss)="serverSettingsOpen = false" aria-labelledby="watch-modal-title" (click)="$event.stopPropagation()">
         <div class="modal-header">
-          <h3>Server Connection</h3>
+          <h3 id="watch-modal-title">Server Connection</h3>
           <button
             class="close-btn"
             (click)="serverSettingsOpen = false"

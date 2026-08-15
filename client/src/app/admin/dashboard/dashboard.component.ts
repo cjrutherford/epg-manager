@@ -1,4 +1,5 @@
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef, AfterViewChecked, ChangeDetectorRef } from '@angular/core';
+import { ModalFocusDirective } from '../../services/modal-focus.directive';
 import { CommonModule } from '@angular/common';
 import { ApiService, ResetPreview, ResetScope } from '../../services/api.service';
 import { SseService } from '../../services/sse.service';
@@ -22,7 +23,7 @@ interface SyncStage {
 @Component({
     selector: 'app-dashboard',
     standalone: true,
-    imports: [CommonModule],
+    imports: [CommonModule, ModalFocusDirective],
     templateUrl: './dashboard.component.html',
     styleUrl: './dashboard.component.css'
 })
