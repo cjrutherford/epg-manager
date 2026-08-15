@@ -1,4 +1,5 @@
 import { ChangeDetectorRef, Component, OnDestroy, OnInit, Input, Output, EventEmitter } from '@angular/core';
+import { ConfirmService } from '../../services/confirm.service';
 import { ModalFocusDirective } from '../../services/modal-focus.directive';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -66,7 +67,8 @@ export class DvrComponent implements OnInit, OnDestroy {
         private toast: ToastService,
         private cdr: ChangeDetectorRef,
         private clientRecordings: ClientRecordingService,
-        private dvr: DvrService
+        private dvr: DvrService,
+        private confirm: ConfirmService
     ) { }
 
     ngOnInit(): void {
@@ -349,12 +351,24 @@ export class DvrComponent implements OnInit, OnDestroy {
 
     async deleteSeriesRule(rule: SeriesRule): Promise<void> {
         const upcoming = rule.upcoming_count || 0;
-        if (!confirm(`Stop recording '${rule.series_title}'? Future episodes will no longer be added.`)) return;
+        const stop = await this.confirm.ask({
+            title: 'Stop recording this series?',
+            message: `Future episodes of '${rule.series_title}' will no longer be added to the schedule.`,
+            confirmLabel: 'Stop series',
+            destructive: true
+        });
+        if (!stop) return;
 
         // Asked separately: removing the rule and discarding what it already
         // booked are different intentions.
-        const cancelUpcoming = upcoming > 0
-            && confirm(`Also cancel the ${upcoming} episode(s) it has already scheduled?`);
+        const cancelUpcoming = upcoming > 0 && await this.confirm.ask({
+            title: 'Cancel the episodes it already booked?',
+            message: `${upcoming} episode(s) are on the schedule from this series.`,
+            detail: 'Leave them if you still want those recordings.',
+            confirmLabel: `Cancel ${upcoming} episode(s)`,
+            cancelLabel: 'Keep them',
+            destructive: true
+        });
 
         try {
             const result: any = await this.api.deleteSeriesRule(rule.id, cancelUpcoming).toPromise();
@@ -409,7 +423,13 @@ export class DvrComponent implements OnInit, OnDestroy {
     }
 
     async stopRecording(id: number): Promise<void> {
-        if (!confirm('Stop this recording?')) return;
+        const confirmed = await this.confirm.ask({
+            title: 'Stop this recording?',
+            message: 'Whatever has been captured so far will be kept.',
+            confirmLabel: 'Stop recording',
+            destructive: true
+        });
+        if (!confirmed) return;
         try {
             await this.api.stopDvr(id).toPromise();
             await this.loadAll();
@@ -436,7 +456,14 @@ export class DvrComponent implements OnInit, OnDestroy {
     }
 
     async deleteLocalRecording(rec: ClientRecording): Promise<void> {
-        if (!confirm(`Delete '${rec.programTitle}' from this device?`)) return;
+        const confirmed = await this.confirm.ask({
+            title: 'Delete this recording?',
+            message: `'${rec.programTitle}' will be removed from this device.`,
+            detail: 'Browser recordings are not stored on the server, so this cannot be undone.',
+            confirmLabel: 'Delete',
+            destructive: true
+        });
+        if (!confirmed) return;
         await this.clientRecordings.delete(rec.id);
         await this.clientRecordings.refresh();
         this.toast.show('Local recording deleted', 'success');
@@ -444,11 +471,21 @@ export class DvrComponent implements OnInit, OnDestroy {
 
     async deleteRecording(id: number, status: string): Promise<void> {
         const isScheduled = status === 'scheduled';
-        const confirmMsg = isScheduled
-            ? 'Are you sure you want to cancel this scheduled recording?'
-            : 'Are you sure you want to delete this recording?';
-        
-        if (!confirm(confirmMsg)) return;
+        const confirmed = await this.confirm.ask(isScheduled
+            ? {
+                title: 'Cancel this scheduled recording?',
+                message: 'It will not be recorded when it airs.',
+                confirmLabel: 'Cancel recording',
+                cancelLabel: 'Keep it',
+                destructive: true
+            }
+            : {
+                title: 'Delete this recording?',
+                message: 'The recording and its file will be removed from the server.',
+                confirmLabel: 'Delete',
+                destructive: true
+            });
+        if (!confirmed) return;
 
         try {
             await this.api.cancelRecording(id).toPromise();

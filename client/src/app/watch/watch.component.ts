@@ -1,4 +1,5 @@
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef, HostListener, CUSTOM_ELEMENTS_SCHEMA, Inject, PLATFORM_ID, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
+import { ConfirmService } from '../services/confirm.service';
 import { ModalFocusDirective } from '../services/modal-focus.directive';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -245,6 +246,7 @@ export class WatchComponent implements OnInit, OnDestroy {
         private toast: ToastService,
         private clientRecordings: ClientRecordingService,
         private dvr: DvrService,
+        private confirm: ConfirmService,
         @Inject(PLATFORM_ID) platformId: Object,
         private cdr: ChangeDetectorRef
     ) {
@@ -1296,7 +1298,14 @@ export class WatchComponent implements OnInit, OnDestroy {
     }
 
     async deleteLocalRecording(rec: ClientRecording): Promise<void> {
-        if (!confirm(`Delete '${rec.programTitle}' from My Recordings?`)) return;
+        const confirmed = await this.confirm.ask({
+            title: 'Delete this recording?',
+            message: `'${rec.programTitle}' will be removed from My Recordings.`,
+            detail: 'It is stored in this browser only, so this cannot be undone.',
+            confirmLabel: 'Delete',
+            destructive: true
+        });
+        if (!confirmed) return;
         await this.clientRecordings.delete(rec.id);
         await this.loadRecordings();
     }
@@ -1900,8 +1909,22 @@ export class WatchComponent implements OnInit, OnDestroy {
                 this.toast.show('System recordings are managed from the admin DVR page', 'info');
                 return;
             }
-            const actionText = (rec.status === 'queued' || rec.status === 'recording') ? 'cancel this recording' : 'delete this recording';
-            if (!confirm(`Are you sure you want to ${actionText}?`)) return;
+            const inFlight = rec.status === 'queued' || rec.status === 'recording';
+            const confirmed = await this.confirm.ask(inFlight
+                ? {
+                    title: 'Cancel this recording?',
+                    message: 'Recording will stop and what has been captured is discarded.',
+                    confirmLabel: 'Cancel recording',
+                    cancelLabel: 'Keep recording',
+                    destructive: true
+                }
+                : {
+                    title: 'Delete this recording?',
+                    message: 'It is stored in this browser only, so this cannot be undone.',
+                    confirmLabel: 'Delete',
+                    destructive: true
+                });
+            if (!confirmed) return;
 
             for (const r of toCancel) {
                 try {

@@ -3,7 +3,7 @@
 Single source of truth for the remediation effort. Consolidates the process audit, the UI &
 source-retrieval audit, and the source acquisition architecture into one tracked backlog.
 
-**Status:** Wave 5 — 25 of 26 done, S23 remaining, S24 held
+**Status:** 26 of 26 planned slices done. Only S24 remains, held for subdivision.
 **Suite score at baseline:** 2.5 / 5 (process) · 2.3 / 5 (UI)
 **Last updated:** 2026-08-13
 
@@ -737,14 +737,37 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
   Inline styles and the icon system were left as they are: both are cosmetic consistency rather than
   anything a user is blocked by, and the slice was already large. Worth a small follow-up slice.
 
-- [ ] **S23 · Feedback that survives long enough to act on** — M
+- [x] **S23 · Feedback that survives long enough to act on** — M
   Errors persistent and dismissible, successes transient; pause on hover, cap the queue, announce
-  through a live region. Replace the 12 native confirms with the modal pattern. Disable job-triggering
+  through a live region. Replace the native confirms with the modal pattern. Disable job-triggering
   actions while a job runs and say why.
-  *Fixes X4.* → `toast.service.ts`, `toast-container.component.ts`, `dashboard.component.*`
-  - [ ] An error raised while the user is away is still readable when they return
-  - [ ] No native browser dialogs remain
-  - [ ] Actions unavailable during a sync look unavailable and explain themselves
+  *Fixes X4.* → `toast-policy.ts` (new), `confirm.service.ts` (new), `confirm-dialog.component.ts`
+  (new), `toast.service.ts`, `toast-container.component.ts`, `app.component.ts`, `dashboard.component.*`
+  - [x] An error raised while the user is away is still readable when they return
+        — a real failure (API taken down mid-save) was **still on screen after 12 seconds**, three
+        times the old blanket 4-second timeout, with a dismiss button and no countdown bar. Hovering
+        holds every countdown: a success sat there through 8 seconds of hover and cleared 4 seconds
+        after the pointer left
+  - [x] No native browser dialogs remain
+        — **14 `confirm()` calls replaced, 0 remain.** Instrumented `window.confirm` and drove a bulk
+        disable: the native dialog was never called and the app dialog appeared with `role="dialog"`,
+        focus inside, and a title, consequence and detail instead of one compressed sentence
+  - [x] Actions unavailable during a sync look unavailable and explain themselves
+        — with a sync running, Reset is `disabled`, at 0.55 opacity, `cursor: not-allowed`, and reads
+        "Unavailable while a sync is running — cancel it first". The other three now queue rather
+        than being refused, so they say "Will queue behind the running job" instead
+
+  **The Watch UI never rendered a toast at all.** The container was mounted in the admin layout only,
+  so all thirteen of Watch's `toast.show()` calls went nowhere — every message that interface
+  produced, including the DVR scheduling results added in S20, was invisible. Both the toast
+  container and the confirm dialog are now mounted at the app root.
+
+  Errors also stopped leaking Angular's internals: a request that never completes reported
+  `Http failure response for http://…: 0 Unknown Error`, which names the symptom in the least useful
+  possible way. It now says the server could not be reached.
+
+  The four dashboard action cards were clickable `div`s — keyboard-unreachable, and missed by S22's
+  sweep, which checked the Channels screen. They are buttons now.
 
 ---
 
@@ -848,3 +871,5 @@ memory, so **restart it after `ng build`** or you will screenshot the previous b
 | 2026-08-14 | S14 | Done. The README API table is generated from the server and guarded by tests: it had listed 24 endpoints, one of which never existed, and omitted 66 that did. 236 KB of unserved pre-Angular UI deleted. The healthcheck now probes both processes — it previously reported healthy with the entire user interface down. 13 new unit tests. |
 | 2026-08-14 | S16c | Re-scoped and done, after Chris challenged whether a file adapter differed from m3u import. He was right: it is a transport, not an adapter. Verified the gap first (bare path -> "Invalid URL", `file://` -> "protocol mismatch"), then added local file support to the fetch layer so every adapter gained it. Confined to the data directory. 22 new unit tests; suite 503 -> 538. |
 | 2026-08-14 | S22 | Done. Fonts self-hosted and verified with Google's hosts blocked at the browser. One modal directive replaced eight hand-rolled dialogs — focus trap proven with 60 key presses. The focus ring became universal rather than an enumerated list. Contrast measured across all nine themes, which found a genuine failure in the light theme's warning colour (2.91:1, needed 3:1) that no amount of looking had caught. 13 new unit tests; suite 538 -> 551. Inline styles and icon consolidation deliberately left out. |
+| 2026-08-14 | S23 | Done. Errors persist until dismissed and are announced through a live region; hover holds every countdown; the queue cap drops transient messages before persistent ones. All 14 native confirms replaced with a focus-trapping dialog that has room to say what will actually happen. Found that the Watch UI had never rendered a toast at all — the container was mounted only in the admin layout, so thirteen call sites produced nothing. 13 new unit tests; suite 551 -> 564. |
+| 2026-08-14 | — | All 26 planned slices are complete. S24 remains held for subdivision. |

@@ -1,4 +1,5 @@
 import { ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
+import { ConfirmService } from '../../services/confirm.service';
 import { ModalFocusDirective } from '../../services/modal-focus.directive';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -57,7 +58,8 @@ export class ChannelManagerComponent implements OnInit, OnDestroy {
     autoNumberStartNum = 700;
     customRangesStr = '{}';
 
-    constructor(private api: ApiService, private toast: ToastService, private cdr: ChangeDetectorRef) { }
+    constructor(private api: ApiService, private toast: ToastService, private cdr: ChangeDetectorRef,
+        private confirm: ConfirmService) { }
 
     ngOnInit(): void {
         this.loadChannels();
@@ -223,7 +225,16 @@ export class ChannelManagerComponent implements OnInit, OnDestroy {
         if (ids.length === 0) return;
 
         if (action === 'enable' || action === 'disable') {
-            if (!confirm(`Are you sure you want to perform this action on ${ids.length} channels?`)) return;
+            const enabling = action === 'enable';
+            const confirmed = await this.confirm.ask({
+                title: `${enabling ? 'Enable' : 'Disable'} ${ids.length} ${ids.length === 1 ? 'channel' : 'channels'}?`,
+                message: enabling
+                    ? 'They will appear in the guide and the generated playlist.'
+                    : 'They will be hidden from the guide and left out of the generated playlist.',
+                detail: 'Nothing is deleted; this can be changed back at any time.',
+                confirmLabel: enabling ? 'Enable' : 'Disable'
+            });
+            if (!confirmed) return;
         }
 
         try {

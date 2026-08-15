@@ -60,26 +60,46 @@
     <div class="actions-section">
         <h2>Actions</h2>
         <div class="action-grid">
-            <div class="glass-card action-card" (click)="runFullSync()">
-                <div class="action-icon">🔄</div>
+            <!-- Buttons, not divs: these were unreachable by keyboard entirely.
+                 Sync, grab and rebuild queue behind a running job rather than
+                 being refused, so they say so instead of looking broken. Reset
+                 is genuinely refused mid-sync, so it is disabled and explains
+                 itself rather than failing with a 409 after the fact. -->
+            <button type="button" class="glass-card action-card" (click)="runFullSync()">
+                <div class="action-icon" aria-hidden="true">🔄</div>
                 <div class="action-title">Run Full Sync</div>
-                <div class="action-desc">Playlist → Match → Grab → Enrich → Rebuild</div>
-            </div>
-            <div class="glass-card action-card" (click)="grabMissing()">
-                <div class="action-icon">📡</div>
+                <div class="action-desc">
+                    @if (jobRunning) { Will queue behind the running job }
+                    @else { Playlist → Match → Grab → Enrich → Rebuild }
+                </div>
+            </button>
+            <button type="button" class="glass-card action-card" (click)="grabMissing()">
+                <div class="action-icon" aria-hidden="true">📡</div>
                 <div class="action-title">Grab EPG Data</div>
-                <div class="action-desc">Fetch EPG data for matched channels</div>
-            </div>
-            <div class="glass-card action-card" (click)="rebuildFiles()">
-                <div class="action-icon">📦</div>
+                <div class="action-desc">
+                    @if (jobRunning) { Will queue behind the running job }
+                    @else { Fetch EPG data for matched channels }
+                </div>
+            </button>
+            <button type="button" class="glass-card action-card" (click)="rebuildFiles()">
+                <div class="action-icon" aria-hidden="true">📦</div>
                 <div class="action-title">Rebuild Files</div>
-                <div class="action-desc">Regenerate M3U and XMLTV files</div>
-            </div>
-            <div class="glass-card action-card danger-card" (click)="openResetModal()">
-                <div class="action-icon">🚨</div>
+                <div class="action-desc">
+                    @if (jobRunning) { Will queue behind the running job }
+                    @else { Regenerate M3U and XMLTV files }
+                </div>
+            </button>
+            <button type="button" class="glass-card action-card danger-card"
+                    [disabled]="jobRunning"
+                    [attr.aria-describedby]="jobRunning ? 'reset-unavailable' : null"
+                    (click)="openResetModal()">
+                <div class="action-icon" aria-hidden="true">🚨</div>
                 <div class="action-title text-danger">Reset Data</div>
-                <div class="action-desc">Choose what to clear — guide, your data, or caches</div>
-            </div>
+                <div class="action-desc" id="reset-unavailable">
+                    @if (jobRunning) { Unavailable while a sync is running — cancel it first }
+                    @else { Choose what to clear — guide, your data, or caches }
+                </div>
+            </button>
         </div>
     </div>
 

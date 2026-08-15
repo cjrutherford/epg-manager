@@ -1,4 +1,5 @@
 import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
+import { ConfirmService } from '../../services/confirm.service';
 import { ModalFocusDirective } from '../../services/modal-focus.directive';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -35,7 +36,8 @@ export class DiagnosticsComponent implements OnInit {
     constructor(
         private api: ApiService,
         private toast: ToastService,
-        private cdr: ChangeDetectorRef
+        private cdr: ChangeDetectorRef,
+        private confirm: ConfirmService
     ) { }
 
     ngOnInit(): void {
@@ -119,7 +121,14 @@ export class DiagnosticsComponent implements OnInit {
     }
 
     async clearChannelMatch(ch: any): Promise<void> {
-        if (!confirm(`Are you sure you want to clear the EPG match for '${ch.name}'?`)) return;
+        const confirmed = await this.confirm.ask({
+            title: 'Clear this EPG match?',
+            message: `'${ch.name}' will have no guide data until it is matched again.`,
+            detail: 'The next sync may re-match it automatically.',
+            confirmLabel: 'Clear match',
+            destructive: true
+        });
+        if (!confirmed) return;
         try {
             await this.api.setOverride(ch.id, null).toPromise();
             this.toast.show(`EPG match cleared for '${ch.name}'`, 'success');

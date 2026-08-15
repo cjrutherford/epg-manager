@@ -5,7 +5,6 @@ import { AuthService } from '../services/auth.service';
 import { ApiService } from '../services/api.service';
 import { SseService } from '../services/sse.service';
 import { ThemeService } from '../services/theme.service';
-import { ToastContainerComponent } from '../services/toast-container.component';
 import { ToastService } from '../services/toast.service';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
@@ -15,7 +14,7 @@ import { LucideAngularModule } from 'lucide-angular';
 @Component({
     selector: 'app-admin-layout',
     standalone: true,
-    imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive, FormsModule, LucideAngularModule, ToastContainerComponent],
+    imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive, FormsModule, LucideAngularModule],
     templateUrl: './admin-layout.component.html',
     styleUrl: './admin-layout.component.css'
 })

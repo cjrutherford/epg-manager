@@ -659,3 +659,24 @@
     opacity: 0.5;
     cursor: not-allowed;
 }
+
+/* .action-card became a <button>; reset the defaults so it looks unchanged,
+   and give the disabled state a look that reads as unavailable. */
+button.action-card {
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    width: 100%;
+    cursor: pointer;
+}
+
+button.action-card[disabled] {
+    opacity: 0.55;
+    cursor: not-allowed;
+    filter: saturate(0.4);
+}
+
+button.action-card[disabled]:hover {
+    transform: none;
+    box-shadow: none;
+}

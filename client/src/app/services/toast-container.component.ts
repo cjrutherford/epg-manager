@@ -7,16 +7,39 @@ import { ToastService } from './toast.service';
     standalone: true,
     imports: [CommonModule],
     template: `
-    <div class="toast-container">
+    <!-- Announcements go through a live region: a toast is a visual event, and
+         without this a screen reader user is told nothing at all. Two regions,
+         because a politeness level cannot be changed after the fact. -->
+    <div class="visually-hidden" role="status" aria-live="polite">
+      @if (announcement(); as a) { @if (!a.assertive) { {{ a.text }} } }
+    </div>
+    <div class="visually-hidden" role="alert" aria-live="assertive">
+      @if (announcement(); as a) { @if (a.assertive) { {{ a.text }} } }
+    </div>
+
+    <div class="toast-container"
+         (mouseenter)="toastService.pause()"
+         (mouseleave)="toastService.resume()"
+         (focusin)="toastService.pause()"
+         (focusout)="toastService.resume()">
       @for (toast of toastService.toasts(); track toast.id) {
-        <div [class]="'toast toast-' + toast.type + ' ' + toast.type" (click)="toastService.dismiss(toast.id)">
-          <span class="toast-icon">
+        <div [class]="'toast toast-' + toast.type + ' ' + toast.type"
+             [class.toast-persistent]="toast.persistent">
+          <span class="toast-icon" aria-hidden="true">
             @if (toast.type === 'success') { ✓ }
             @else if (toast.type === 'error') { ✕ }
             @else if (toast.type === 'warning') { ⚠ }
             @else { ℹ }
           </span>
-          <span class="toast-msg">{{ toast.message }}</span>
+          <span class="toast-msg">
+            {{ toast.message }}
+            @if (toast.count > 1) {
+              <span class="toast-count">×{{ toast.count }}</span>
+            }
+          </span>
+          <button type="button" class="toast-close"
+                  [attr.aria-label]="'Dismiss: ' + toast.message"
+                  (click)="toastService.dismiss(toast.id)">✕</button>
         </div>
       }
     </div>
@@ -38,9 +61,10 @@ import { ToastService } from './toast.service';
       font-size: 0.85rem; color: var(--text-primary);
       animation: toast-in 0.25s ease-out;
       max-width: 400px;
-      cursor: pointer;
       overflow: hidden;
     }
+    /* The countdown bar is a lie on a toast that never expires. */
+    .toast-persistent::after { display: none; }
     .toast::after {
       content: '';
       position: absolute;
@@ -51,7 +75,34 @@ import { ToastService } from './toast.service';
       border-radius: 0 0 10px 10px;
       animation: toast-progress 4s linear forwards;
     }
-    .toast-icon { font-weight: 700; font-size: 1rem; }
+    .toast-icon { font-weight: 700; font-size: 1rem; flex: none; }
+    .toast-count {
+      margin-left: 6px;
+      opacity: 0.7;
+      font-variant-numeric: tabular-nums;
+    }
+    .toast-close {
+      flex: none;
+      margin-left: auto;
+      background: none;
+      border: none;
+      color: inherit;
+      opacity: 0.55;
+      cursor: pointer;
+      font-size: 0.9rem;
+      line-height: 1;
+      padding: 2px 4px;
+    }
+    .toast-close:hover { opacity: 1; }
+    .visually-hidden {
+      position: absolute;
+      width: 1px; height: 1px;
+      margin: -1px; padding: 0;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+      border: 0;
+    }
     .toast-msg { line-height: 1.4; }
     .toast-success { border-left: 3px solid var(--color-success); }
     .toast-success .toast-icon { color: var(--color-success); }
@@ -83,5 +134,7 @@ import { ToastService } from './toast.service';
   `]
 })
 export class ToastContainerComponent {
+    readonly announcement = this.toastService.announcement;
+
     constructor(public toastService: ToastService) { }
 }

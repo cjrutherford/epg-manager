@@ -219,6 +219,13 @@ export class DvrService {
         if (error instanceof DvrScheduleError) return error.message;
 
         const status = error?.status;
+        // Status 0 is Angular's "the request never completed" — the server is
+        // down, or the network is. Showing its raw message leaks
+        // "Http failure response for http://…: 0 Unknown Error" at the user,
+        // which names the symptom in the least useful possible way.
+        if (status === 0) {
+            return 'Could not reach the server — check it is running and try again';
+        }
         if (status === 401 || status === 403) {
             return 'Your session has expired — sign in again to schedule recordings';
         }

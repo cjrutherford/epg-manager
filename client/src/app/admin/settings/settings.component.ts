@@ -1,4 +1,5 @@
 import { ChangeDetectorRef, Component, OnInit, Inject, PLATFORM_ID } from '@angular/core';
+import { ConfirmService } from '../../services/confirm.service';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
@@ -65,6 +66,7 @@ export class SettingsComponent implements OnInit {
         private api: ApiService,
         private toast: ToastService,
         private cdr: ChangeDetectorRef,
+        private confirm: ConfirmService,
         @Inject(PLATFORM_ID) platformId: Object
     ) {
         this.isBrowser = isPlatformBrowser(platformId);
@@ -291,7 +293,12 @@ export class SettingsComponent implements OnInit {
     }
 
     async refreshImdbData(): Promise<void> {
-        if (!confirm('Download fresh IMDb dataset? This may take a while.')) return;
+        const confirmed = await this.confirm.ask({
+            title: 'Download the IMDb dataset?',
+            message: 'This downloads a large file and can take several minutes.',
+            confirmLabel: 'Download'
+        });
+        if (!confirmed) return;
         try {
             const res: any = await this.api.refreshImdbData().toPromise();
             this.toast.show(res?.message || 'Refresh started', 'success');
@@ -299,7 +306,14 @@ export class SettingsComponent implements OnInit {
     }
 
     async clearCache(): Promise<void> {
-        if (!confirm('Clear all cached metadata?')) return;
+        const confirmed = await this.confirm.ask({
+            title: 'Clear cached metadata?',
+            message: 'Artwork, ratings and episode details will be fetched again as they are needed.',
+            detail: 'Your channels and guide data are not affected.',
+            confirmLabel: 'Clear cache',
+            destructive: true
+        });
+        if (!confirmed) return;
         try {
             await this.api.clearMetadataCache().toPromise();
             this.toast.show('Cache cleared', 'success');

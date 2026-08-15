@@ -1,4 +1,5 @@
 import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
+import { ConfirmService } from '../../services/confirm.service';
 import { ModalFocusDirective } from '../../services/modal-focus.directive';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -32,7 +33,8 @@ export class SourcesComponent implements OnInit {
     constructor(
         private api: ApiService,
         private toast: ToastService,
-        private cdr: ChangeDetectorRef
+        private cdr: ChangeDetectorRef,
+        private confirm: ConfirmService
     ) { }
 
     ngOnInit(): void {
@@ -195,9 +197,14 @@ export class SourcesComponent implements OnInit {
     }
 
     async remove(source: SourceRecord): Promise<void> {
-        if (!confirm(`Remove "${source.label}"? Guide data it supplied will be removed too. Other sources are unaffected.`)) {
-            return;
-        }
+        const confirmed = await this.confirm.ask({
+            title: 'Remove this source?',
+            message: `"${source.label}" will be removed, along with the guide data it supplied.`,
+            detail: 'Other sources are unaffected.',
+            confirmLabel: 'Remove source',
+            destructive: true
+        });
+        if (!confirmed) return;
         try {
             const result: any = await this.api.removeSource(source.key).toPromise();
             this.toast.show(

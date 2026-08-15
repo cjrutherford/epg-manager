@@ -1,4 +1,5 @@
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef, AfterViewChecked, ChangeDetectorRef } from '@angular/core';
+import { ConfirmService } from '../../services/confirm.service';
 import { ModalFocusDirective } from '../../services/modal-focus.directive';
 import { CommonModule } from '@angular/common';
 import { ApiService, ResetPreview, ResetScope } from '../../services/api.service';
@@ -33,6 +34,16 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
     stats: any = null;
     health: any = null;
     jobStatus: any = null;
+
+    /**
+     * True while a background job is in flight.
+     *
+     * `syncStarted` is the live signal — kept current by the SSE stream — where
+     * `jobStatus` is only fetched once at init and goes stale immediately.
+     */
+    get jobRunning(): boolean {
+        return this.syncStarted || !!this.jobStatus?.running;
+    }
     dataState: { hasChannels: boolean; hasPrograms: boolean; hasPlaylist: boolean; isEmpty: boolean } | null = null;
     loading = true;
     syncStarted = false;
@@ -89,7 +100,8 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
         private api: ApiService,
         private sse: SseService,
         private toast: ToastService,
-        private cdr: ChangeDetectorRef
+        private cdr: ChangeDetectorRef,
+        private confirm: ConfirmService
     ) { }
 
     ngOnInit(): void {
@@ -254,8 +266,16 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
         });
     }
 
-    cancelSync(): void {
-        if (!confirm('Are you sure you want to cancel the running sync process?')) return;
+    async cancelSync(): Promise<void> {
+        const confirmed = await this.confirm.ask({
+            title: 'Cancel the running sync?',
+            message: 'The sync will stop where it is, and anything queued behind it is dropped.',
+            detail: 'Channels and guide data already imported are kept.',
+            confirmLabel: 'Cancel sync',
+            cancelLabel: 'Let it finish',
+            destructive: true
+        });
+        if (!confirmed) return;
         this.api.cancelSync().subscribe({
             next: (res) => {
                 if (res.success) {
@@ -316,8 +336,14 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
         return `stage-${stage.status}`;
     }
 
-    rebuildFiles(): void {
-        if (!confirm('Rebuild M3U/XML from database?')) return;
+    async rebuildFiles(): Promise<void> {
+        const confirmed = await this.confirm.ask({
+            title: 'Rebuild the output files?',
+            message: 'playlist.m3u and epg.xml will be regenerated from the database.',
+            detail: 'The current files stay in place until the new ones are complete.',
+            confirmLabel: 'Rebuild'
+        });
+        if (!confirmed) return;
         this.api.rebuildFiles().subscribe({
             next: (res) => { if (res.success) this.toast.show('Files rebuilt!', 'success'); },
             error: (e) => this.toast.show('Rebuild failed: ' + e.message, 'error')
