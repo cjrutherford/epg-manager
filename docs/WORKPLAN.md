@@ -3,7 +3,7 @@
 Single source of truth for the remediation effort. Consolidates the process audit, the UI &
 source-retrieval audit, and the source acquisition architecture into one tracked backlog.
 
-**Status:** 26 of 26 planned slices done. Only S24 remains, held for subdivision.
+**Status:** 26 of 26 hardening slices done. Next: S26 design language (5 slices), then S24 e2e (4 slices).
 **Suite score at baseline:** 2.5 / 5 (process) · 2.3 / 5 (UI)
 **Last updated:** 2026-08-13
 
@@ -771,6 +771,122 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
 
 ---
 
+## Design language audit — 2026-08-14
+
+Run after the 26 hardening slices, at Chris's request, to decide what a design-language slice group
+should contain. The hardening programme fixed what the app *does*; this looks at whether it presents
+itself as one product.
+
+**Scoring.** Coherence 0.40 · Systematisation 0.35 · Adaptability 0.25.
+Bands: Critical <2.0 · High 2.0–2.4 · Medium 2.5–3.2 · Sound >3.2.
+
+| Area | Coh | Sys | Adapt | Score | Band |
+| :--- | :-: | :-: | :---: | :---: | :--- |
+| Type and spacing scale | 1 | 1 | 2 | **1.25** | Critical |
+| Summary statistics | 1 | 1 | 3 | **1.50** | Critical |
+| Iconography | 2 | 2 | 2 | **2.00** | High |
+| Responsive behaviour | 2 | 2 | 2 | **2.00** | High |
+| Page structure and naming | 2 | 2 | 3 | **2.25** | High |
+| Empty / loading / error states | 2 | 2 | 3 | **2.25** | High |
+| Component reuse | 3 | 2 | 3 | **2.65** | Medium |
+| Colour tokens | 3 | 3 | 3 | **3.00** | Medium |
+| **Overall** | | | | **≈2.1** | **High** |
+
+### What the measurements say
+
+| Measurement | Value |
+| :--- | :--- |
+| Distinct `font-size` values | **42** |
+| Distinct spacing values (`padding`/`margin`/`gap`) | **25** — every integer from 1px to 12px, then 14–60 |
+| Distinct `border-radius` values | **12**, despite `--radius-sm` / `--radius-md` existing |
+| Inline `style="…"` attributes | **66** across 6 templates |
+| Icon systems in use | **3** — 43 lucide, 53 emoji, 1 inline SVG |
+| Admin screens sharing `.page-header` | **3 of 6** (the other three define their own) |
+| Hand-rolled `backdrop-filter` glass surfaces | **11** |
+| Component CSS | **4,866 lines** across 8 stylesheets, plus 1,017 shared |
+
+### The findings that matter
+
+**There is no type or spacing scale.** 42 font sizes and 25 spacing values is not a system with
+exceptions, it is the absence of one — `0.72rem`, `0.73rem`, `0.74rem`, `0.75rem` and `0.76rem` all
+appear. Nothing downstream can be consistent while this is true, which is why it is first.
+
+**The same idea is designed three times.** A summary statistic is 35.2px and centred on the
+Dashboard, 25.6px and left-aligned on Sources, and large-centred-uppercase on Diagnostics. A user
+crossing two screens sees three visual languages for one concept.
+
+**Emoji are doing an icon's job.** 53 of them, against 43 lucide icons. They cannot take a themed
+colour, they render differently per platform, and they are why the Dashboard's three action cards
+disagree: *Run Full Sync*'s title measures **10px above** its two neighbours in the same row.
+
+**Screens do not agree on what they are called.** The nav says "DVR" and "EPG & Matches"; the pages
+say "DVR Manager" and "EPG & Match Diagnostics". Three screens carry a one-line purpose under the
+title; three do not.
+
+**Colour tokens are the healthy part.** The admin surface is almost entirely tokenised — one genuine
+leak, `#ff5050` in `settings.component.css`, which bypasses `--color-danger` and would read poorly in
+the light theme. Watch's 89 literals are mostly deliberate: player chrome sits on video, not on a
+themed surface.
+
+### Scope note
+
+**Watch's player chrome is out of scope.** White-on-black controls over video are a deliberate,
+correct exception, and forcing them into the admin vocabulary would make them worse. Watch's *panels*
+— the guide, the DVR overlay, the settings modal — are in scope, because those are ordinary UI.
+
+---
+
+## S26 · Design language — slice group
+
+Ordered so each slice makes the next one smaller. S26a is the prerequisite for everything else.
+
+- [ ] **S26a · A scale to build on** — S
+  Collapse 42 font sizes into a type scale and 25 spacing values into a spacing scale, both as tokens.
+  Add the radius and size tokens that are being worked around. Fix the one real colour leak.
+  → `styles.css`, all component CSS
+  - [ ] Distinct font sizes in admin CSS drop from 42 to the scale's size
+  - [ ] Distinct spacing values drop from 25 to the scale's size
+  - [ ] No raw `px` spacing or font size in admin component CSS, asserted by a test
+  - [ ] Every theme still passes the contrast test from S22
+
+- [ ] **S26b · One component vocabulary** — M
+  Promote the repeated patterns into shared classes: page header, summary statistic, card shell,
+  table, empty/loading/error state. Retire the per-screen copies and the 11 hand-rolled glass
+  surfaces.
+  → `styles.css`, all admin templates and CSS
+  - [ ] A summary statistic looks identical on Dashboard, Sources and Diagnostics
+  - [ ] All six admin screens use the same page header
+  - [ ] The Dashboard action row aligns — the measured 10px discrepancy is gone
+  - [ ] Component CSS shrinks measurably; no pattern is defined in more than one stylesheet
+
+- [ ] **S26c · One icon system** — S
+  Replace emoji used as chrome with lucide icons that inherit colour and size. Emoji stay only where
+  they are content.
+  → all admin templates
+  - [ ] Zero emoji used as UI icons
+  - [ ] Every icon takes its colour from a token and its size from the scale
+
+- [ ] **S26d · Say the same thing everywhere** — S
+  Reconcile nav labels with page titles, give every screen a one-line purpose, and settle on one verb
+  form for actions.
+  → `admin-layout.component.html`, all admin templates
+  - [ ] Nav label and page title agree on all six screens
+  - [ ] Every screen states its purpose in one line
+  - [ ] Buttons that do the same thing are worded the same way
+
+- [ ] **S26e · Responsive and state coverage** — M
+  One breakpoint set as tokens. Every list gets an empty, loading and error state drawn from the
+  shared vocabulary.
+  → `styles.css`, all admin templates
+  - [ ] Breakpoints come from a defined set, not ad-hoc values
+  - [ ] Every list has all three states, and they look the same across screens
+  - [ ] All six screens verified at 360px, 768px and 1280px
+
+  *Inline styles (66) are retired opportunistically across S26a–S26e rather than as their own slice —
+  most are spacing and colour that the scale and vocabulary replace outright.*
+
+---
+
 ## Source acquisition reference
 
 Kept here so the adapter work in Wave 3 has its contract to hand.
@@ -873,3 +989,4 @@ memory, so **restart it after `ng build`** or you will screenshot the previous b
 | 2026-08-14 | S22 | Done. Fonts self-hosted and verified with Google's hosts blocked at the browser. One modal directive replaced eight hand-rolled dialogs — focus trap proven with 60 key presses. The focus ring became universal rather than an enumerated list. Contrast measured across all nine themes, which found a genuine failure in the light theme's warning colour (2.91:1, needed 3:1) that no amount of looking had caught. 13 new unit tests; suite 538 -> 551. Inline styles and icon consolidation deliberately left out. |
 | 2026-08-14 | S23 | Done. Errors persist until dismissed and are announced through a live region; hover holds every countdown; the queue cap drops transient messages before persistent ones. All 14 native confirms replaced with a focus-trapping dialog that has room to say what will actually happen. Found that the Watch UI had never rendered a toast at all — the container was mounted only in the admin layout, so thirteen call sites produced nothing. 13 new unit tests; suite 551 -> 564. |
 | 2026-08-14 | — | All 26 planned slices are complete. S24 remains held for subdivision. |
+| 2026-08-14 | — | Design language audit at Chris's request. Scores **2.1 (High)** overall, with type/spacing scale (1.25) and summary statistics (1.50) in the Critical band. Headline measurements: 42 distinct font sizes, 25 spacing values, 3 icon systems, and the same summary statistic designed three different ways. Proposed as slice group S26a–S26e. |
