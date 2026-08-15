@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { FIXTURE } from './fixture/seed';
+import { goToSection, revealPlayerChrome, signIn } from './fixture/helpers';
 
 test.beforeEach(async ({ page }) => {
   page.on('console', msg => console.log('PAGE LOG:', msg.text()));
@@ -13,8 +15,8 @@ test.describe('Angular Client Auth Flow', () => {
     // Verify login overlay is visible
     const overlay = page.locator('.login-overlay');
     await expect(overlay).toBeVisible();
-    await expect(overlay.locator('h2')).toContainText('EPG Manager');
-    await expect(overlay.locator('p')).toContainText('Admin Console');
+    await expect(overlay.locator('h2')).toContainText('Tuner Daemon');
+    await expect(overlay.locator('p')).toContainText('Automated EPG & Live TV Engine');
   });
 
   test('login with invalid password shows error', async ({ page }) => {
@@ -38,7 +40,7 @@ test.describe('Angular Client Auth Flow', () => {
     await page.goto('/admin');
     const input = page.locator('.login-form input[type="password"].ng-pristine');
     await expect(input).toBeVisible({ timeout: 10000 });
-    await input.fill('admin');
+    await input.fill(FIXTURE.adminPassword);
     
     const [response] = await Promise.all([
       page.waitForResponse('**/api/auth'),
@@ -48,62 +50,52 @@ test.describe('Angular Client Auth Flow', () => {
     
     // Login overlay should disappear and Dashboard should be visible
     await expect(page.locator('.login-overlay')).not.toBeVisible();
-    await expect(page.locator('h1')).toContainText('Dashboard');
+    await expect(page.locator('.page-header h1')).toHaveText('Dashboard');
   });
 });
 
 test.describe('Admin Console Features', () => {
   // Log in before each test in this suite
   test.beforeEach(async ({ page }) => {
-    await page.goto('/admin');
-    const input = page.locator('.login-form input[type="password"].ng-pristine');
-    await expect(input).toBeVisible({ timeout: 10000 });
-    await input.fill('admin');
-    
-    await Promise.all([
-      page.waitForResponse('**/api/auth'),
-      page.locator('.login-form button[type="submit"]').click()
-    ]);
-    await expect(page.locator('.login-overlay')).not.toBeVisible();
+    await signIn(page);
   });
 
-  test('navigation links work correctly', async ({ page }) => {
-    // Go to Channels
-    await page.locator('aside.sidebar a[routerLink="channels"]').click();
-    await expect(page.locator('h1')).toContainText('Channel Manager');
-    
-    // Go to DVR
-    await page.locator('aside.sidebar a[routerLink="dvr"]').click();
-    await expect(page.locator('h1')).toContainText('DVR Manager');
-    
-    // Go to Settings
-    await page.locator('aside.sidebar a[routerLink="settings"]').click();
-    await expect(page.locator('h1')).toContainText('Settings');
-    
-    // Go back to Dashboard
-    await page.locator('aside.sidebar a[routerLink="dashboard"]').click();
-    await expect(page.locator('h1')).toContainText('Dashboard');
+  // Nav label and page title agree on every screen since S26d, so this asserts
+  // they are the same string rather than two strings that happen to relate.
+  test('every nav link leads to the page it names', async ({ page }) => {
+    for (const [label, title] of [
+      ['Channels', 'Channels'],
+      ['Sources', 'Sources'],
+      ['DVR', 'DVR'],
+      ['EPG & Matches', 'EPG & Matches'],
+      ['Settings', 'Settings'],
+      ['Dashboard', 'Dashboard'],
+    ]) {
+      await goToSection(page, label, title);
+    }
   });
 
-  test('dashboard shows status and stats cards', async ({ page }) => {
+  test('dashboard reports the seeded counts', async ({ page }) => {
     await page.goto('/admin/dashboard');
-    
-    // Check stats grid cards
-    const statCards = page.locator('.stat-card');
-    await expect(statCards).toHaveCount(3);
-    
-    // Check action cards
-    const actionCards = page.locator('.action-card');
-    await expect(actionCards).toHaveCount(4);
-    
-    // Verify sync trigger is visible
-    const syncAction = page.locator('.action-card:has-text("Run Full Sync")');
-    await expect(syncAction).toBeVisible();
+
+    // `.stat` is the shared statistic component introduced in S26b; the
+    // per-screen `.stat-card` this used to target no longer exists.
+    const stats = page.locator('.stat');
+    await expect(stats).toHaveCount(3);
+
+    // The numbers come from the fixture, so they can be asserted exactly.
+    await expect(stats.nth(0).locator('.stat__value'))
+      .toHaveText(String(FIXTURE.channelCount - FIXTURE.disabledCount));
+    await expect(stats.nth(1).locator('.stat__value'))
+      .toHaveText(String(FIXTURE.programmeCount));
+
+    await expect(page.locator('.action-card')).toHaveCount(4);
+    await expect(page.locator('.action-card:has-text("Run full sync")')).toBeVisible();
   });
 
   test('settings page loads config and allows saving', async ({ page }) => {
     await page.goto('/admin/settings');
-    await expect(page.locator('h1')).toContainText('Settings');
+    await expect(page.locator('.page-header h1')).toHaveText('Settings');
 
     // Verify inputs are present
     const customUrlInput = page.locator('input.custom-url-input');
@@ -117,7 +109,7 @@ test.describe('Admin Console Features', () => {
     await expect(metadataCheckbox).toBeVisible();
 
     // Click Save Configuration button
-    const saveBtn = page.locator('button.btn-primary:has-text("Save Configuration")');
+    const saveBtn = page.locator('button:has-text("Save Configuration")');
     await expect(saveBtn).toBeVisible();
     await saveBtn.click();
 
@@ -127,6 +119,8 @@ test.describe('Admin Console Features', () => {
   });
 
   test('settings workflow adds playlists, loads iptv-org data, saves, and survives reload', async ({ page }) => {
+    // A full save, reload and restore round trip; the default 30s is tight.
+    test.setTimeout(90_000);
     const token = await page.evaluate(() => localStorage.getItem('epg_admin_token'));
     const authHeaders = { Authorization: `Bearer ${token}` };
     const originalConfigResponse = await page.request.get('/api/config', { headers: authHeaders });
@@ -165,20 +159,24 @@ test.describe('Admin Console Features', () => {
       });
 
       await page.goto('/admin/settings');
-      await expect(page.locator('h1')).toContainText('Settings');
+      await expect(page.locator('.page-header h1')).toHaveText('Settings');
 
       const customUrlInput = page.locator('input.custom-url-input');
-      const saveBtn = page.locator('button.btn-primary:has-text("Save Configuration")');
-      const browseBtn = page.getByRole('button', { name: /Browse iptv-org Playlists|Refresh List/ });
+      const saveBtn = page.locator('button:has-text("Save Configuration")');
+      const browseBtn = page.getByRole('button', { name: /Browse iptv-org & FAST Playlists|Refresh List/ });
 
       await expect(customUrlInput).toBeVisible();
       await customUrlInput.fill(customPlaylistUrl);
-      await expect(page.getByRole('button', { name: 'Add' })).toBeEnabled();
-      await page.getByRole('button', { name: 'Add' }).click();
+
+      // "Add" is scoped to the custom-URL row: S26d renamed "+ Add Playlist"
+      // to "Add playlist", so an unscoped role lookup now matches seven buttons.
+      const addCustomBtn = page.locator('.custom-url-row button:has-text("Add")');
+      await expect(addCustomBtn).toBeEnabled();
+      await addCustomBtn.click();
       await expect(page.locator('.playlist-chip', { hasText: customPlaylistLabel })).toBeVisible();
 
       await saveBtn.click();
-      await expect(page.locator('.toast.success', { hasText: 'Configuration saved!' }).first()).toBeVisible();
+      await expect(page.locator('.toast.success', { hasText: 'Configuration saved' }).first()).toBeVisible();
       await expect(saveBtn).toBeEnabled();
 
       await browseBtn.click();
@@ -189,32 +187,40 @@ test.describe('Admin Console Features', () => {
       await expect(page.locator('.playlist-chip', { hasText: 'countries' })).toBeVisible();
 
       await saveBtn.click();
-      await expect(page.locator('.toast.success', { hasText: 'Configuration saved!' }).first()).toBeVisible();
+      await expect(page.locator('.toast.success', { hasText: 'Configuration saved' }).first()).toBeVisible();
       await expect(saveBtn).toBeEnabled();
 
       await page.reload();
-      await expect(page.locator('h1')).toContainText('Settings');
+      await expect(page.locator('.page-header h1')).toHaveText('Settings');
       await expect(customUrlInput).toBeVisible();
       await expect(saveBtn).toBeEnabled();
       await expect(page.locator('.playlist-chip', { hasText: customPlaylistLabel })).toBeVisible();
       await expect(page.locator('.playlist-chip', { hasText: 'countries' })).toBeVisible();
     } finally {
-      await page.request.post('/api/config', {
-        headers: authHeaders,
-        data: {
-          playlist_urls: originalConfig.playlist_urls || [],
-          playlist_url: originalConfig.playlist_url || '',
-          epg_days: originalConfig.epg_days || 2,
-          channel_numbering_mode: originalConfig.channel_numbering_mode || 'list',
-          custom_channel_ranges: originalConfig.custom_channel_ranges || '{}'
-        }
-      });
+      // Restoring must never mask the failure it is cleaning up after. Without
+      // the catch, a body failure was reported as a timeout in this line, which
+      // sent me looking at the wrong code entirely.
+      try {
+        await page.request.post('/api/config', {
+          timeout: 10_000,
+          headers: authHeaders,
+          data: {
+            playlist_urls: originalConfig.playlist_urls || [],
+            playlist_url: originalConfig.playlist_url || '',
+            epg_days: originalConfig.epg_days || 2,
+            channel_numbering_mode: originalConfig.channel_numbering_mode || 'list',
+            custom_channel_ranges: originalConfig.custom_channel_ranges || '{}'
+          }
+        });
+      } catch (error) {
+        console.warn("[cleanup] could not restore config:", error);
+      }
     }
   });
 
   test('channel manager loads channels list', async ({ page }) => {
     await page.goto('/admin/channels');
-    await expect(page.locator('h1')).toContainText('Channel Manager');
+    await expect(page.locator('.page-header h1')).toHaveText('Channels');
     
     // Verify filter input
     const filterInput = page.locator('input[placeholder="Filter name or category..."]');
@@ -231,7 +237,7 @@ test.describe('Admin Console Features', () => {
 
   test('channel manager auto-number bulk action', async ({ page }) => {
     await page.goto('/admin/channels');
-    await expect(page.locator('h1')).toContainText('Channel Manager');
+    await expect(page.locator('.page-header h1')).toHaveText('Channels');
 
     // Wait for the table to load
     const rows = page.locator('tbody tr');
@@ -245,7 +251,7 @@ test.describe('Admin Console Features', () => {
     await checkboxes.nth(3).check();
 
     // Verify selected count chip and Auto-# button appear
-    const autoBtn = page.locator('button.btn-primary:has-text("Auto-#")');
+    const autoBtn = page.locator('button:has-text("Auto-number")');
     await expect(autoBtn).toBeVisible();
 
     // Click Auto-# button
@@ -254,7 +260,7 @@ test.describe('Admin Console Features', () => {
     // Verify modal is open
     const modal = page.locator('.modal-backdrop');
     await expect(modal).toBeVisible();
-    await expect(modal.locator('h2')).toContainText('Auto-Number Channels');
+    await expect(modal.locator('h2')).toContainText('Auto-number channels');
 
     // Fill start number input with '800'
     const startNumInput = modal.locator('input[type="number"]');
@@ -281,7 +287,7 @@ test.describe('Admin Console Features', () => {
 
   test('dvr manager displays gauge and opens schedule modal', async ({ page }) => {
     await page.goto('/admin/dvr');
-    await expect(page.locator('h1')).toContainText('DVR Manager');
+    await expect(page.locator('.page-header h1')).toHaveText('DVR');
 
     // Storage ring is visible
     await expect(page.locator('.storage-ring')).toBeVisible();
@@ -294,7 +300,7 @@ test.describe('Admin Console Features', () => {
     // Verify modal is shown
     const modal = page.locator('.modal-backdrop');
     await expect(modal).toBeVisible();
-    await expect(modal.locator('h2')).toContainText('Schedule Recording');
+    await expect(modal.locator('h2')).toContainText('Schedule a recording');
 
     // Cancel modal
     await modal.locator('button:has-text("Cancel")').click();
@@ -304,7 +310,7 @@ test.describe('Admin Console Features', () => {
   test('dvr manager schedules manual recording and cancels it', async ({ page }) => {
     const showTitle = `Manual Test Show ${Date.now()}`;
     await page.goto('/admin/dvr');
-    await expect(page.locator('h1')).toContainText('DVR Manager');
+    await expect(page.locator('.page-header h1')).toHaveText('DVR');
 
     // Open schedule modal
     await page.locator('button:has-text("Schedule Recording")').click();
@@ -327,24 +333,27 @@ test.describe('Admin Console Features', () => {
     // Verify toast & table row
     const toast = page.locator('.toast.success').first();
     await expect(toast).toBeVisible();
-    await expect(toast).toContainText('Recording scheduled');
+    // DvrService names the destination now: "Recording 'X' on the server".
+    await expect(toast).toContainText('Recording');
 
     // Table should contain the recording with a Cancel button
     const row = page.locator('.recording-card', { hasText: showTitle });
     await expect(row).toBeVisible();
-    await expect(row.locator('span.badge')).toContainText('scheduled');
+    // Capitalised since S20 gave both recorders one status vocabulary.
+    await expect(row.locator('span.badge')).toContainText('Scheduled');
 
     // Click Cancel
     const cancelBtn = row.locator('button:has-text("Cancel")');
     await expect(cancelBtn).toBeVisible();
 
-    // Setup dialog listener for the confirm dialog
-    page.once('dialog', async dialog => {
-      expect(dialog.message()).toContain('Are you sure you want to cancel this scheduled recording?');
-      await dialog.accept();
-    });
-
     await cancelBtn.click();
+
+    // S23 replaced the native confirm with an in-app dialog, so there is no
+    // browser dialog event to listen for — the confirmation is in the page.
+    const confirmDialog = page.locator('.confirm-modal');
+    await expect(confirmDialog).toBeVisible();
+    await expect(confirmDialog.locator('#confirm-title')).toHaveText('Cancel this scheduled recording?');
+    await confirmDialog.getByRole('button', { name: 'Cancel recording' }).click();
 
     // Verify toast for cancellation
     const cancelToast = page.locator('.toast.success').first();
@@ -357,10 +366,10 @@ test.describe('Admin Console Features', () => {
 
   test('diagnostics page loads tabs and opens manual rematch modal', async ({ page }) => {
     await page.goto('/admin/diagnostics');
-    await expect(page.locator('h1')).toContainText('EPG & Match Diagnostics');
+    await expect(page.locator('.page-header h1')).toHaveText('EPG & Matches');
 
     // Verify stats / summary cards are present
-    const summaryCards = page.locator('.metrics-grid .metric-card');
+    const summaryCards = page.locator('.stat-grid .stat');
     await expect(summaryCards.first()).toBeVisible({ timeout: 10000 });
     await expect(summaryCards).toHaveCount(4);
 
@@ -378,7 +387,7 @@ test.describe('Admin Console Features', () => {
     await expect(tableHeader).toBeVisible();
 
     // Switch back to Match Analyzer
-    const matcherTab = page.locator('.tab-nav button:has-text("Match Analyzer")');
+    const matcherTab = page.locator('.tab-nav button:has-text("Match analyser")');
     await expect(matcherTab).toBeVisible();
     await matcherTab.click();
 
@@ -390,7 +399,7 @@ test.describe('Admin Console Features', () => {
       // Verify the manual rematch modal is open
       const modal = page.locator('.modal-backdrop');
       await expect(modal).toBeVisible();
-      await expect(modal.locator('h2')).toContainText('EPG Manual Rematch');
+      await expect(modal.locator('h2')).toContainText('Rematch this channel');
 
       // Close modal
       await modal.locator('button:has-text("Cancel")').click();
@@ -402,14 +411,18 @@ test.describe('Admin Console Features', () => {
 test.describe('Watch TV Interface', () => {
   test('loads Watch TV view and shows appropriate UI elements', async ({ page }) => {
     await page.goto('/watch');
+    // The player chrome hides itself until the pointer moves, so a spec that
+    // never moves it is asserting against a deliberately empty screen.
+    await revealPlayerChrome(page);
     
     // Header check
     await expect(page.locator('header.topbar')).toBeVisible();
-    await expect(page.locator('header.topbar .logo')).toContainText('IPTV');
+    await expect(page.locator('header.topbar .logo')).toContainText('Tuner Daemon');
 
-    // Check layouts & connections buttons
-    await expect(page.locator('header.topbar button[title="Server Connection"]')).toBeVisible();
-    await expect(page.locator('header.topbar button[title^="Guide Layout"]')).toBeVisible();
+    // The guide toggle lives on the lower-third controls, not the topbar — the
+    // topbar copies were commented out of the template. This spec had been
+    // asserting on buttons that no longer exist.
+    await expect(page.locator('button[title="Toggle Guide"]')).toBeVisible();
 
     // Since we have no channels or database sync at first, check empty state or player
     const emptyState = page.locator('.watch-empty-state');
@@ -453,7 +466,7 @@ test.describe('Watch TV Interface', () => {
     await page.goto('/watch');
 
     // Toggle Guide
-    const guideBtn = page.locator('header.topbar button[title="Toggle Guide (G)"], header.topbar button:has-text("Guide")');
+    const guideBtn = page.locator('button[title="Toggle Guide"]');
     await expect(guideBtn).toBeVisible({ timeout: 10000 });
     await guideBtn.click();
 
@@ -478,7 +491,7 @@ test.describe('Watch TV Interface', () => {
     await page.goto('/watch');
 
     // Ensure guide is open
-    const guideBtn = page.locator('header.topbar button[title="Toggle Guide (G)"], header.topbar button:has-text("Guide")');
+    const guideBtn = page.locator('button[title="Toggle Guide"]');
     await expect(guideBtn).toBeVisible({ timeout: 10000 });
     const guidePanel = page.locator('.guide-panel');
     if (!(await guidePanel.isVisible())) {
@@ -486,21 +499,14 @@ test.describe('Watch TV Interface', () => {
     }
     await expect(guidePanel).toBeVisible();
 
-    // Toggle guide layout to 'side'
-    const layoutBtn = page.locator('header.topbar button[title^="Guide Layout:"]');
+    // Layout is chosen from a popout, not by cycling the guide toggle — the
+    // cycle button this used to click was commented out of the template.
+    const layoutBtn = page.locator('button[title="Change Guide Layout"]');
     await expect(layoutBtn).toBeVisible();
+    await layoutBtn.click();
 
-    let toggled = false;
-    for (let i = 0; i < 5; i++) {
-      const cls = await page.locator('.content-area').getAttribute('class') || '';
-      if (cls.includes('layout-side')) {
-        toggled = true;
-        break;
-      }
-      await layoutBtn.click();
-      await page.waitForTimeout(250);
-    }
-    expect(toggled).toBe(true);
+    await page.getByRole('button', { name: /Side-by-Side/i }).click();
+    await expect(page.locator('.content-area')).toHaveClass(/layout-side/);
 
     // Debugging logs
     const contentAreaClasses = await page.locator('.content-area').getAttribute('class');

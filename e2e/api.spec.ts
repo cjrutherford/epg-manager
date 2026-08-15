@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { FIXTURE } from './fixture/seed';
 
 test.describe('API Endpoints', () => {
   let authToken = '';
@@ -6,7 +7,7 @@ test.describe('API Endpoints', () => {
   test.beforeAll(async ({ request }) => {
     // Authenticate to get a token
     const authResponse = await request.post('/api/auth', {
-      data: { password: 'admin' }
+      data: { password: FIXTURE.adminPassword }
     });
     expect(authResponse.ok()).toBeTruthy();
     const body = await authResponse.json();

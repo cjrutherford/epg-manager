@@ -1,5 +1,13 @@
 import { test, expect } from '@playwright/test';
 
+/**
+ * Requires a real, playing stream — the fixture's URLs deliberately point
+ * nowhere, so this cannot run against it. Set E2E_STREAM_URL to a live HLS
+ * source to exercise it; otherwise it is skipped rather than left to fail and
+ * be ignored, which is how a suite stops meaning anything.
+ */
+test.skip(!process.env.E2E_STREAM_URL, 'set E2E_STREAM_URL to run the 5-minute stability check');
+
 test.describe('Live Stream Stability E2E (5+ Minutes)', () => {
     test.setTimeout(360000); // 6 minutes timeout
 

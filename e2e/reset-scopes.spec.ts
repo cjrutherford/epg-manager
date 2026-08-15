@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
+import { FIXTURE } from './fixture/seed';
 
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || FIXTURE.adminPassword;
 
 async function login(page: Page) {
   await page.goto('/admin');

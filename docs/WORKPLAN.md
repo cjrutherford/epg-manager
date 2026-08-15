@@ -3,7 +3,7 @@
 Single source of truth for the remediation effort. Consolidates the process audit, the UI &
 source-retrieval audit, and the source acquisition architecture into one tracked backlog.
 
-**Status:** 26 hardening + 5 design slices done. S24a done; S24b–d remain.
+**Status:** 26 hardening + 5 design slices done. S24a–b done; S24c–d remain.
 **Suite score at baseline:** 2.5 / 5 (process) · 2.3 / 5 (UI)
 **Last updated:** 2026-08-13
 
@@ -707,10 +707,35 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
   settings — and `npm run test:e2e:docs` writes it to `docs/media/admin-walkthrough.webm`. Ordinary
   runs keep video only on failure.
 
-- [ ] **S24b · Repair `ui.spec.ts`** — M
+- [x] **S24b · Repair `ui.spec.ts`** — M
   Fix the assertions the application has outgrown, now that a fixture exists.
-  - [ ] The password, app name and class-name assertions match the current application
-  - [ ] Every spec asserts on fixture data rather than on whatever happens to be present
+  → `e2e/ui.spec.ts`, `e2e/api.spec.ts`, `e2e/reset-scopes.spec.ts`, `e2e/fixture/helpers.ts`,
+  `playwright.config.ts`
+  - [x] The password, app name and class-name assertions match the current application
+        — **37 passed, 1 skipped, 0 failed**, and identical across three consecutive runs
+  - [x] Every spec asserts on fixture data rather than on whatever happens to be present
+        — the dashboard now asserts the exact seeded numbers; the password comes from `FIXTURE`
+        rather than being written out in four places
+
+  The suite had accumulated assertions against an application that had moved on: the pre-rename name
+  in two places, `.stat-card` and `.metric-card` where S26b left `.stat`, Title Case labels that S26d
+  made sentence case, `Auto-#` renamed to `Auto-number`, a toast that gained a destination, a status
+  badge that gained a capital letter, and a native `confirm()` that S23 replaced with an in-app
+  dialog. None of that was visible while the suite could not run at all.
+
+  **Three of the "failures" were assertions on controls that no longer exist.** The Watch topbar's
+  guide-layout and guide-toggle buttons are commented out in the template; the real controls live on
+  the lower-third, which only appears on pointer movement — so specs that never moved the mouse were
+  asserting against a deliberately hidden interface.
+
+  **Two structural fixes, not cosmetic ones.** `reset-scopes.spec.ts` genuinely destroys the fixture,
+  so it ran in parallel with tests asserting on seeded counts and broke them at random; it now runs
+  in its own project after the rest. And the 5-minute stream stability check needs a real stream —
+  it is skipped unless `E2E_STREAM_URL` is set, rather than left failing and ignored.
+
+  **A lesson about cleanup.** A `finally` block that restores config was throwing a timeout of its
+  own, and Playwright reported *that* instead of the real failure — which sent me reading the config
+  endpoint for a hang that did not exist. The cleanup now swallows and logs its own errors.
 
 - [ ] **S24c · Cover what this programme changed** — M
   Reset scopes, the job queue, series rules, the sources screen and the confirm dialog have no
@@ -1097,3 +1122,4 @@ memory, so **restart it after `ng build`** or you will screenshot the previous b
 | 2026-08-15 | — | Caught myself reporting a false pass: the first three-width run used a `resize` command that does not exist, so all 18 checks ran at 1280px. The correct command is `agent-browser set viewport`. Re-run properly. |
 | 2026-08-15 | S24a | Done. The suite now starts its own servers against a seeded, self-checking fixture — 12 channels, 8 matched, 96 programmes — so specs can assert exact numbers. Baseline: 7 passed, 26 failed, 5 skipped, where previously nothing could run at all. A `docs` project records a 1280×720 walkthrough to `docs/media/admin-walkthrough.webm`. |
 | 2026-08-15 | X9 | Port 4310 belonged to an unrelated nginx, and the S10 process guard swallowed the resulting `EADDRINUSE` — the server stayed up serving nothing while Playwright saw a listening port and ran a whole suite against a stranger. Listen failures at startup are now fatal. A defect I introduced in S10, found only because the fixture work put a port conflict in the way. |
+| 2026-08-15 | S24b | Done. **37 passed, 1 skipped, 0 failed**, stable across three consecutive runs — from 7/26 at the start of the slice. Most repairs were assertions the application had outgrown; three were on Watch controls that no longer exist in the topbar, where the real ones sit on the pointer-activated lower third. Two structural fixes: the destructive reset spec now runs isolated and last, and the 5-minute stream check is skipped unless a real stream URL is supplied. |

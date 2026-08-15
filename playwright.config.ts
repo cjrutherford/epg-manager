@@ -36,7 +36,17 @@ export default defineConfig({
   projects: [
     {
       name: 'e2e',
-      testIgnore: /docs\//,
+      testIgnore: [/docs\//, /reset-scopes\.spec\.ts/],
+    },
+    {
+      // Reset genuinely destroys the fixture, so it cannot share a database
+      // with tests asserting on seeded counts. Running it after everything
+      // else, on its own, is the difference between a suite that passes and
+      // one that passes only when the scheduler happens to order it last.
+      name: 'e2e-destructive',
+      testMatch: /reset-scopes\.spec\.ts/,
+      dependencies: ['e2e'],
+      fullyParallel: false,
     },
     {
       name: 'docs',
