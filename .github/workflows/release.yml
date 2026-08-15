@@ -26,8 +26,21 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
+          # client/ is a second npm project with its own lockfile. Cache on both,
+          # or the client install is uncached on every run.
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
 
       - run: npm ci
+
+      # client/ has its own package.json and lockfile, so a root `npm ci` does
+      # not install the Angular CLI. Without this, `ng` is simply absent and npx
+      # reports "could not determine executable to run". The Dockerfile has
+      # always done this; the workflows did not.
+      - name: Install client dependencies
+        run: npm ci
+        working-directory: client
 
       # Before anything is published under this name: a release tagged v1.4.0
       # that ships a binary reporting 0.1.0 is worse than no version at all,
@@ -127,6 +140,11 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
+          # client/ is a second npm project with its own lockfile. Cache on both,
+          # or the client install is uncached on every run.
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
 
       - uses: actions/setup-java@v4
         with:
@@ -136,6 +154,14 @@ jobs:
       - uses: android-actions/setup-android@v3
 
       - run: npm ci
+
+      # client/ has its own package.json and lockfile, so a root `npm ci` does
+      # not install the Angular CLI. Without this, `ng` is simply absent and npx
+      # reports "could not determine executable to run". The Dockerfile has
+      # always done this; the workflows did not.
+      - name: Install client dependencies
+        run: npm ci
+        working-directory: client
 
       - name: Build the mobile bundle and sync it into the Android project
         run: |

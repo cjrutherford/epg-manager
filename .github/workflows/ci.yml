@@ -23,8 +23,21 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
+          # client/ is a second npm project with its own lockfile. Cache on both,
+          # or the client install is uncached on every run.
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
 
       - run: npm ci
+
+      # client/ has its own package.json and lockfile, so a root `npm ci` does
+      # not install the Angular CLI. Without this, `ng` is simply absent and npx
+      # reports "could not determine executable to run". The Dockerfile has
+      # always done this; the workflows did not.
+      - name: Install client dependencies
+        run: npm ci
+        working-directory: client
 
       # Both halves. `npm run build` is the server alone, and the end-to-end
       # suite starts the client's SSR bundle — so a job that builds only the
@@ -52,6 +65,11 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
+          # client/ is a second npm project with its own lockfile. Cache on both,
+          # or the client install is uncached on every run.
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
 
       - run: npm ci
 
@@ -75,9 +93,17 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
+          # client/ is a second npm project with its own lockfile. Cache on both,
+          # or the client install is uncached on every run.
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
 
       - run: npm ci
 
+      # No client install here: this job downloads the built bundle, and the SSR
+      # output is self-contained. Verified by moving client/node_modules aside
+      # and starting server.mjs — it boots and answers.
       # ffmpeg is not optional: the DVR and stream routes shell out to it, and
       # without it those failures look like application bugs.
       - name: Install ffmpeg
