@@ -3,7 +3,7 @@
 Single source of truth for the remediation effort. Consolidates the process audit, the UI &
 source-retrieval audit, and the source acquisition architecture into one tracked backlog.
 
-**Status:** Wave 5 in progress — 22 of 26 done, S16c paused, S24 held
+**Status:** Wave 5 in progress — 24 of 26 done, S24 held
 **Suite score at baseline:** 2.5 / 5 (process) · 2.3 / 5 (UI)
 **Last updated:** 2026-08-13
 
@@ -371,9 +371,27 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
         join over `channels_staging`, so SQLite holds the index instead of the heap. That is a
         behavioural change to id assignment and deserves its own slice rather than being bolted on.
 
-- [ ] **S16c · File adapter** — M — *scope reduced, see note*
-  Upload adapter for local M3U/XMLTV — air-gapped setups, hand-curated lineups, testing.
-  → `src/services/sources/adapters/file.ts`
+- [x] **S16c · Local files** — S — *re-scoped, was "file adapter"*
+  → `src/services/sources/local-file.ts` (new), `src/services/sources/fetcher.ts`
+  - [x] An existing adapter consumes a local file with no adapter-side change
+        — the unmodified `m3u` parser read a playlist off disk and produced the same channels it
+        would from HTTP
+  - [x] Unchanged files are not re-parsed
+        — mtime and size stand in for HTTP validators; a second read of an untouched file returns
+        `notModified` with 0 bytes
+  - [x] Reads cannot escape the data directory
+        — `/etc/passwd`, `file:///etc/passwd` and `../` traversal are refused by name, not clamped
+
+  **Chris was right to challenge this one.** As scoped it was a new adapter kind, which is the wrong
+  shape: parsing already belongs to `m3u` and `xmltv`, and a playlist does not parse differently for
+  having come off a disk. The only thing genuinely missing was a way to *reach* a local file —
+  measured, not assumed: the fetch layer handed everything to axios, so a bare path failed with
+  "Invalid URL" and a `file://` url with "protocol mismatch".
+
+  So it became a transport in the fetch layer, about 30 lines, and every existing adapter gained
+  local file support without a new source kind. Reads are confined to the data directory: an admin
+  configuring a source is trusted, but "paste a path and we will read it" should not quietly become
+  a way to pull arbitrary files through the sources screen.
 
   **Xtream deferred.** Originally bundled here. Two arguments against building it now: the existing
   `m3u` and `xmltv` adapters already cover the use case, because Xtream panels expose
@@ -668,13 +686,28 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
   - [ ] CI runs e2e and fails the build on regression
   - [ ] No test depends on data a previous test created
 
-- [ ] **S14 · Truth pass on repo and docs** — S
+- [x] **S14 · Truth pass on repo and docs** — S
   Delete the unserved `src/public/` legacy UIs. Correct the README API table. Publish port 4000 in
   compose, probe both ports in the healthcheck, remove build artefacts from version control.
-  → `README.md`, `Dockerfile`, `docker-compose.yml`, `.gitignore`
-  - [ ] Every endpoint in the README resolves as documented
-  - [ ] No unreachable UI code ships in the image
-  - [ ] The healthcheck fails when either process is down
+  → `src/services/api-routes.ts` (new), `scripts/generate-api-docs.ts` (new), `README.md`,
+  `Dockerfile`, `docker-compose.yml`
+  - [x] Every endpoint in the README resolves as documented
+        — the table is now generated from `server.ts` and **86 endpoints** are listed. It had
+        documented 24, of which `/api/job-cancel` did not exist (the route is `/api/sync/cancel`)
+        and `/files/*` had been narrowed to three mounts by S7, while 66 real endpoints were absent.
+        Four unit tests fail if the README and the server disagree, including on which endpoints
+        need authentication
+  - [x] No unreachable UI code ships in the image
+        — `src/public/` deleted: 8 files, 236 KB of pre-Angular admin and watch UI that no route
+        served and the Dockerfile copied into every image
+  - [x] The healthcheck fails when either process is down
+        — all four states exercised. The old check probed only the API, so **a dead SSR client —
+        the entire user interface — reported healthy**; the new one probes both
+
+  Build artefacts were already untracked; nothing to remove.
+
+  The API table is generated rather than written, because it had drifted precisely by being
+  maintained by hand. `npx ts-node scripts/generate-api-docs.ts` regenerates it.
 
 - [ ] **S22 · Design system and accessibility pass** — L
   Label every control, give modals dialog semantics with focus trapping and Escape, make clickable
@@ -795,3 +828,5 @@ memory, so **restart it after `ng build`** or you will screenshot the previous b
 | 2026-08-14 | S11 | Done. Both exports go through a temp file and a rename. D9 proven exploitable before the fix and closed after: sampling the served `epg.xml` every 4ms during a rebuild showed 0 / 2.9 MB / 18.5 MB on unmodified main, and a single size across 6,158 samples afterwards. Paging given an `ORDER BY`, the id list moved out of interpolated SQL, `[DEBUG]` lines removed. 11 new unit tests. |
 | 2026-08-14 | S13 | Done. One schema owns every setting's type, default and validation; `/api/config` and `/api/settings` now return identical typed responses. Field-level rejection surfaced in the Settings form. The dual `playlist_url` write retired. `MAX_ACTIVE_STREAMS` promoted to a live setting with the environment still overriding. 26 new unit tests; suite 466 -> 503. |
 | 2026-08-14 | — | Hit the S5 trap again: `applyOperationalSettings` logs before `tui.init()`, so its message was invisible. Mirrored to the console, as the weak-password warning already was. |
+| 2026-08-14 | S14 | Done. The README API table is generated from the server and guarded by tests: it had listed 24 endpoints, one of which never existed, and omitted 66 that did. 236 KB of unserved pre-Angular UI deleted. The healthcheck now probes both processes — it previously reported healthy with the entire user interface down. 13 new unit tests. |
+| 2026-08-14 | S16c | Re-scoped and done, after Chris challenged whether a file adapter differed from m3u import. He was right: it is a transport, not an adapter. Verified the gap first (bare path -> "Invalid URL", `file://` -> "protocol mismatch"), then added local file support to the fetch layer so every adapter gained it. Confined to the data directory. 22 new unit tests; suite 503 -> 538. |

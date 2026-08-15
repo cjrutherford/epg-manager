@@ -86,41 +86,102 @@ npm start
 
 ## API Reference
 
-### Core & Pipeline APIs
+The table below is generated from `src/server.ts` by
+`npx ts-node scripts/generate-api-docs.ts`, and a unit test fails if the two
+disagree. Do not edit it by hand — it drifted badly when it was maintained that
+way, listing an endpoint that never existed and omitting most of the ones that
+did.
 
+<!-- BEGIN API TABLE -->
 | Endpoint | Method | Auth | Description |
-| :--- | :---: | :---: | :--- |
-| `/api/health` | GET | No | System health check, uptime, and database counts |
-| `/api/stats` | GET | No | Detailed statistics on channels, programs, and grabber status |
-| `/api/has-data` | GET | No | Checks if initial playlist/EPG sync data exists |
-| `/api/job-status` | GET | No | Returns active and historical background sync job state |
-| `/api/job-cancel` | POST | Yes | Requests cancellation of active background sync pipeline |
-| `/api/auth` | POST | No | Authenticates admin password and issues Bearer token |
-
-### Channel & Mapping APIs
-
-| Endpoint | Method | Auth | Description |
-| :--- | :---: | :---: | :--- |
-| `/api/channels` | GET | Yes | List all channels with matched EPG mappings |
-| `/api/channels/toggle` | POST | Yes | Bulk enable/disable specific channels |
-| `/api/override` | POST | Yes | Save manual XMLTV EPG override for a channel |
-| `/api/channels/auto-disabled` | GET | Yes | View channels auto-disabled due to grab failures |
-| `/api/channels/re-enable` | POST | Yes | Re-enable auto-disabled channels |
-
-### DVR & Streaming APIs
-
-| Endpoint | Method | Auth | Description |
-| :--- | :---: | :---: | :--- |
-| `/api/dvr` | GET | Yes | List all scheduled, recording, and completed server DVR recordings |
-| `/api/dvr` | POST | Yes | Schedule a new recording (validates channel `enabled = 1`) |
-| `/api/dvr/stop/:id` | POST | Yes | Stop an active server recording |
-| `/api/dvr/:id` | DELETE | Yes | Cancel or delete a scheduled/completed recording |
-| `/api/dvr/storage` | GET | Yes | Check disk space usage and total volume capacity |
-| `/api/dvr/stream/:filename` | GET | No | Stream completed MP4 recording file for in-browser playback |
-| `/api/dvr/series-rules` | GET | Yes | List active automated Series Pass rules |
-| `/api/dvr/series-rules/:id` | DELETE | Yes | Delete a Series Pass rule |
-| `/api/stream/keepalive/:id` | GET | No | Extends stream idle timeout for active live HLS proxy session |
-| `/api/recordings/system` | GET | No | Public read-only system recording list for Watch UI |
+| --- | --- | --- | --- |
+| `/api/auth` | POST | No | — |
+| `/api/auth/logout` | POST | No | — |
+| `/api/auth/status` | GET | No | — |
+| `/api/categories` | GET | No | Get distinct channel categories with counts |
+| `/api/channel/:id/programs` | GET | No | Full schedule for one channel (next 24h) |
+| `/api/channel/:id/stream` | GET | No | Redirect to the channel's stream URL |
+| `/api/channels` | GET | Yes | Get all channels (lightweight list for admin UI) |
+| `/api/channels-with-programs` | GET | Yes | with-programs - Returns channels with current/next program info |
+| `/api/channels/:id` | PUT | Yes | Update a channel's settings |
+| `/api/channels/auto-disabled` | GET | Yes | — |
+| `/api/channels/favorites` | GET | No | Get all favorite channel IDs |
+| `/api/channels/favorites` | POST | No | Add channel to favorites |
+| `/api/channels/favorites/:id` | DELETE | No | Remove channel from favorites |
+| `/api/channels/hidden` | GET | No | Get all hidden channel IDs |
+| `/api/channels/hidden` | POST | No | Hide a channel |
+| `/api/channels/hidden/:id` | DELETE | No | Unhide a channel |
+| `/api/channels/re-enable` | POST | Yes | enable - Re-enable auto-disabled channels |
+| `/api/channels/toggle` | POST | Yes | Enable/Disable channels (supports bulk) |
+| `/api/config` | GET | Yes | — |
+| `/api/config` | POST | Yes | Both paths, one handler — no chance of them drifting apart again. |
+| `/api/dvr` | GET | Yes | — |
+| `/api/dvr` | POST | Yes | — |
+| `/api/dvr/:id` | DELETE | Yes | — |
+| `/api/dvr/:id/retry` | POST | Yes | Put a failed or missed recording back on the schedule. Only meaningful while the window is still open, which the classifier decides rather than the caller. |
+| `/api/dvr/series-rules` | GET | Yes | ── Series Rules API ── |
+| `/api/dvr/series-rules/:id` | DELETE | Yes | — |
+| `/api/dvr/series-rules/run` | POST | Yes | — |
+| `/api/dvr/settings` | POST | Yes | Retention and padding. These were read by the recorder from the moment retention landed but there was nowhere to set them; the defaults were the only reachable values. |
+| `/api/dvr/stop/:id` | POST | Yes | — |
+| `/api/dvr/storage` | GET | Yes | Volume usage, plus the share taken by recordings |
+| `/api/dvr/stream/:filename` | GET | No | browser playback |
+| `/api/epg-files` | GET | Yes | — |
+| `/api/epg-sources` | GET | Yes | — |
+| `/api/epg-sources/:key/toggle` | POST | Yes | — |
+| `/api/epg-sources/sync` | POST | Yes | — |
+| `/api/grab` | POST | Yes | — |
+| `/api/grab-logs` | GET | Yes | — |
+| `/api/grab/sources` | GET | Yes | — |
+| `/api/guide` | GET | No | EPG guide grid data for the streaming UI |
+| `/api/has-data` | GET | No | data - Lightweight check: does the system have any channel/EPG data? No auth required so the dashboard can show the empty-state prompt before login. |
+| `/api/health` | GET | No | Health check endpoint |
+| `/api/iptv-org/playlists` | GET | Yes | org/playlists - List local iptv-org playlists |
+| `/api/iptv-org/update-playlists` | POST | Yes | org/update-playlists - Force update iptv-org playlists |
+| `/api/job-status` | GET | No | — |
+| `/api/jobs` | POST | Yes | Ask for any background job by name, through the one door |
+| `/api/jobs/queued/:id` | DELETE | Yes | Drop one job that has not started yet |
+| `/api/mapping` | GET | Yes | Get all current channels and their match status |
+| `/api/match/analysis` | GET | Yes | — |
+| `/api/metadata/clear-cache` | POST | Yes | cache - Clear metadata cache |
+| `/api/metadata/config` | GET | Yes | — |
+| `/api/metadata/config` | POST | Yes | Save metadata configuration (no API key needed) |
+| `/api/metadata/enrich` | POST | Yes | Manually trigger metadata enrichment |
+| `/api/metadata/override` | POST | Yes | Save a metadata override |
+| `/api/metadata/refresh-data` | POST | Yes | data - Force refresh IMDb datasets |
+| `/api/metadata/search-tvmaze` | POST | Yes | tvmaze - Search for shows |
+| `/api/metadata/stats` | GET | Yes | Get metadata enrichment statistics |
+| `/api/override` | POST | Yes | Save a manual override |
+| `/api/playlists` | DELETE | Yes | Remove a playlist URL |
+| `/api/playlists` | GET | Yes | List all configured playlist URLs with channel counts |
+| `/api/playlists` | POST | Yes | Add a new playlist URL and import channels |
+| `/api/progress` | GET | No | — |
+| `/api/rebuild-files` | POST | Yes | — |
+| `/api/recordings` | GET | Yes | List all recordings |
+| `/api/recordings/:filename` | DELETE | Yes | Delete a recording |
+| `/api/recordings/active` | GET | Yes | Get currently active/upcoming recordings |
+| `/api/recordings/system` | GET | No | Public read-only DVR listing for the watch UI |
+| `/api/reset` | POST | Yes | Clear a declared scope, in place |
+| `/api/reset/preview` | GET | Yes | What would this scope destroy? |
+| `/api/search-epg` | GET | Yes | epg - Search available EPG channels |
+| `/api/select-epg` | POST | Yes | — |
+| `/api/settings` | GET | Yes | Kept as an alias of /api/config. It returned a different shape of the same table, which is how the two ever came to disagree. |
+| `/api/settings` | POST | Yes | — |
+| `/api/sources` | GET | Yes | — |
+| `/api/sources` | POST | Yes | — |
+| `/api/sources/:key` | DELETE | Yes | — |
+| `/api/sources/:key/priority` | POST | Yes | — |
+| `/api/sources/:key/toggle` | POST | Yes | — |
+| `/api/sources/catalog` | GET | Yes | Built-in sources the UI can offer to add |
+| `/api/sources/export` | GET | Yes | — |
+| `/api/sources/import` | POST | Yes | — |
+| `/api/sources/probe` | POST | Yes | — |
+| `/api/stats` | GET | No | Comprehensive statistics |
+| `/api/stream/keepalive/:id` | GET | No | — |
+| `/api/sync` | POST | Yes | Clean alias for full pipeline trigger |
+| `/api/sync-playlist` | POST | Yes | — |
+| `/api/sync/cancel` | POST | Yes | Cancel any running sync process |
+<!-- END API TABLE -->
 
 ### Generated Export Files
 
@@ -128,7 +189,9 @@ npm start
 | :--- | :---: | :--- |
 | `/playlist.m3u` | GET | Download processed, re-numbered M3U playlist |
 | `/epg.xml` | GET | Download merged XMLTV EPG guide with TVMaze metadata |
-| `/files/*` | GET | Direct access to data directory files and HLS stream segments |
+| `/files/streams/*` | GET | HLS segments for an active live stream |
+| `/files/recordings/*` | GET | Completed DVR recording files |
+| `/files/iptv-org-playlists/*` | GET | Cached iptv-org playlists (admin only) |
 
 ---
 

@@ -67,9 +67,6 @@ RUN ln -s /app/client/node_modules /app/client/dist/client/node_modules
 # iptv-org EPG data (pre-built)
 COPY --chown=epg:epg --from=epg-builder /tmp/iptv-org-epg ./data/iptv-org-epg
 
-# Static assets (served directly)
-COPY src/public ./src/public
-
 # Startup script
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
@@ -84,8 +81,12 @@ RUN mkdir -p /app/data/recordings && \
 
 EXPOSE 3000 4000
 
+# Both processes must answer. Probing only the API meant a dead SSR client —
+# the entire user interface — left the container reporting healthy.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:4000/api/health || exit 1
+    CMD curl -fsS "http://localhost:${API_PORT:-4000}/api/health" >/dev/null \
+     && curl -fsS -o /dev/null "http://localhost:${PORT:-3000}/" \
+     || exit 1
 
 ENTRYPOINT ["tini", "--", "entrypoint.sh"]
 CMD ["node", "dist/server.js"]

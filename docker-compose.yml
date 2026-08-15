@@ -6,7 +6,11 @@ services:
     container_name: epg-manager
     restart: unless-stopped
     ports:
+      # Web interface
       - "${PORT:-3302}:3000"
+      # API. The client calls it directly from the browser, so it has to be
+      # reachable from outside the container, not only from within it.
+      - "${API_PORT:-4000}:4000"
     environment:
       - PORT=3000
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}

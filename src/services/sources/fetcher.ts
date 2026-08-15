@@ -8,7 +8,11 @@
 
 import axios from 'axios';
 import * as zlib from 'zlib';
-import { db } from '../../db';
+import fs from 'fs';
+import { db, DB_DIR } from '../../db';
+import {
+    isLocalFileTarget, isRejection, isUnchanged, resolveLocalSource, statLocalSource
+} from './local-file';
 import type { FetchResult } from './adapter';
 import {
     backoffDelayMs,
@@ -81,6 +85,27 @@ export interface FetchOptions {
 export async function fetchSource(url: string, options: FetchOptions = {}): Promise<FetchResult> {
     const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
     const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+
+    // A local file is a transport, not a source kind: every adapter parses it
+    // exactly as it would the same bytes arriving over HTTP.
+    if (isLocalFileTarget(url)) {
+        const resolved = resolveLocalSource(url, DB_DIR);
+        if (isRejection(resolved)) throw new Error(resolved.reason);
+
+        const stat = statLocalSource(resolved.absolutePath);
+        if (isUnchanged(stat, options.lastModified ?? undefined)) {
+            return { notModified: true, status: 304, bytes: 0, lastModified: stat.lastModified };
+        }
+        if (exceedsByteCap(stat.sizeBytes, maxBytes)) {
+            throw new Error(`File exceeded the ${maxBytes} byte cap`);
+        }
+
+        let body = fs.readFileSync(resolved.absolutePath);
+        if (options.gzip && isGzip(body)) {
+            body = zlib.gunzipSync(body);
+        }
+        return { notModified: false, body, status: 200, bytes: body.length, lastModified: stat.lastModified };
+    }
 
     let lastError: Error | null = null;
 
@@ -165,6 +190,20 @@ export interface StreamResult {
  * decompressed inline.
  */
 export async function fetchSourceStream(url: string, options: FetchOptions = {}): Promise<StreamResult> {
+    if (isLocalFileTarget(url)) {
+        const resolved = resolveLocalSource(url, DB_DIR);
+        if (isRejection(resolved)) throw new Error(resolved.reason);
+
+        const stat = statLocalSource(resolved.absolutePath);
+        if (isUnchanged(stat, options.lastModified ?? undefined)) {
+            return { notModified: true, status: 304, lastModified: stat.lastModified };
+        }
+
+        let localStream: NodeJS.ReadableStream = fs.createReadStream(resolved.absolutePath);
+        if (options.gzip) localStream = localStream.pipe(zlib.createGunzip());
+        return { notModified: false, stream: localStream, status: 200, lastModified: stat.lastModified };
+    }
+
     const response = await axios.get(url, {
         responseType: 'stream',
         timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
