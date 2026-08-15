@@ -36,7 +36,15 @@ export default defineConfig({
   projects: [
     {
       name: 'e2e',
-      testIgnore: [/docs\//, /reset-scopes\.spec\.ts/],
+      testIgnore: [
+        /docs\//,
+        // Anything that mutates state other specs assert on runs in the
+        // destructive project, serially, after these.
+        /reset-scopes\.spec\.ts/,
+        /series-rules\.spec\.ts/,
+        /dvr-lifecycle\.spec\.ts/,
+        /job-queue\.spec\.ts/,
+      ],
     },
     {
       // Reset genuinely destroys the fixture, so it cannot share a database
@@ -44,7 +52,7 @@ export default defineConfig({
       // else, on its own, is the difference between a suite that passes and
       // one that passes only when the scheduler happens to order it last.
       name: 'e2e-destructive',
-      testMatch: /reset-scopes\.spec\.ts/,
+      testMatch: /(reset-scopes|series-rules|dvr-lifecycle|job-queue)\.spec\.ts/,
       dependencies: ['e2e'],
       fullyParallel: false,
     },

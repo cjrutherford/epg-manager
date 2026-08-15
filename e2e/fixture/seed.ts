@@ -43,6 +43,17 @@ export const FIXTURE = {
     unmatchedChannelName: 'Zeta Unmatched Stream',
     /** A programme title repeated across days, for series-rule tests. */
     seriesTitle: 'Fixture Serial',
+    /** Recordings seeded to exercise the DVR lifecycle states from S9. */
+    recordingCount: 4,
+    /** A recording whose window closed before the recorder reached it. */
+    missedRecordingTitle: 'Missed While Server Was Down',
+    /** A failed recording whose window is still open, so it can be retried. */
+    retryableRecordingTitle: 'Failed But Still Airing',
+    /** A completed recording, for the played/downloaded affordances. */
+    completedRecordingTitle: 'Completed Fixture Recording',
+    /** A scheduled recording, for the cancel path. */
+    scheduledRecordingTitle: 'Scheduled Fixture Recording',
+
     /** The admin password the fixture server runs with. */
     adminPassword: 'e2e-fixture-password'
 } as const;
@@ -180,6 +191,41 @@ export async function seedFixture(dbDir: string): Promise<void> {
         });
     }
 
+    // ── Recordings ──────────────────────────────
+    // One of each lifecycle state S9 introduced, so the DVR screen can be
+    // tested without waiting for ffmpeg or the clock.
+    const hour = 60 * 60 * 1000;
+    const recordings: [string, string, number, number, string, string | null][] = [
+        // title, status, startOffsetMs, endOffsetMs, error_message, filename
+        [FIXTURE.missedRecordingTitle, 'missed', -26 * hour, -25 * hour,
+         'Missed — the recording window closed about 25 hour(s) before the recorder reached it', null],
+        [FIXTURE.retryableRecordingTitle, 'failed', -0.25 * hour, 0.75 * hour,
+         'The stream could not be reached (gave up after 5 attempts)', null],
+        [FIXTURE.completedRecordingTitle, 'completed', -3 * hour, -2 * hour,
+         '', 'completed-fixture-recording.mp4'],
+        [FIXTURE.scheduledRecordingTitle, 'scheduled', 4 * hour, 5 * hour, '', null]
+    ];
+
+    const nowMs = Date.now();
+    for (const [title, status, startOffset, endOffset, error, filename] of recordings) {
+        await db.execute({
+            sql: `INSERT INTO scheduled_recordings (channel_id, channel_name, program_title,
+                                                    start_time, end_time, stream_url, status,
+                                                    error_message, filename, file_size)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            args: [
+                'aaa.test', FIXTURE.firstChannelName, title,
+                new Date(nowMs + startOffset).toISOString(),
+                new Date(nowMs + endOffset).toISOString(),
+                'http://fixture.invalid/aaa.test.m3u8',
+                status,
+                error || null,
+                filename,
+                status === 'completed' ? 5_242_880 : null
+            ]
+        });
+    }
+
     // ── Settings ────────────────────────────────
     for (const [key, value] of [
         ['playlist_urls', JSON.stringify(['http://fixture.invalid/playlist.m3u'])],
@@ -207,6 +253,7 @@ export async function seedFixture(dbDir: string): Promise<void> {
     await assertCount('SELECT COUNT(*) c FROM channels WHERE enabled = 0', FIXTURE.disabledCount, 'disabledCount');
     await assertCount('SELECT COUNT(*) c FROM epg_programs', FIXTURE.programmeCount, 'programmeCount');
     await assertCount('SELECT COUNT(*) c FROM sources', FIXTURE.seededSourceCount, 'seededSourceCount');
+    await assertCount('SELECT COUNT(*) c FROM scheduled_recordings', FIXTURE.recordingCount, 'recordingCount');
 
     if (programmes !== FIXTURE.programmeCount) {
         throw new Error(`Seeded ${programmes} programmes but FIXTURE says ${FIXTURE.programmeCount}`);

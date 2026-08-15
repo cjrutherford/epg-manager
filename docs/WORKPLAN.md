@@ -3,7 +3,7 @@
 Single source of truth for the remediation effort. Consolidates the process audit, the UI &
 source-retrieval audit, and the source acquisition architecture into one tracked backlog.
 
-**Status:** 26 hardening + 5 design slices done. S24a–b done; S24c–d remain.
+**Status:** 26 hardening + 5 design slices done. S24a–c done; only S24d (CI) remains.
 **Suite score at baseline:** 2.5 / 5 (process) · 2.3 / 5 (UI)
 **Last updated:** 2026-08-13
 
@@ -737,9 +737,40 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
   own, and Playwright reported *that* instead of the real failure — which sent me reading the config
   endpoint for a hang that did not exist. The cleanup now swallows and logs its own errors.
 
-- [ ] **S24c · Cover what this programme changed** — M
+- [x] **S24c · Cover what this programme changed** — M
   Reset scopes, the job queue, series rules, the sources screen and the confirm dialog have no
   browser coverage; each was verified once by hand in a session that will not run again.
+  → `e2e/dvr-lifecycle.spec.ts`, `e2e/sources.spec.ts`, `e2e/feedback.spec.ts`,
+  `e2e/series-rules.spec.ts`, `e2e/job-queue.spec.ts`, `e2e/fixture/seed.ts`
+  - [x] The behaviours this programme introduced are asserted, not remembered
+        — **20 new specs across five files**, covering S8 series rules, S9 DVR lifecycle, S10 the job
+        queue, S18 sources, and S23 feedback. **57 passed, 1 skipped, 0 failed**, identical across
+        three consecutive runs
+  - [x] Each assertion is about behaviour, not implementation
+        — a missed recording is asserted to read "Missed" with a reason and **no** retry button,
+        because its window has closed; a failed one with an open window is asserted to offer one and
+        to change state when used
+
+  The fixture grew four recordings, one per lifecycle state S9 introduced, so the DVR screen can be
+  tested without waiting for ffmpeg or for the clock.
+
+  Specific things now held in place rather than trusted:
+  - an error toast is still on screen **nine seconds** after it appears — more than twice the blanket
+    timeout it used to have — and is dismissible
+  - a missed recording's reason renders in a different colour from a failure's, so "not a fault" is
+    asserted rather than assumed
+  - `window.confirm` is counted during a cancellation and must be **zero**; the in-app dialog is
+    checked for `role`, `aria-modal`, a question as its title, Escape closing it, and focus staying
+    inside across twelve Tab presses
+  - probing an unreachable source reports the failure **and registers nothing**
+  - stopping a series asks two separate questions, and answering "Keep them" keeps them
+  - changing `sync_cron` changes what the API reports with no restart; an unreadable expression is
+    refused and the previous one kept
+
+  **Three specs had to move to the destructive project.** Saving DVR settings, retrying a recording
+  and creating a series rule all change state other specs read — running them in parallel produced
+  failures that depended on scheduling, which is the kind that gets rerun until it passes. They now
+  run serially, after everything else.
 
 - [ ] **S24d · Wire it into CI** — S
   Only unit tests run today. Last, deliberately: a suite that gates merges has to be reliable first,
@@ -1123,3 +1154,4 @@ memory, so **restart it after `ng build`** or you will screenshot the previous b
 | 2026-08-15 | S24a | Done. The suite now starts its own servers against a seeded, self-checking fixture — 12 channels, 8 matched, 96 programmes — so specs can assert exact numbers. Baseline: 7 passed, 26 failed, 5 skipped, where previously nothing could run at all. A `docs` project records a 1280×720 walkthrough to `docs/media/admin-walkthrough.webm`. |
 | 2026-08-15 | X9 | Port 4310 belonged to an unrelated nginx, and the S10 process guard swallowed the resulting `EADDRINUSE` — the server stayed up serving nothing while Playwright saw a listening port and ran a whole suite against a stranger. Listen failures at startup are now fatal. A defect I introduced in S10, found only because the fixture work put a port conflict in the way. |
 | 2026-08-15 | S24b | Done. **37 passed, 1 skipped, 0 failed**, stable across three consecutive runs — from 7/26 at the start of the slice. Most repairs were assertions the application had outgrown; three were on Watch controls that no longer exist in the topbar, where the real ones sit on the pointer-activated lower third. Two structural fixes: the destructive reset spec now runs isolated and last, and the 5-minute stream check is skipped unless a real stream URL is supplied. |
+| 2026-08-15 | S24c | Done. 20 new specs across five files covering S8, S9, S10, S18 and S23 — the behaviours this programme introduced, each of which had been verified exactly once by hand. Suite: **57 passed, 1 skipped, 0 failed**, stable across three runs. The fixture gained four recordings, one per DVR lifecycle state. Three specs had to move to the destructive project because they mutate state others read; run in parallel they failed by scheduling, not by defect. |
