@@ -1,6 +1,6 @@
 {
   "name": "tuner-daemon",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Self-hosted IPTV suite: playlist and guide acquisition, channel matching, live streaming and a DVR.",
   "main": "dist/server.js",
   "repository": {

@@ -3,7 +3,7 @@
 Single source of truth for the remediation effort. Consolidates the process audit, the UI &
 source-retrieval audit, and the source acquisition architecture into one tracked backlog.
 
-**Status:** 26 hardening + 5 design slices done. S24a–d complete; releases are automated from a tag.
+**Status:** 26 hardening + 5 design slices done. S24a–d complete. Released as **v0.3.0**.
 **Suite score at baseline:** 2.5 / 5 (process) · 2.3 / 5 (UI)
 **Last updated:** 2026-08-13
 
@@ -1173,6 +1173,7 @@ memory, so **restart it after `ng build`** or you will screenshot the previous b
 | 2026-08-14 | S23 | Done. Errors persist until dismissed and are announced through a live region; hover holds every countdown; the queue cap drops transient messages before persistent ones. All 14 native confirms replaced with a focus-trapping dialog that has room to say what will actually happen. Found that the Watch UI had never rendered a toast at all — the container was mounted only in the admin layout, so thirteen call sites produced nothing. 13 new unit tests; suite 551 -> 564. |
 | 2026-08-14 | — | All 26 planned slices are complete. S24 remains held for subdivision. |
 | 2026-08-15 | S24d | S24 closed. Versioning and releases automated; installers and image published from a tag. |
+| 2026-08-15 | — | Tagged **v0.3.0**. `v0.2.0` was unavailable: a release was published under it on 31 July against `d5f827b`, a tree whose files say 0.1.0/0.0.0/1.0 — which the new verify step would reject. Minor, not patch: this is 26 slices plus the design group. |
 | 2026-08-14 | — | Design language audit at Chris's request. Scores **2.1 (High)** overall, with type/spacing scale (1.25) and summary statistics (1.50) in the Critical band. Headline measurements: 42 distinct font sizes, 25 spacing values, 3 icon systems, and the same summary statistic designed three different ways. Proposed as slice group S26a–S26e. |
 | 2026-08-14 | S26a | Done. 539 raw values tokenised — 42 font sizes, 25 spacings and 12 radii all to 0, behind a 10-step type scale and a 12-step spacing scale. Guard tests keep them out. Widening the contrast audit to text-on-fill found four pre-existing AA failures, including a destructive button label at 2.65:1; all fixed with measured per-theme tokens. 9 new unit tests; suite 564 -> 573. |
 | 2026-08-15 | S26b | Done. One page header, one summary statistic and one spinner replace the per-screen copies — the statistic measures identically on all three screens that use it. Admin CSS 2,977 -> 2,780 lines, 34 duplicated rule blocks gone, hand-rolled glass surfaces 11 -> 2. The 10px action-row misalignment turned out to be button content-centring under a stretching grid, not the emoji; spread is now 0. |
