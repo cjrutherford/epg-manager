@@ -29,12 +29,13 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "test:e2e": "playwright test",
+    "test:e2e": "playwright test --project=e2e",
     "docker:build": "docker compose build",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
-    "docker:start": "docker compose up -d --build"
+    "docker:start": "docker compose up -d --build",
+    "test:e2e:docs": "playwright test --project=docs && ts-node e2e/docs/collect-video.ts"
   },
   "license": "MIT",
   "dependencies": {

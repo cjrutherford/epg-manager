@@ -3,7 +3,7 @@
 Single source of truth for the remediation effort. Consolidates the process audit, the UI &
 source-retrieval audit, and the source acquisition architecture into one tracked backlog.
 
-**Status:** 26 hardening slices plus all 5 design slices done. Next: S24 e2e (4 slices).
+**Status:** 26 hardening + 5 design slices done. S24a done; S24b–d remain.
 **Suite score at baseline:** 2.5 / 5 (process) · 2.3 / 5 (UI)
 **Last updated:** 2026-08-13
 
@@ -674,9 +674,51 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
   The environment still wins where it is set: an operator capping a container's load should not have
   it raised from a web form.
 
-- [ ] **S24 · Make the e2e suite mean something** — M — ⏸ **HELD** *(2026-08-14, Chris)*
-  Deliberately deferred, to be subdivided into smaller slices later. Not to be raised again as a
-  recommendation; the risk is known and accepted.
+- [ ] **S24 · Make the e2e suite mean something** — subdivided into S24a–d *(2026-08-14, Chris)*
+
+- [x] **S24a · A fixture the tests can rely on** — S
+  A seeded database and the orchestration to run a suite against it.
+  → `e2e/fixture/`, `playwright.config.ts`, `src/server.ts`
+  - [x] The suite starts its own servers and seeds its own data
+        — `webServer` boots the API and the SSR client against `.e2e-fixture`; `globalSetup` rebuilds
+        the database from scratch on every run
+  - [x] The fixture is exact, and says so
+        — 12 channels, 8 matched, 2 disabled, 96 programmes, 3 sources. The seed asserts its own
+        counts before any spec runs, so an inconsistent fixture fails loudly rather than producing
+        confusing test failures
+  - [x] Specs can assert exact numbers instead of "more than zero"
+        — five fixture specs do exactly that, and pass from a clean start
+
+  **Baseline after this slice: 7 passed, 26 failed, 5 skipped.** That is progress, not regression —
+  before it, the suite could not run at all, because nothing started a server. The 26 are now honest
+  failures about the application, which is S24b's work: 4 specs hardcode the old admin password, 1
+  asserts the pre-rename app name, and 3 assert on class names that S26b replaced.
+
+  **Two real defects fell out of building this.** Port 4310 turned out to belong to an unrelated
+  nginx on this machine — and the process guard added in S10 caught the `EADDRINUSE`, logged it, and
+  kept the server alive. Playwright saw the port listening, assumed success, and the suite spent a
+  full run testing a stranger. A listen failure at startup is now fatal.
+
+  The fixture also documents real behaviour rather than hiding it: the API reports **four** sources
+  where the seed writes three, because the server migrates `playlist_urls` into the registry at boot.
+
+  *Video for the documentation:* a `docs` Playwright project records a 1280×720 walkthrough of the
+  admin interface — sign in, dashboard, channels with a live filter, sources, DVR, diagnostics,
+  settings — and `npm run test:e2e:docs` writes it to `docs/media/admin-walkthrough.webm`. Ordinary
+  runs keep video only on failure.
+
+- [ ] **S24b · Repair `ui.spec.ts`** — M
+  Fix the assertions the application has outgrown, now that a fixture exists.
+  - [ ] The password, app name and class-name assertions match the current application
+  - [ ] Every spec asserts on fixture data rather than on whatever happens to be present
+
+- [ ] **S24c · Cover what this programme changed** — M
+  Reset scopes, the job queue, series rules, the sources screen and the confirm dialog have no
+  browser coverage; each was verified once by hand in a session that will not run again.
+
+- [ ] **S24d · Wire it into CI** — S
+  Only unit tests run today. Last, deliberately: a suite that gates merges has to be reliable first,
+  or it teaches people to ignore it.
   `e2e/ui.spec.ts` fails wholesale on a clean checkout — stale assertions from before the rename, and
   an assumption that channels are already seeded. A suite that fails either way gates nothing, so
   every future slice ships without UI regression cover. Fix the assertions, add a seeded fixture so
@@ -1053,3 +1095,5 @@ memory, so **restart it after `ng build`** or you will screenshot the previous b
 | 2026-08-15 | S26d | Done. 24 button and heading labels moved to sentence case; `Auto-#` and `Auto-Number` were one action under two names. The nav/title and one-line-purpose criteria were already satisfied by S26b. |
 | 2026-08-15 | S26e | Done. Found that **no list had an error state at all** — a failed load emptied the list, so a dead server looked exactly like an empty database. All four now say so and offer a retry. The breakpoint criterion turned out to be overstated by my own audit, which had counted element max-widths as breakpoints; corrected in the record. 18 layout checks at three widths, all clean. |
 | 2026-08-15 | — | Caught myself reporting a false pass: the first three-width run used a `resize` command that does not exist, so all 18 checks ran at 1280px. The correct command is `agent-browser set viewport`. Re-run properly. |
+| 2026-08-15 | S24a | Done. The suite now starts its own servers against a seeded, self-checking fixture — 12 channels, 8 matched, 96 programmes — so specs can assert exact numbers. Baseline: 7 passed, 26 failed, 5 skipped, where previously nothing could run at all. A `docs` project records a 1280×720 walkthrough to `docs/media/admin-walkthrough.webm`. |
+| 2026-08-15 | X9 | Port 4310 belonged to an unrelated nginx, and the S10 process guard swallowed the resulting `EADDRINUSE` — the server stayed up serving nothing while Playwright saw a listening port and ran a whole suite against a stranger. Listen failures at startup are now fatal. A defect I introduced in S10, found only because the fixture work put a port conflict in the way. |

@@ -1271,6 +1271,17 @@ process.on('unhandledRejection', (reason: any) => {
 
 process.on('uncaughtException', (error: Error) => {
     console.error('[Server] Uncaught exception:', error);
+
+    // Some failures are not survivable and must not be swallowed. A port
+    // already in use is the clearest: the process stays up, serves nothing,
+    // and anything waiting on the port sees whatever else is listening there —
+    // which is exactly how an e2e run ended up testing an unrelated nginx.
+    const fatalCodes = ['EADDRINUSE', 'EACCES', 'EADDRNOTAVAIL'];
+    if (fatalCodes.includes((error as NodeJS.ErrnoException).code || '')) {
+        console.error(`[Server] ${(error as NodeJS.ErrnoException).code} is fatal at startup; exiting.`);
+        process.exit(1);
+    }
+
     emitLog(`Unexpected error: ${error.message}`, 'error');
     if (getJobStatus().running) {
         completeJob(null, error.message).catch(() => { /* best effort */ });

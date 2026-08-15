@@ -51,3 +51,6 @@ demo-data/
 .antigravitycli/
 .kilo/
 .opencode/
+.e2e-fixture/
+test-results/
+playwright-report/
