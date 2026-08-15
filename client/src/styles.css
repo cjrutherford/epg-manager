@@ -29,6 +29,10 @@
     --color-success-rgb: 127, 182, 133;
     --color-danger: #c75d5d;
     --color-danger-rgb: 199, 93, 93;
+    /* Text on a solid --color-danger fill. Not always white: the danger colour
+       is light in several themes, where white label text measured as low as
+       2.65:1 — below AA for any text size. */
+    --color-danger-text: #0c0a08;
     --color-warning: #d4a843;
     --color-warning-rgb: 212, 168, 67;
     --color-info: #6ba3d6;
@@ -79,6 +83,42 @@
     --backdrop-blur: blur(20px);
     
     /* Border Radius - Slightly softer */
+    /* ─── Type scale ─────────────────────────────
+     * Ten steps at roughly a 1.15 ratio, replacing the 42 distinct font sizes
+     * that had accumulated — 0.72rem, 0.73rem, 0.74rem, 0.75rem and 0.76rem all
+     * appeared, which is five decisions where there should be one.
+     */
+    --font-2xs: 0.6875rem;  /* 11px */
+    --font-xs: 0.75rem;     /* 12px */
+    --font-sm: 0.8125rem;   /* 13px */
+    --font-md: 0.875rem;    /* 14px */
+    --font-lg: 1rem;        /* 16px */
+    --font-xl: 1.125rem;    /* 18px */
+    --font-2xl: 1.375rem;   /* 22px */
+    --font-3xl: 1.75rem;    /* 28px */
+    --font-4xl: 2.25rem;    /* 36px */
+    --font-5xl: 3rem;       /* 48px */
+
+    /* ─── Spacing scale ──────────────────────────
+     * Twelve steps chosen from what the app actually used, so the common values
+     * (4, 8, 12, 16, 20, 24, 32) do not move and only the strays — 3, 5, 7, 9,
+     * 11, 14, 18, 22, 28, 30, 36, 60 — snap to a neighbour.
+     */
+    --space-3xs: 2px;
+    --space-2xs: 4px;
+    --space-xs: 6px;
+    --space-sm: 8px;
+    --space-md: 10px;
+    --space-lg: 12px;
+    --space-xl: 16px;
+    --space-2xl: 20px;
+    --space-3xl: 24px;
+    --space-4xl: 32px;
+    --space-5xl: 40px;
+    --space-6xl: 48px;
+
+    /* Pill, for badges and chips. The literal 999px appeared throughout. */
+    --radius-pill: 999px;
     --radius-sm: 4px;
     --radius-md: 8px;
     --radius-lg: 12px;
@@ -121,6 +161,10 @@ body.theme-neon-cyberpunk {
     --color-success-rgb: 57, 255, 20;
     --color-danger: #ff2d55;
     --color-danger-rgb: 255, 45, 85;
+    /* Text on a solid --color-danger fill. Not always white: the danger colour
+       is light in several themes, where white label text measured as low as
+       2.65:1 — below AA for any text size. */
+    --color-danger-text: #0c0a08;
     --color-warning: #ffe100;
     --color-warning-rgb: 255, 225, 0;
     --color-info: #00b4ff;
@@ -172,6 +216,10 @@ body.theme-midnight-forest {
     --color-success-rgb: 52, 211, 153;
     --color-danger: #e07070;
     --color-danger-rgb: 224, 112, 112;
+    /* Text on a solid --color-danger fill. Not always white: the danger colour
+       is light in several themes, where white label text measured as low as
+       2.65:1 — below AA for any text size. */
+    --color-danger-text: #0c0a08;
     --color-warning: #d4a843;
     --color-warning-rgb: 212, 168, 67;
     --color-info: #6ee7b7;
@@ -205,7 +253,9 @@ body.theme-cosmic-purple {
     --color-primary: #a855f7;
     --color-primary-rgb: 168, 85, 247;
     --color-primary-dark: #7e22ce;
-    --color-primary-text: #faf5ff;
+    /* Dark, not white. On these themes' primary the white label measured
+       3.7:1 — the main call to action, below AA. */
+    --color-primary-text: #08060f;
     --color-primary-dim: rgba(168, 85, 247, 0.15);
     --color-primary-glow: rgba(168, 85, 247, 0.45);
     --color-secondary: #ec4899;
@@ -214,6 +264,10 @@ body.theme-cosmic-purple {
     --color-success-rgb: 167, 139, 250;
     --color-danger: #f472b6;
     --color-danger-rgb: 244, 114, 182;
+    /* Text on a solid --color-danger fill. Not always white: the danger colour
+       is light in several themes, where white label text measured as low as
+       2.65:1 — below AA for any text size. */
+    --color-danger-text: #0c0a08;
     --color-warning: #fbbf24;
     --color-warning-rgb: 251, 191, 36;
     --color-info: #818cf8;
@@ -262,6 +316,10 @@ body.theme-arctic-ice {
     --color-success-rgb: 22, 163, 74;
     --color-danger: #dc2626;
     --color-danger-rgb: 220, 38, 38;
+    /* Text on a solid --color-danger fill. Not always white: the danger colour
+       is light in several themes, where white label text measured as low as
+       2.65:1 — below AA for any text size. */
+    --color-danger-text: #ffffff;
     /* amber-700, not amber-600: on this theme's near-white background the
        lighter amber measured 2.91:1, under the 3:1 needed for status text. */
     --color-warning: #b45309;
@@ -354,7 +412,9 @@ body.theme-pulse {
     --color-primary: #ff007f;
     --color-primary-rgb: 255, 0, 127;
     --color-primary-dark: #c60062;
-    --color-primary-text: #ffffff;
+    /* Dark, not white. On these themes' primary the white label measured
+       3.7:1 — the main call to action, below AA. */
+    --color-primary-text: #08060f;
     --color-primary-dim: rgba(255, 0, 127, 0.15);
     --color-primary-glow: rgba(255, 0, 127, 0.5);
     --color-secondary: #00f0ff;
@@ -382,7 +442,9 @@ body.theme-omni {
     --color-primary: #3b82f6;
     --color-primary-rgb: 59, 130, 246;
     --color-primary-dark: #2563eb;
-    --color-primary-text: #ffffff;
+    /* Dark, not white. On these themes' primary the white label measured
+       3.7:1 — the main call to action, below AA. */
+    --color-primary-text: #08060f;
     --color-primary-dim: rgba(59, 130, 246, 0.12);
     --color-primary-glow: rgba(59, 130, 246, 0.4);
     --color-secondary: #f59e0b;
@@ -461,10 +523,10 @@ h1, h2, h3, h4, h5, h6 {
     line-height: 1.2;
 }
 
-h1 { font-size: 2.5rem; }
-h2 { font-size: 2rem; }
-h3 { font-size: 1.5rem; }
-h4 { font-size: 1.25rem; }
+h1 { font-size: var(--font-4xl); }
+h2 { font-size: var(--font-3xl); }
+h3 { font-size: var(--font-2xl); }
+h4 { font-size: var(--font-xl); }
 
 code, pre, .mono {
     font-family: var(--font-mono);
@@ -485,7 +547,7 @@ code, pre, .mono {
     border: 1px solid rgba(var(--color-primary-rgb), 0.08);
     box-shadow: var(--shadow-card);
     border-radius: var(--radius-md);
-    padding: 28px;
+    padding: var(--space-3xl);
     transition: transform 0.4s var(--ease-smooth), box-shadow 0.4s var(--ease-smooth), border-color 0.4s;
     will-change: transform;
 }
@@ -498,13 +560,13 @@ code, pre, .mono {
 
 /* ─── Buttons ──────────────────────────────── */
 .btn {
-    padding: 12px 24px;
+    padding: var(--space-lg) var(--space-3xl);
     border-radius: var(--radius-sm);
     border: none;
     cursor: pointer;
     font-family: var(--font-heading);
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: var(--font-md);
     letter-spacing: 0.03em;
     position: relative;
     overflow: hidden;
@@ -599,8 +661,8 @@ textarea:focus-visible,
 }
 
 .btn.small-btn {
-    padding: 8px 16px;
-    font-size: 0.8rem;
+    padding: var(--space-sm) var(--space-xl);
+    font-size: var(--font-sm);
 }
 
 /* ─── Inputs ───────────────────────────────── */
@@ -608,10 +670,10 @@ input, select, textarea {
     background: rgba(8, 6, 4, 0.6);
     border: 1px solid rgba(var(--color-primary-rgb), 0.15);
     color: var(--text-primary);
-    padding: 12px 16px;
+    padding: var(--space-lg) var(--space-xl);
     border-radius: var(--radius-sm);
     font-family: var(--font-body);
-    font-size: 0.95rem;
+    font-size: var(--font-lg);
     transition: all 0.25s var(--ease-smooth);
 }
 
@@ -630,10 +692,10 @@ input::placeholder {
     background: rgba(8, 6, 4, 0.6);
     border: 1px solid rgba(var(--color-primary-rgb), 0.15);
     color: var(--text-primary);
-    padding: 10px 14px;
+    padding: var(--space-md) var(--space-lg);
     border-radius: var(--radius-sm);
     font-family: var(--font-body);
-    font-size: 0.9rem;
+    font-size: var(--font-md);
     transition: all 0.25s var(--ease-smooth);
     outline: none;
 }
@@ -641,7 +703,7 @@ input::placeholder {
 .themed-select {
     appearance: none;
     -webkit-appearance: none;
-    padding-right: 36px;
+    padding-right: var(--space-4xl);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%239a9285' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 14px center;
@@ -666,9 +728,9 @@ input::placeholder {
 .badge {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 5px 12px;
-    border-radius: 20px;
+    gap: var(--space-xs);
+    padding: var(--space-2xs) var(--space-lg);
+    border-radius: var(--radius-lg);
     font-size: 0.7em;
     font-weight: 600;
     text-transform: uppercase;
@@ -719,12 +781,12 @@ input::placeholder {
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 20px;
+    gap: var(--space-2xl);
 }
 
 .stat-item {
     background: linear-gradient(135deg, rgba(var(--color-primary-rgb), 0.03) 0%, rgba(10, 8, 6, 0.4) 100%);
-    padding: 24px;
+    padding: var(--space-3xl);
     border-radius: var(--radius-md);
     border: 1px solid rgba(var(--color-primary-rgb), 0.06);
     transition: all 0.3s var(--ease-smooth);
@@ -757,7 +819,7 @@ input::placeholder {
 
 .stat-val {
     font-family: var(--font-display);
-    font-size: 2.2rem;
+    font-size: var(--font-4xl);
     font-weight: 600;
     color: var(--text-primary);
     letter-spacing: -0.02em;
@@ -768,22 +830,22 @@ input::placeholder {
     color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    margin-top: 4px;
+    margin-top: var(--space-2xs);
 }
 
 /* ─── Progress Bars ────────────────────────── */
 .progress-container {
     background: rgba(var(--color-primary-rgb), 0.08);
     height: 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
-    margin-top: 12px;
+    margin-top: var(--space-lg);
 }
 
 .progress-bar {
     height: 100%;
     background: linear-gradient(90deg, var(--color-primary), #f0c078);
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     transition: width 0.5s var(--ease-smooth);
     position: relative;
 }
@@ -809,7 +871,7 @@ table {
 }
 
 th, td {
-    padding: 16px 20px;
+    padding: var(--space-xl) var(--space-2xl);
     text-align: left;
     border-bottom: 1px solid rgba(var(--color-primary-rgb), 0.05);
 }
@@ -818,7 +880,7 @@ th {
     color: var(--text-secondary);
     font-family: var(--font-heading);
     font-weight: 600;
-    font-size: 0.75rem;
+    font-size: var(--font-xs);
     text-transform: uppercase;
     letter-spacing: 0.1em;
     background: rgba(8, 6, 4, 0.5);
@@ -854,7 +916,7 @@ tbody tr:hover {
     border: 1px solid rgba(var(--color-primary-rgb), 0.15);
     border-radius: var(--radius-lg);
     box-shadow: 0 32px 80px rgba(0, 0, 0, 0.7), 0 0 60px rgba(var(--color-primary-rgb), 0.05);
-    padding: 36px;
+    padding: var(--space-4xl);
     width: 90%;
     max-width: 900px;
     max-height: 85vh;
@@ -879,7 +941,7 @@ tbody tr:hover {
 
 ::-webkit-scrollbar-thumb {
     background: rgba(var(--color-primary-rgb), 0.2);
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -949,15 +1011,15 @@ tbody tr:hover {
         --guide-height: 280px;
     }
     
-    h1 { font-size: 1.75rem; }
-    h2 { font-size: 1.5rem; }
+    h1 { font-size: var(--font-3xl); }
+    h2 { font-size: var(--font-2xl); }
     
-    .glass-card { padding: 20px; }
-    .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
-    .stat-val { font-size: 1.6rem; }
-    th, td { padding: 12px 14px; font-size: 0.9em; }
-    .btn { padding: 10px 18px; font-size: 0.85rem; }
-    .modal-content { padding: 24px; width: 95%; }
+    .glass-card { padding: var(--space-2xl); }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); gap: var(--space-lg); }
+    .stat-val { font-size: var(--font-3xl); }
+    th, td { padding: var(--space-lg) var(--space-lg); font-size: 0.9em; }
+    .btn { padding: var(--space-md) var(--space-xl); font-size: var(--font-md); }
+    .modal-content { padding: var(--space-3xl); width: 95%; }
 }
 
 @media (min-width: 769px) and (max-width: 1024px) {
@@ -1000,9 +1062,9 @@ tbody tr:hover {
 .diagnostics-page h1,
 .dvr-page h1,
 .settings-page h1 {
-    font-size: 1.8rem !important;
+    font-size: var(--font-3xl) !important;
     font-weight: 700;
-    margin: 0 0 24px 0;
+    margin: 0 0 var(--space-3xl) 0;
     background: linear-gradient(135deg, var(--text-primary) 0%, rgba(var(--color-primary-rgb), 0.75) 100%) !important;
     -webkit-background-clip: text !important;
     -webkit-text-fill-color: transparent !important;

@@ -156,6 +156,21 @@ export function auditTheme(palette: ThemePalette): ContrastFailure[] {
     check('--text-primary', 'body text', false);
     check('--text-secondary', 'secondary text', false);
 
+    // Text sitting on a solid semantic fill, not on the page. A destructive
+    // button's label is white-on-red by convention, but the danger colour is
+    // light in several themes and white measured as low as 2.65:1 there.
+    const onFill = (fillToken: string, textToken: string, label: string) => {
+        const fill = parseColor(palette.tokens[fillToken] || '');
+        const text = parseColor(palette.tokens[textToken] || '');
+        if (!fill || !text) return;
+        const ratio = contrastRatio(text, fill);
+        if (ratio < WCAG_AA_NORMAL) {
+            failures.push({ theme: palette.name, pair: label, ratio, required: WCAG_AA_NORMAL });
+        }
+    };
+    onFill('--color-danger', '--color-danger-text', 'label on a danger fill');
+    onFill('--color-primary', '--color-primary-text', 'label on a primary fill');
+
     // Semantic colours are used for badges and short status labels, which are
     // bold and count as large text.
     for (const token of ['--color-success', '--color-danger', '--color-warning', '--color-info', '--color-primary']) {

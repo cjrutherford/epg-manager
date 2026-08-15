@@ -1,13 +1,13 @@
 .dashboard h1 {
-    margin-bottom: 28px;
-    font-size: 1.6rem;
+    margin-bottom: var(--space-3xl);
+    font-size: var(--font-3xl);
 }
 
 .dashboard-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 20px;
-    margin-bottom: 32px;
+    gap: var(--space-2xl);
+    margin-bottom: var(--space-4xl);
 }
 
 .stat-card {
@@ -15,21 +15,21 @@
 }
 
 .stat-card .stat-val {
-    font-size: 2.2rem;
+    font-size: var(--font-4xl);
     font-weight: 800;
-    margin-bottom: 4px;
+    margin-bottom: var(--space-2xs);
 }
 
 .stat-card .stat-label {
     text-transform: uppercase;
-    font-size: 0.75rem;
+    font-size: var(--font-xs);
     color: var(--text-secondary);
     letter-spacing: 0.08em;
-    margin-bottom: 4px;
+    margin-bottom: var(--space-2xs);
 }
 
 .stat-card .stat-detail {
-    font-size: 0.75rem;
+    font-size: var(--font-xs);
     color: var(--text-secondary);
 }
 
@@ -41,8 +41,8 @@
 }
 
 .actions-section h2 {
-    font-size: 1.1rem;
-    margin-bottom: 16px;
+    font-size: var(--font-xl);
+    margin-bottom: var(--space-xl);
     color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -51,8 +51,8 @@
 .action-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
-    margin-bottom: 32px;
+    gap: var(--space-xl);
+    margin-bottom: var(--space-4xl);
 }
 
 .action-card {
@@ -66,23 +66,23 @@
 }
 
 .action-icon {
-    font-size: 2rem;
-    margin-bottom: 12px;
+    font-size: var(--font-3xl);
+    margin-bottom: var(--space-lg);
 }
 
 .action-title {
     font-weight: 700;
-    margin-bottom: 4px;
+    margin-bottom: var(--space-2xs);
 }
 
 .action-desc {
-    font-size: 0.8rem;
+    font-size: var(--font-sm);
     color: var(--text-secondary);
 }
 
 .schedule-card h3 {
-    margin-bottom: 16px;
-    font-size: 1rem;
+    margin-bottom: var(--space-xl);
+    font-size: var(--font-lg);
 }
 
 @media (max-width: 768px) {
@@ -103,9 +103,9 @@
 .empty-state-banner {
     display: flex;
     align-items: center;
-    gap: 28px;
-    padding: 32px 36px;
-    margin-bottom: 32px;
+    gap: var(--space-3xl);
+    padding: var(--space-4xl) var(--space-4xl);
+    margin-bottom: var(--space-4xl);
     border: 1px solid rgba(var(--color-primary-rgb), 0.35);
     background: linear-gradient(135deg, rgba(var(--color-primary-rgb), 0.06) 0%, rgba(var(--color-primary-rgb), 0.02) 100%);
     animation: bannerGlow 3s ease-in-out infinite alternate;
@@ -117,7 +117,7 @@
 }
 
 .empty-state-icon {
-    font-size: 3.5rem;
+    font-size: var(--font-5xl);
     flex-shrink: 0;
     line-height: 1;
 }
@@ -127,42 +127,42 @@
 }
 
 .empty-state-title {
-    font-size: 1.25rem;
+    font-size: var(--font-xl);
     font-weight: 700;
-    margin: 0 0 8px;
+    margin: 0 0 var(--space-sm);
     color: var(--text-primary);
 }
 
 .empty-state-desc {
-    font-size: 0.9rem;
+    font-size: var(--font-md);
     color: var(--text-secondary);
-    margin: 0 0 8px;
+    margin: 0 0 var(--space-sm);
     line-height: 1.6;
 }
 
 .empty-state-warn {
-    font-size: 0.85rem;
+    font-size: var(--font-md);
     color: var(--color-warning);
     margin: 0;
     background: rgba(var(--color-warning-rgb), 0.08);
     border-left: 3px solid var(--color-warning);
-    padding: 8px 12px;
+    padding: var(--space-sm) var(--space-lg);
     border-radius: 0 6px 6px 0;
 }
 
 .btn-sync-now {
     flex-shrink: 0;
-    padding: 14px 28px;
-    font-size: 1rem;
+    padding: var(--space-lg) var(--space-3xl);
+    font-size: var(--font-lg);
     font-weight: 700;
     color: var(--color-primary-text);
     background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
     border: none;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-sm);
     transition: opacity 0.2s, transform 0.15s;
     white-space: nowrap;
 }
@@ -205,13 +205,13 @@
 
 /* ── Sync Pipeline Visualization ─────────────── */
 .sync-pipeline {
-    margin-bottom: 32px;
-    padding: 24px 28px;
+    margin-bottom: var(--space-4xl);
+    padding: var(--space-3xl) var(--space-3xl);
 }
 .sync-pipeline h3 {
-    font-size: 0.9rem;
+    font-size: var(--font-md);
     color: var(--text-secondary);
-    margin-bottom: 20px;
+    margin-bottom: var(--space-2xl);
     text-transform: uppercase;
     letter-spacing: 0.08em;
 }
@@ -225,7 +225,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-sm);
     min-width: 80px;
 }
 .stage-indicator {
@@ -235,7 +235,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.1rem;
+    font-size: var(--font-xl);
     border: 2px solid var(--border-medium);
     background: var(--bg-inset);
     transition: all 0.3s ease;
@@ -252,7 +252,7 @@
     color: var(--color-success);
 }
 .stage-label {
-    font-size: 0.7rem;
+    font-size: var(--font-2xs);
     color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -279,8 +279,8 @@
 
 /* Collapsible Job Progress styles inside schedule-card */
 .progress-collapsible {
-    margin-top: 24px;
-    padding-top: 16px;
+    margin-top: var(--space-3xl);
+    padding-top: var(--space-xl);
     border-top: 1px solid rgba(var(--color-primary-rgb), 0.15);
 }
 
@@ -290,14 +290,14 @@
     color: var(--color-primary);
     cursor: pointer;
     font-family: var(--font-heading);
-    font-size: 0.8rem;
+    font-size: var(--font-sm);
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    padding: 6px 0;
+    padding: var(--space-xs) 0;
     display: flex;
     align-items: center;
-    gap: 6px;
-    margin-bottom: 16px;
+    gap: var(--space-xs);
+    margin-bottom: var(--space-xl);
     transition: opacity 0.2s;
 }
 
@@ -320,7 +320,7 @@
 
 /* Progress rows and logs inside collapsible content */
 .status-progress-row {
-    margin-top: 14px;
+    margin-top: var(--space-lg);
     transition: opacity 0.3s;
 }
 
@@ -331,15 +331,15 @@
 .progress-label {
     display: flex;
     justify-content: space-between;
-    font-size: 0.8rem;
+    font-size: var(--font-sm);
     color: var(--text-primary);
-    margin-bottom: 4px;
+    margin-bottom: var(--space-2xs);
 }
 
 .progress-message {
-    font-size: 0.75rem;
+    font-size: var(--font-xs);
     color: var(--text-secondary);
-    margin-top: 3px;
+    margin-top: var(--space-3xs);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -351,10 +351,10 @@
 }
 
 .status-logs-wrapper {
-    margin-top: 20px;
+    margin-top: var(--space-2xl);
     background: var(--bg-inset);
     border: 1px solid rgba(var(--color-primary-rgb), 0.15);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -364,26 +364,26 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 8px 16px;
+    padding: var(--space-sm) var(--space-xl);
     background: var(--bg-inset);
     border-bottom: 1px solid rgba(var(--color-primary-rgb), 0.1);
-    font-size: 0.8rem;
+    font-size: var(--font-sm);
     font-weight: 600;
 }
 
 .logs-actions {
     display: flex;
-    gap: 8px;
+    gap: var(--space-sm);
 }
 
 .small-btn {
     background: rgba(var(--color-primary-rgb), 0.05);
     border: 1px solid var(--border-medium);
     color: var(--text-secondary);
-    padding: 4px 10px;
-    border-radius: 4px;
+    padding: var(--space-2xs) var(--space-md);
+    border-radius: var(--radius-sm);
     cursor: pointer;
-    font-size: 0.72rem;
+    font-size: var(--font-xs);
 }
 
 .small-btn:hover {
@@ -393,12 +393,12 @@
 .status-logs {
     height: 200px;
     overflow-y: auto;
-    padding: 10px 14px;
+    padding: var(--space-md) var(--space-lg);
 }
 
 .log-entry {
-    padding: 3px 0;
-    font-size: 0.75rem;
+    padding: var(--space-3xs) 0;
+    font-size: var(--font-xs);
     font-family: var(--font-mono);
 }
 
@@ -414,10 +414,10 @@
     background: linear-gradient(135deg, var(--color-danger), var(--color-danger));
     color: var(--text-primary);
     border: none;
-    border-radius: 6px;
-    padding: 8px 16px;
+    border-radius: var(--radius-sm);
+    padding: var(--space-sm) var(--space-xl);
     font-family: var(--font-heading);
-    font-size: 0.8rem;
+    font-size: var(--font-sm);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -425,7 +425,7 @@
     transition: opacity 0.2s, transform 0.15s;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-xs);
 }
 
 .btn-cancel-sync:hover {
@@ -447,14 +447,14 @@
 
 .log-time {
     color: var(--text-secondary);
-    margin-right: 8px;
+    margin-right: var(--space-sm);
 }
 
 .log-empty {
     text-align: center;
     color: var(--text-secondary);
-    padding: 20px;
-    font-size: 0.85rem;
+    padding: var(--space-2xl);
+    font-size: var(--font-md);
 }
 /* ── Reset scope picker ─────────────────────────── */
 .reset-modal {
@@ -462,7 +462,7 @@
     width: 90%;
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: var(--space-xl);
 }
 
 /*
@@ -480,9 +480,9 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 16px;
+    gap: var(--space-xl);
     border-bottom: 1px solid var(--border-subtle);
-    padding-bottom: 14px;
+    padding-bottom: var(--space-lg);
 }
 
 .reset-modal .modal-header h2 {
@@ -493,9 +493,9 @@
 .close-modal-btn {
     background: none;
     border: none;
-    font-size: 1.1rem;
+    font-size: var(--font-xl);
     line-height: 1;
-    padding: 6px 10px;
+    padding: var(--space-xs) var(--space-md);
     border-radius: var(--radius-sm);
     color: var(--text-muted);
     cursor: pointer;
@@ -510,22 +510,22 @@
 
 .reset-intro {
     margin: 0;
-    font-size: 0.9rem;
+    font-size: var(--font-md);
     line-height: 1.55;
     color: var(--text-secondary);
 }
 
 .reset-scopes {
     display: grid;
-    gap: 10px;
+    gap: var(--space-md);
 }
 
 .reset-scope-btn {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-2xs);
     text-align: left;
-    padding: 14px 16px;
+    padding: var(--space-lg) var(--space-xl);
     border-radius: var(--radius-md);
     border: 1px solid var(--border-subtle);
     background: var(--bg-inset);
@@ -556,7 +556,7 @@
 
 .reset-scope-label {
     font-weight: 600;
-    font-size: 0.98rem;
+    font-size: var(--font-lg);
 }
 
 .reset-scope-btn.danger .reset-scope-label {
@@ -564,7 +564,7 @@
 }
 
 .reset-scope-blurb {
-    font-size: 0.83rem;
+    font-size: var(--font-sm);
     line-height: 1.45;
     color: var(--text-secondary);
 }
@@ -573,23 +573,23 @@
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
     background: var(--bg-inset);
-    padding: 14px 16px;
+    padding: var(--space-lg) var(--space-xl);
     min-height: 76px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--space-md);
 }
 
 .reset-preview-loading {
     display: flex;
     align-items: center;
-    gap: 10px;
-    font-size: 0.88rem;
+    gap: var(--space-md);
+    font-size: var(--font-md);
     color: var(--text-secondary);
 }
 
 .reset-preview-head {
-    font-size: 0.92rem;
+    font-size: var(--font-md);
     color: var(--text-primary);
 }
 
@@ -603,16 +603,16 @@
     margin: 0;
     padding: 0;
     display: grid;
-    gap: 4px;
+    gap: var(--space-2xs);
 }
 
 .reset-preview-list li {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    gap: 16px;
-    font-size: 0.83rem;
-    padding: 4px 0;
+    gap: var(--space-xl);
+    font-size: var(--font-sm);
+    padding: var(--space-2xs) 0;
     border-bottom: 1px dashed var(--border-subtle);
 }
 
@@ -633,21 +633,21 @@
 }
 
 .reset-preview-empty {
-    font-size: 0.88rem;
+    font-size: var(--font-md);
     color: var(--text-muted);
 }
 
 .reset-modal .modal-actions {
     display: flex;
     justify-content: flex-end;
-    gap: 12px;
-    padding-top: 4px;
+    gap: var(--space-lg);
+    padding-top: var(--space-2xs);
 }
 
 .reset-modal .btn-danger {
     background: var(--color-danger);
     border: 1px solid var(--color-danger);
-    color: #fff;
+    color: var(--color-danger-text);
     font-weight: 600;
 }
 

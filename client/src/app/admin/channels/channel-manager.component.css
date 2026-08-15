@@ -1,6 +1,6 @@
 .channel-manager h1 {
-    margin-bottom: 24px;
-    font-size: 1.6rem;
+    margin-bottom: var(--space-3xl);
+    font-size: var(--font-3xl);
 }
 
 .loading-container {
@@ -11,13 +11,13 @@
 }
 
 .toolbar {
-    margin-bottom: 20px;
-    padding: 16px 20px;
+    margin-bottom: var(--space-2xl);
+    padding: var(--space-xl) var(--space-2xl);
 }
 
 .channel-num {
     font-family: var(--font-mono);
-    font-size: 0.85rem;
+    font-size: var(--font-md);
     color: var(--text-secondary);
 }
 
@@ -28,21 +28,21 @@
     white-space: nowrap;
 }
 .sortable:hover { color: var(--color-primary); }
-.sort-arrow { font-size: 0.65rem; margin-left: 4px; color: var(--color-primary); }
+.sort-arrow { font-size: var(--font-2xs); margin-left: var(--space-2xs); color: var(--color-primary); }
 
 /* ── Filter pills ────────────────────────────── */
 .filter-pills {
     display: flex;
-    gap: 6px;
+    gap: var(--space-xs);
     flex-wrap: wrap;
 }
 .pill {
-    padding: 4px 14px;
-    border-radius: 20px;
+    padding: var(--space-2xs) var(--space-lg);
+    border-radius: var(--radius-lg);
     border: 1px solid var(--border-medium);
     background: transparent;
     color: var(--text-secondary);
-    font-size: 0.8rem;
+    font-size: var(--font-sm);
     cursor: pointer;
     transition: all 0.15s;
     white-space: nowrap;
@@ -60,13 +60,13 @@
 
 .toolbar-row {
     display: flex;
-    gap: 12px;
+    gap: var(--space-lg);
     align-items: center;
     flex-wrap: wrap;
 }
 
 .toolbar-row+.toolbar-row {
-    margin-top: 12px;
+    margin-top: var(--space-lg);
 }
 
 .toolbar-row input,
@@ -76,13 +76,13 @@
 }
 
 .toolbar-stat {
-    font-size: 0.85rem;
+    font-size: var(--font-md);
     color: var(--text-secondary);
 }
 
 .toolbar-actions {
     display: flex;
-    gap: 8px;
+    gap: var(--space-sm);
     margin-left: auto;
 }
 
@@ -94,7 +94,7 @@
 .channel-cell {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--space-lg);
 }
 
 .channel-logo {
@@ -102,7 +102,7 @@
     height: 28px;
     object-fit: contain;
     background: rgba(var(--color-primary-rgb), 0.05);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
 }
 
 .channel-name {
@@ -133,13 +133,13 @@
 }
 
 .expanded-row td {
-    padding: 20px !important;
+    padding: var(--space-2xl) !important;
     background: var(--bg-inset);
 }
 
 .expanded-content {
     display: flex;
-    gap: 20px;
+    gap: var(--space-2xl);
 }
 
 .expanded-main {
@@ -147,39 +147,39 @@
 }
 
 .expanded-main h4 {
-    margin-bottom: 12px;
+    margin-bottom: var(--space-lg);
 }
 
 .expanded-sidebar {
     width: 220px;
     background: var(--bg-inset);
-    padding: 16px;
-    border-radius: 8px;
+    padding: var(--space-xl);
+    border-radius: var(--radius-md);
 }
 
 .sidebar-label {
-    font-size: 0.75rem;
+    font-size: var(--font-xs);
     text-transform: uppercase;
     color: var(--text-secondary);
-    margin-bottom: 4px;
+    margin-bottom: var(--space-2xs);
 }
 
 .sidebar-value {
     font-weight: 700;
-    margin-bottom: 16px;
+    margin-bottom: var(--space-xl);
     word-break: break-all;
 }
 
 .epg-search-results {
-    margin-top: 12px;
+    margin-top: var(--space-lg);
     max-height: 200px;
     overflow-y: auto;
 }
 
 .epg-result {
-    padding: 8px 12px;
+    padding: var(--space-sm) var(--space-lg);
     cursor: pointer;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     transition: background 0.2s;
 }
 
@@ -188,16 +188,16 @@
 }
 
 .search-status {
-    padding: 12px;
+    padding: var(--space-lg);
     text-align: center;
     color: var(--text-secondary);
 }
 
 .table-overflow-notice {
     text-align: center;
-    padding: 12px;
+    padding: var(--space-lg);
     color: var(--text-secondary);
-    font-size: 0.85rem;
+    font-size: var(--font-md);
 }
 
 @media (max-width: 768px) {
@@ -238,7 +238,9 @@
     position: sticky;
     top: 0;
     z-index: 2;
-    background: var(--color-surface, #14100c);
+    /* `--color-surface` never existed, so the fallback was the real value —
+       a literal that ignored all nine themes. */
+    background: var(--bg-glass-strong);
 }
 
 /* .epg-result became a <button>: it is the only way to pick a mapping, so it

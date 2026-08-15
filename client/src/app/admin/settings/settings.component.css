@@ -1,6 +1,6 @@
 .settings-page h1 {
-    margin-bottom: 24px;
-    font-size: 1.6rem;
+    margin-bottom: var(--space-3xl);
+    font-size: var(--font-3xl);
 }
 
 .loading-container {
@@ -11,23 +11,23 @@
 }
 
 .settings-card {
-    margin-bottom: 24px;
+    margin-bottom: var(--space-3xl);
 }
 
 .settings-card h2 {
-    margin-bottom: 20px;
-    font-size: 1.1rem;
+    margin-bottom: var(--space-2xl);
+    font-size: var(--font-xl);
 }
 
 .form-group {
-    margin-bottom: 16px;
+    margin-bottom: var(--space-xl);
 }
 
 .form-group label {
     display: block;
-    font-size: 0.8rem;
+    font-size: var(--font-sm);
     color: var(--text-secondary);
-    margin-bottom: 6px;
+    margin-bottom: var(--space-xs);
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
@@ -35,8 +35,8 @@
 .checkbox-group label {
     display: flex;
     align-items: center;
-    gap: 10px;
-    font-size: 0.9rem;
+    gap: var(--space-md);
+    font-size: var(--font-md);
     color: var(--text-primary);
     text-transform: none;
     letter-spacing: 0;
@@ -45,64 +45,64 @@
 
 /* Selected Playlists Chip List */
 .selected-playlists {
-    padding: 12px 16px;
+    padding: var(--space-lg) var(--space-xl);
     background: rgba(var(--color-primary-rgb), 0.05);
     border: 1px solid rgba(var(--color-primary-rgb), 0.15);
-    border-radius: 8px;
-    margin-bottom: 16px;
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-xl);
 }
 
 .selected-playlists .current-label {
     display: block;
-    font-size: 0.8rem;
+    font-size: var(--font-sm);
     color: var(--text-secondary);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    margin-bottom: 10px;
+    margin-bottom: var(--space-md);
 }
 
 .playlist-scope-summary {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
-    margin-bottom: 10px;
-    font-size: 0.78rem;
+    gap: var(--space-md);
+    margin-bottom: var(--space-md);
+    font-size: var(--font-xs);
     color: var(--text-secondary);
 }
 
 .playlist-warning {
-    margin-bottom: 12px;
-    padding: 10px 12px;
-    border-radius: 8px;
+    margin-bottom: var(--space-lg);
+    padding: var(--space-md) var(--space-lg);
+    border-radius: var(--radius-md);
     background: rgba(var(--color-warning-rgb), 0.1);
     border: 1px solid rgba(var(--color-warning-rgb), 0.25);
     color: var(--color-warning);
-    font-size: 0.82rem;
+    font-size: var(--font-sm);
 }
 
 .playlist-chips {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: var(--space-sm);
 }
 
 .playlist-chip {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 10px 6px 14px;
+    gap: var(--space-sm);
+    padding: var(--space-xs) var(--space-md) var(--space-xs) var(--space-lg);
     background: rgba(var(--color-primary-rgb), 0.12);
     border: 1px solid rgba(var(--color-primary-rgb), 0.25);
-    border-radius: 20px;
-    font-size: 0.8rem;
+    border-radius: var(--radius-lg);
+    font-size: var(--font-sm);
     color: var(--color-primary);
     max-width: 300px;
     transition: all 0.2s;
 }
 
 .chip-meta {
-    font-size: 0.68rem;
+    font-size: var(--font-2xs);
     color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -118,7 +118,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-family: var(--font-mono);
-    font-size: 0.75rem;
+    font-size: var(--font-xs);
 }
 
 .chip-remove {
@@ -131,7 +131,7 @@
     background: rgba(255, 255, 255, 0.1);
     border-radius: 50%;
     color: rgba(255, 255, 255, 0.6);
-    font-size: 0.7rem;
+    font-size: var(--font-2xs);
     cursor: pointer;
     flex-shrink: 0;
     transition: all 0.2s;
@@ -140,14 +140,16 @@
 }
 
 .chip-remove:hover {
-    background: rgba(255, 80, 80, 0.3);
-    color: #ff5050;
+    /* Was a hardcoded #ff5050, which bypassed the theme entirely — on the light
+       theme it sat at poor contrast against a near-white surface. */
+    background: rgba(var(--color-danger-rgb), 0.3);
+    color: var(--color-danger);
 }
 
 /* Custom URL Row */
 .custom-url-row {
     display: flex;
-    gap: 8px;
+    gap: var(--space-sm);
     align-items: center;
 }
 
@@ -157,40 +159,40 @@
 
 /* iptv-org Browser */
 .iptv-org-browser {
-    margin-top: 12px;
+    margin-top: var(--space-lg);
 }
 
 .iptv-org-browser .themed-input {
-    margin-bottom: 12px;
+    margin-bottom: var(--space-lg);
 }
 
 .iptv-org-controls {
     display: grid;
     grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(140px, 1fr));
-    gap: 10px;
-    margin-bottom: 12px;
+    gap: var(--space-md);
+    margin-bottom: var(--space-lg);
 }
 
 .iptv-org-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 8px;
+    gap: var(--space-sm);
     max-height: 300px;
     overflow-y: auto;
-    padding: 4px;
+    padding: var(--space-2xs);
 }
 
 .iptv-org-item {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    padding: 10px 14px;
+    padding: var(--space-md) var(--space-lg);
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--border-medium);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     color: rgba(255, 255, 255, 0.8);
     cursor: pointer;
-    font-size: 0.8rem;
+    font-size: var(--font-sm);
     font-weight: 600;
     transition: all 0.2s;
     text-align: left;
@@ -199,7 +201,9 @@
 .iptv-org-item:hover {
     background: rgba(var(--color-primary-rgb), 0.1);
     border-color: rgba(var(--color-primary-rgb), 0.3);
-    color: #fff;
+    /* Was #fff. The hover surface is a 10% tint of the page background, so on
+       the light theme this put white text on near-white. */
+    color: var(--text-primary);
 }
 
 .iptv-org-item.selected {
@@ -218,12 +222,12 @@
 .iptv-org-main {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-2xs);
     min-width: 0;
 }
 
 .iptv-org-meta {
-    font-size: 0.72rem;
+    font-size: var(--font-xs);
     color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -237,8 +241,8 @@
 .iptv-org-stats {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
-    font-size: 0.74rem;
+    gap: var(--space-sm);
+    font-size: var(--font-xs);
     color: rgba(255, 255, 255, 0.72);
 }
 
@@ -249,8 +253,8 @@
 }
 
 .iptv-org-footnote {
-    margin-top: 10px;
-    font-size: 0.78rem;
+    margin-top: var(--space-md);
+    font-size: var(--font-xs);
     color: var(--text-secondary);
 }
 
@@ -258,16 +262,16 @@
 .file-links {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--space-lg);
 }
 
 .file-link-row {
     display: flex;
     align-items: center;
-    gap: 16px;
-    padding: 12px 16px;
+    gap: var(--space-xl);
+    padding: var(--space-lg) var(--space-xl);
     background: rgba(0, 0, 0, 0.2);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
 }
 
 .file-link-row span {
@@ -278,27 +282,27 @@
 .file-link-row code {
     flex: 1;
     font-family: var(--font-mono);
-    font-size: 0.85rem;
+    font-size: var(--font-md);
     color: var(--color-primary);
 }
 
 .action-row {
     display: flex;
-    gap: 12px;
+    gap: var(--space-lg);
     flex-wrap: wrap;
 }
 
 .metadata-section {
     border-top: 1px solid var(--border-subtle);
-    padding-top: 16px;
-    margin-top: 16px;
+    padding-top: var(--space-xl);
+    margin-top: var(--space-xl);
 }
 
 @media (max-width: 768px) {
     .file-link-row {
         flex-direction: column;
         align-items: flex-start;
-        gap: 8px;
+        gap: var(--space-sm);
     }
 
     .action-row {
@@ -316,46 +320,46 @@
 
 /* FAST Platform Presets Grid */
 .fast-presets-container {
-    margin-bottom: 20px;
-    padding: 16px;
+    margin-bottom: var(--space-2xl);
+    padding: var(--space-xl);
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
 }
 
 .presets-header {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    margin-bottom: 12px;
+    gap: var(--space-2xs);
+    margin-bottom: var(--space-lg);
 }
 
 .presets-title {
-    font-size: 0.92rem;
+    font-size: var(--font-md);
     font-weight: 700;
     color: var(--text-primary);
 }
 
 .presets-desc {
-    font-size: 0.78rem;
+    font-size: var(--font-xs);
     color: var(--text-secondary);
 }
 
 .preset-buttons-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 10px;
+    gap: var(--space-md);
 }
 
 .preset-card-btn {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 4px;
-    padding: 10px 14px;
+    gap: var(--space-2xs);
+    padding: var(--space-md) var(--space-lg);
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     color: var(--text-primary);
     cursor: pointer;
     transition: all 0.2s ease;
@@ -374,20 +378,20 @@
 }
 
 .preset-card-btn .preset-name {
-    font-size: 0.86rem;
+    font-size: var(--font-md);
     font-weight: 600;
 }
 
 .preset-card-btn .preset-count {
-    font-size: 0.74rem;
+    font-size: var(--font-xs);
     color: var(--text-secondary);
 }
 
 .preset-card-btn .preset-status {
-    font-size: 0.72rem;
+    font-size: var(--font-xs);
     font-weight: 700;
     color: var(--color-primary);
-    margin-top: 2px;
+    margin-top: var(--space-3xs);
 }
 
 .preset-card-btn.added .preset-status {
@@ -396,9 +400,9 @@
 
 /* Field-level validation, so a rejected save points at what is wrong. */
 .field-error {
-    margin-top: 6px;
+    margin-top: var(--space-xs);
     color: var(--color-danger);
-    font-size: 0.8rem;
+    font-size: var(--font-sm);
     line-height: 1.45;
 }
 

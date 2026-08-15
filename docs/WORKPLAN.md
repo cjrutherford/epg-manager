@@ -840,14 +840,32 @@ correct exception, and forcing them into the admin vocabulary would make them wo
 
 Ordered so each slice makes the next one smaller. S26a is the prerequisite for everything else.
 
-- [ ] **S26a · A scale to build on** — S
+- [x] **S26a · A scale to build on** — S
   Collapse 42 font sizes into a type scale and 25 spacing values into a spacing scale, both as tokens.
   Add the radius and size tokens that are being worked around. Fix the one real colour leak.
-  → `styles.css`, all component CSS
-  - [ ] Distinct font sizes in admin CSS drop from 42 to the scale's size
-  - [ ] Distinct spacing values drop from 25 to the scale's size
-  - [ ] No raw `px` spacing or font size in admin component CSS, asserted by a test
-  - [ ] Every theme still passes the contrast test from S22
+  → `styles.css`, all admin component CSS, `contrast.ts`
+  - [x] Distinct font sizes in admin CSS drop from 42 to the scale's size
+        — **42 → 0 raw values**, replaced by a 10-step type scale at roughly a 1.15 ratio
+  - [x] Distinct spacing values drop from 25 to the scale's size
+        — **25 → 0 raw values**, replaced by a 12-step scale chosen from what the app already used,
+        so 4/8/12/16/20/24/32 did not move and only the strays snapped to a neighbour. Radii 12 → 0
+  - [x] No raw `px` spacing or font size in admin component CSS, asserted by a test
+        — 9 tests covering type, spacing, radius and colour. **539 values tokenised** in total
+  - [x] Every theme still passes the contrast test from S22
+        — and the audit was widened to text-on-fill, which found **four more pre-existing failures**
+
+  **Widening the contrast check found real bugs, not tidiness.** A destructive button's white label
+  measured **2.65:1** on cosmic-purple — below AA at any size — because `--color-danger` is light in
+  several themes. And the primary call to action failed on three themes at 3.68–3.78:1. Both now have
+  per-theme label tokens (`--color-danger-text`, corrected `--color-primary-text`) chosen by
+  measurement, and the audit covers those pairs so they cannot regress.
+
+  Also found: `background: var(--color-surface, #14100c)` in the channel manager, added by me in S21.
+  `--color-surface` never existed, so the fallback was the real value — a literal that ignored all
+  nine themes.
+
+  Verified across all six admin screens after the rewrite: no horizontal overflow, no clipped text,
+  no text under 10px. Watch is untouched; its scale work belongs with its panels in a later slice.
 
 - [ ] **S26b · One component vocabulary** — M
   Promote the repeated patterns into shared classes: page header, summary statistic, card shell,
@@ -990,3 +1008,4 @@ memory, so **restart it after `ng build`** or you will screenshot the previous b
 | 2026-08-14 | S23 | Done. Errors persist until dismissed and are announced through a live region; hover holds every countdown; the queue cap drops transient messages before persistent ones. All 14 native confirms replaced with a focus-trapping dialog that has room to say what will actually happen. Found that the Watch UI had never rendered a toast at all — the container was mounted only in the admin layout, so thirteen call sites produced nothing. 13 new unit tests; suite 551 -> 564. |
 | 2026-08-14 | — | All 26 planned slices are complete. S24 remains held for subdivision. |
 | 2026-08-14 | — | Design language audit at Chris's request. Scores **2.1 (High)** overall, with type/spacing scale (1.25) and summary statistics (1.50) in the Critical band. Headline measurements: 42 distinct font sizes, 25 spacing values, 3 icon systems, and the same summary statistic designed three different ways. Proposed as slice group S26a–S26e. |
+| 2026-08-14 | S26a | Done. 539 raw values tokenised — 42 font sizes, 25 spacings and 12 radii all to 0, behind a 10-step type scale and a 12-step spacing scale. Guard tests keep them out. Widening the contrast audit to text-on-fill found four pre-existing AA failures, including a destructive button label at 2.65:1; all fixed with measured per-theme tokens. 9 new unit tests; suite 564 -> 573. |
