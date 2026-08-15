@@ -8,13 +8,20 @@
             @if (isOverlay) {
                 <button class="btn btn-secondary close-btn" (click)="close.emit()">Close</button>
             }
-            <button class="btn btn-primary" (click)="openScheduleModal()">+ Schedule Recording</button>
+            <button class="btn btn-primary" (click)="openScheduleModal()">+ Schedule recording</button>
         </div>
     </header>
 
     @if (loading) {
     <div class="loading-container">
         <div class="spinner"></div>
+    </div>
+    } @else if (loadError) {
+<div class="glass-card state state--error">
+        <lucide-icon name="circle-alert" class="icon icon--xl state__icon"></lucide-icon>
+        <h2 class="state__title">Could not load your recordings</h2>
+        <p class="state__message">{{ loadError }}</p>
+        <button class="btn btn-secondary" (click)="loadAll()">Try again</button>
     </div>
     } @else {
     <div class="dvr-tabs">
@@ -292,7 +299,7 @@
     @if (showScheduleModal) {
     <div class="modal-backdrop" (click)="showScheduleModal = false">
         <div class="modal-content" appModalFocus (dismiss)="showScheduleModal = false" aria-labelledby="schedule-recording-title" (click)="$event.stopPropagation()">
-            <h2 id="schedule-recording-title">Schedule Recording</h2>
+            <h2 id="schedule-recording-title">Schedule a recording</h2>
             <div class="form-grid">
                 <div class="form-group">
                     <label for="rec-channel">Channel</label>

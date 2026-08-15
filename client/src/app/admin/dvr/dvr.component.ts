@@ -24,6 +24,8 @@ export class DvrComponent implements OnInit, OnDestroy {
     @Output() close = new EventEmitter<void>();
 
     recordings: any[] = [];
+    /** Set when the load failed, so an error is not shown as an empty list. */
+    loadError: string | null = null;
     localRecordings: ClientRecording[] = [];
     recordingsTab: 'system' | 'my' = 'system';
     loading = true;
@@ -89,9 +91,13 @@ export class DvrComponent implements OnInit, OnDestroy {
 
     async loadAll(): Promise<void> {
         this.loading = true;
+        this.loadError = null;
         try {
+            // The recordings list is the point of this screen, so its failure is
+            // reported. Storage, rules and the browser recorder are supporting
+            // detail — a screen that renders without them is still useful.
             const [recordings, storage, rules] = await Promise.all([
-                this.api.getDvrSchedules().toPromise().catch(() => []),
+                this.api.getDvrSchedules().toPromise(),
                 this.api.getDvrStorage().toPromise().catch(() => null),
                 this.api.getSeriesRules().toPromise().catch(() => []),
                 this.clientRecordings.refresh().catch(() => undefined)
@@ -122,7 +128,12 @@ export class DvrComponent implements OnInit, OnDestroy {
                 this.storageRecordings = storage.recordingsBytes ?? 0;
                 this.retention = storage.retention ?? null;
             }
-        } catch { this.recordings = []; }
+        } catch (e: any) {
+            this.recordings = [];
+            this.loadError = e?.status === 0
+                ? 'Could not reach the server.'
+                : (e?.error?.error || 'Something went wrong loading your recordings.');
+        }
         finally {
             this.loading = false;
             this.cdr.detectChanges();

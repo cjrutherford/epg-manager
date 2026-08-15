@@ -18,6 +18,8 @@ type Family = 'all' | 'channels' | 'guide';
 })
 export class SourcesComponent implements OnInit {
     sources: SourceRecord[] = [];
+    /** Set when the load failed, so an error is not shown as an empty list. */
+    loadError: string | null = null;
     loading = true;
     family: Family = 'all';
 
@@ -44,11 +46,14 @@ export class SourcesComponent implements OnInit {
 
     async load(): Promise<void> {
         this.loading = true;
+        this.loadError = null;
         try {
             this.sources = (await this.api.getSources().toPromise()) || [];
-        } catch {
+        } catch (e: any) {
             this.sources = [];
-            this.toast.show('Could not load sources', 'error');
+            this.loadError = e?.status === 0
+                ? 'Could not reach the server.'
+                : (e?.error?.error || 'Something went wrong loading your sources.');
         } finally {
             this.loading = false;
             this.cdr.detectChanges();

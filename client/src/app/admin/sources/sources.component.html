@@ -5,13 +5,20 @@
             <p class="page-sub">Where channels and guide data come from.</p>
         </div>
         <div class="page-header__actions">
-            <button class="btn btn-secondary" (click)="exportAll()">Export / Import</button>
-            <button class="btn btn-primary" (click)="openAdd()">+ Add Source</button>
+            <button class="btn btn-secondary" (click)="exportAll()">Export / import</button>
+            <button class="btn btn-primary" (click)="openAdd()">+ Add source</button>
         </div>
     </header>
 
     @if (loading) {
     <div class="loading-container"><div class="spinner"></div></div>
+    } @else if (loadError) {
+<div class="glass-card state state--error">
+        <lucide-icon name="circle-alert" class="icon icon--xl state__icon"></lucide-icon>
+        <h2 class="state__title">Could not load your sources</h2>
+        <p class="state__message">{{ loadError }}</p>
+        <button class="btn btn-secondary" (click)="load()">Try again</button>
+    </div>
     } @else {
 
     <!-- The same statistic component as Dashboard and Diagnostics; here the
@@ -41,7 +48,7 @@
     @if (visibleSources.length === 0) {
     <div class="glass-card empty-sources">
         <p>No sources here yet. Add a playlist URL or a guide feed to get started.</p>
-        <button class="btn btn-primary" (click)="openAdd()">+ Add Source</button>
+        <button class="btn btn-primary" (click)="openAdd()">+ Add source</button>
     </div>
     } @else {
     <div class="glass-card table-wrapper">

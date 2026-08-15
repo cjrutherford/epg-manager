@@ -3,7 +3,7 @@
 Single source of truth for the remediation effort. Consolidates the process audit, the UI &
 source-retrieval audit, and the source acquisition architecture into one tracked backlog.
 
-**Status:** 26 hardening slices done. S26a–c done; S26d, S26e next, then S24 e2e (4 slices).
+**Status:** 26 hardening slices plus all 5 design slices done. Next: S24 e2e (4 slices).
 **Suite score at baseline:** 2.5 / 5 (process) · 2.3 / 5 (UI)
 **Last updated:** 2026-08-13
 
@@ -903,21 +903,41 @@ Ordered so each slice makes the next one smaller. S26a is the prerequisite for e
   where it had no rules and rendered at lucide's default 24px; my new global rule shrank them to
   14px. Caught by comparing screenshots, not by any test. They now carry `.icon--lg` explicitly.
 
-- [ ] **S26d · Say the same thing everywhere** — S
+- [x] **S26d · Say the same thing everywhere** — S
   Reconcile nav labels with page titles, give every screen a one-line purpose, and settle on one verb
   form for actions.
-  → `admin-layout.component.html`, all admin templates
-  - [ ] Nav label and page title agree on all six screens
-  - [ ] Every screen states its purpose in one line
-  - [ ] Buttons that do the same thing are worded the same way
+  → all admin templates
+  - [x] Nav label and page title agree on all six screens
+        — carried by S26b: "Channel Manager" became "Channels", "DVR Manager" became "DVR",
+        "EPG & Match Diagnostics" became "EPG & Matches"
+  - [x] Every screen states its purpose in one line
+        — also carried by S26b; three screens had no subtitle at all
+  - [x] Buttons that do the same thing are worded the same way
+        — **24 labels** moved to sentence case, which the newer screens already used while the older
+        ones were Title Case. `Auto-#` and `Auto-Number` were the same action under two names; both
+        are now "Auto-number". Proper nouns kept: EPG, IMDb, M3U, XMLTV, URL, FAST
 
-- [ ] **S26e · Responsive and state coverage** — M
+- [x] **S26e · Responsive and state coverage** — M
   One breakpoint set as tokens. Every list gets an empty, loading and error state drawn from the
   shared vocabulary.
-  → `styles.css`, all admin templates
-  - [ ] Breakpoints come from a defined set, not ad-hoc values
-  - [ ] Every list has all three states, and they look the same across screens
-  - [ ] All six screens verified at 360px, 768px and 1280px
+  → `styles.css`, four admin components
+  - [x] Breakpoints come from a defined set, not ad-hoc values
+        — **the audit overstated this one.** It counted element `max-width` declarations as
+        breakpoints; the actual media queries were already three coherent values. Documented as
+        `--bp-sm` 640 / `--bp-md` 768 / `--bp-lg` 1024, with the 768/769 pair being the standard
+        below/above split
+  - [x] Every list has all three states, and they look the same across screens
+        — **error states did not exist.** A failed load emptied the list, so "the server is down"
+        and "you have no channels" looked identical, with only a toast to tell them apart — and
+        before S23 that toast expired after four seconds. All four lists now render the shared
+        `.state--error` with a reason and a Try again button
+  - [x] All six screens verified at 360px, 768px and 1280px
+        — 18 checks, **0 horizontal overflow, 0 clipped text**. The 360px layout collapses to a
+        single column with a hamburger nav
+
+  The DVR needed a further fix: it wrapped every call in its own `.catch`, so nothing could ever
+  reach the error handler. Its recordings list now reports failure while storage, series rules and
+  the browser recorder stay tolerant — a screen that renders without those is still useful.
 
   *Inline styles (66) are retired opportunistically across S26a–S26e rather than as their own slice —
   most are spacing and colour that the scale and vocabulary replace outright.*
@@ -1030,3 +1050,6 @@ memory, so **restart it after `ng build`** or you will screenshot the previous b
 | 2026-08-14 | S26a | Done. 539 raw values tokenised — 42 font sizes, 25 spacings and 12 radii all to 0, behind a 10-step type scale and a 12-step spacing scale. Guard tests keep them out. Widening the contrast audit to text-on-fill found four pre-existing AA failures, including a destructive button label at 2.65:1; all fixed with measured per-theme tokens. 9 new unit tests; suite 564 -> 573. |
 | 2026-08-15 | S26b | Done. One page header, one summary statistic and one spinner replace the per-screen copies — the statistic measures identically on all three screens that use it. Admin CSS 2,977 -> 2,780 lines, 34 duplicated rule blocks gone, hand-rolled glass surfaces 11 -> 2. The 10px action-row misalignment turned out to be button content-centring under a stretching grid, not the emoji; spread is now 0. |
 | 2026-08-15 | S26c | Done. 32 emoji replaced with lucide icons that take colour from the theme and size from the scale; the `→` in "Playlist → Match → Grab" stays because it is content. Introduced and then fixed a regression: my new global `.icon` collided with the class already on every nav item, shrinking those icons from 24px to 14px — caught by comparing screenshots, not by a test. |
+| 2026-08-15 | S26d | Done. 24 button and heading labels moved to sentence case; `Auto-#` and `Auto-Number` were one action under two names. The nav/title and one-line-purpose criteria were already satisfied by S26b. |
+| 2026-08-15 | S26e | Done. Found that **no list had an error state at all** — a failed load emptied the list, so a dead server looked exactly like an empty database. All four now say so and offer a retry. The breakpoint criterion turned out to be overstated by my own audit, which had counted element max-widths as breakpoints; corrected in the record. 18 layout checks at three widths, all clean. |
+| 2026-08-15 | — | Caught myself reporting a false pass: the first three-width run used a `resize` command that does not exist, so all 18 checks ran at 1280px. The correct command is `agent-browser set viewport`. Re-run properly. |

@@ -15,6 +15,13 @@
     <div class="loading-container">
         <div class="spinner"></div>
     </div>
+    } @else if (loadError) {
+<div class="glass-card state state--error">
+        <lucide-icon name="circle-alert" class="icon icon--xl state__icon"></lucide-icon>
+        <h2 class="state__title">Could not load the diagnostics</h2>
+        <p class="state__message">{{ loadError }}</p>
+        <button class="btn btn-secondary" (click)="loadAll()">Try again</button>
+    </div>
     } @else {
 
     <!-- Summary Metrics -->
@@ -40,10 +47,10 @@
     <!-- Tab Navigation -->
     <div class="tab-nav">
         <button class="tab-btn" [class.active]="activeTab === 'matches'" (click)="activeTab = 'matches'">
-            <lucide-icon name="link-2" class="icon"></lucide-icon> Match Analyzer
+            <lucide-icon name="link-2" class="icon"></lucide-icon> Match analyser
         </button>
         <button class="tab-btn" [class.active]="activeTab === 'sources'" (click)="activeTab = 'sources'">
-            <lucide-icon name="satellite" class="icon"></lucide-icon> EPG Source Reliability
+            <lucide-icon name="satellite" class="icon"></lucide-icon> EPG source reliability
         </button>
     </div>
 
@@ -130,7 +137,7 @@
     <div class="glass-card table-wrapper">
         <div class="table-section-header">
             <div>
-                <h2>Grab-Capable Match Sources</h2>
+                <h2>Grab-capable match sources</h2>
                 <p>Enabled sources are used for both matching candidates and EPG grabbing.</p>
             </div>
             <button class="btn btn-secondary" (click)="syncEpgSources()" [disabled]="syncingSources">
@@ -196,7 +203,7 @@
     <div class="glass-card table-wrapper">
         <div class="table-section-header">
             <div>
-                <h2>Scraper Site Reliability</h2>
+                <h2>Scraper site reliability</h2>
                 <p>Historical grab outcomes by underlying scraper site.</p>
             </div>
         </div>
@@ -260,7 +267,7 @@
     <div class="modal-backdrop" (click)="showRematchModal = false">
         <div class="modal-content" appModalFocus (dismiss)="showRematchModal = false" aria-labelledby="diagnostics-modal-title" (click)="$event.stopPropagation()">
             <div class="modal-header">
-                <h2 id="diagnostics-modal-title">EPG Manual Rematch</h2>
+                <h2 id="diagnostics-modal-title">Rematch this channel</h2>
                 <button class="close-modal-btn" (click)="showRematchModal = false"><lucide-icon name="x" class="icon"></lucide-icon></button>
             </div>
             
@@ -292,7 +299,7 @@
                         <strong class="result-name">{{ res.name }}</strong>
                         <span class="result-meta">ID: <code>{{ res.id }}</code> • Site: {{ res.site }}</span>
                     </div>
-                    <button class="btn btn-secondary small-btn">Link Channel</button>
+                    <button class="btn btn-secondary small-btn">Link channel</button>
                 </div>
                 }
                 @if (rematchResults.length === 0 && rematchQuery) {

@@ -117,6 +117,19 @@
     --space-5xl: 40px;
     --space-6xl: 48px;
 
+    /* ─── Breakpoints ────────────────────────────
+     * Three, and only three. Custom properties cannot be used inside a media
+     * query, so these exist to be read and cited rather than interpolated:
+     * every @media in this application uses one of these widths.
+     *
+     *   --bp-sm  640px   phone, single column
+     *   --bp-md  768px   tablet, sidebar collapses
+     *   --bp-lg 1024px   desktop, full layout
+     */
+    --bp-sm: 640px;
+    --bp-md: 768px;
+    --bp-lg: 1024px;
+
     /* Pill, for badges and chips. The literal 999px appeared throughout. */
     --radius-pill: 999px;
     --radius-sm: 4px;

@@ -17,6 +17,8 @@ import { LucideAngularModule } from 'lucide-angular';
 export class DiagnosticsComponent implements OnInit {
     activeTab: 'matches' | 'sources' = 'matches';
     analysis: any = null;
+    /** Set when the load failed, so an error is not shown as an empty list. */
+    loadError: string | null = null;
     sources: any[] = [];
     epgSources: any[] = [];
     loading = true;
@@ -57,6 +59,9 @@ export class DiagnosticsComponent implements OnInit {
             this.sources = sources || [];
             this.epgSources = epgSources || [];
         } catch (e: any) {
+            this.loadError = e?.status === 0
+                ? 'Could not reach the server.'
+                : (e?.error?.error || 'Something went wrong loading the diagnostics.');
             this.toast.show('Failed to load diagnostics data: ' + e.message, 'error');
         } finally {
             this.loading = false;

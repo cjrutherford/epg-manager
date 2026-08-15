@@ -1,4 +1,5 @@
 import { ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
+import { LucideAngularModule } from 'lucide-angular';
 import { ConfirmService } from '../../services/confirm.service';
 import { ModalFocusDirective } from '../../services/modal-focus.directive';
 import { CommonModule } from '@angular/common';
@@ -10,12 +11,14 @@ import { computeWindow } from './channel-window';
 @Component({
     selector: 'app-channel-manager',
     standalone: true,
-    imports: [CommonModule, FormsModule, ModalFocusDirective],
+    imports: [CommonModule, FormsModule, ModalFocusDirective, LucideAngularModule],
     templateUrl: './channel-manager.component.html',
     styleUrl: './channel-manager.component.css'
 })
 export class ChannelManagerComponent implements OnInit, OnDestroy {
     channels: any[] = [];
+    /** Set when the load failed, so an error is not shown as an empty list. */
+    loadError: string | null = null;
     filteredChannels: any[] = [];
     loading = true;
 
@@ -102,6 +105,7 @@ export class ChannelManagerComponent implements OnInit, OnDestroy {
 
     async loadChannels(): Promise<void> {
         this.loading = true;
+        this.loadError = null;
         try {
             const [channels, categories] = await Promise.all([
                 this.api.getMapping().toPromise(),
@@ -116,9 +120,12 @@ export class ChannelManagerComponent implements OnInit, OnDestroy {
             }));
             this.categories = (categories || []).map((c: any) => c.group_title);
             this.applyFilters();
-        } catch (e) {
+        } catch (e: any) {
             console.error('Load channels failed', e);
             this.channels = [];
+            this.loadError = e?.status === 0
+                ? 'Could not reach the server.'
+                : (e?.error?.error || 'Something went wrong loading your channels.');
         } finally {
             this.loading = false;
             this.cdr.detectChanges();

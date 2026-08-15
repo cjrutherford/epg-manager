@@ -36,7 +36,7 @@
             @if (syncStarted) {
             <span class="spinner-sm"></span> Sync running…
             } @else {
-            <lucide-icon name="play" class="icon"></lucide-icon> Run Initial Sync
+            <lucide-icon name="play" class="icon"></lucide-icon> Run initial sync
             }
         </button>
     </div>
@@ -70,7 +70,7 @@
                  itself rather than failing with a 409 after the fact. -->
             <button type="button" class="glass-card action-card" (click)="runFullSync()">
                 <lucide-icon name="refresh-cw" class="icon icon--lg action-icon" aria-hidden="true"></lucide-icon>
-                <div class="action-title">Run Full Sync</div>
+                <div class="action-title">Run full sync</div>
                 <div class="action-desc">
                     @if (jobRunning) { Will queue behind the running job }
                     @else { Playlist → Match → Grab → Enrich → Rebuild }
@@ -78,7 +78,7 @@
             </button>
             <button type="button" class="glass-card action-card" (click)="grabMissing()">
                 <lucide-icon name="satellite" class="icon icon--lg action-icon" aria-hidden="true"></lucide-icon>
-                <div class="action-title">Grab EPG Data</div>
+                <div class="action-title">Grab EPG data</div>
                 <div class="action-desc">
                     @if (jobRunning) { Will queue behind the running job }
                     @else { Fetch EPG data for matched channels }
@@ -86,7 +86,7 @@
             </button>
             <button type="button" class="glass-card action-card" (click)="rebuildFiles()">
                 <lucide-icon name="package" class="icon icon--lg action-icon" aria-hidden="true"></lucide-icon>
-                <div class="action-title">Rebuild Files</div>
+                <div class="action-title">Rebuild files</div>
                 <div class="action-desc">
                     @if (jobRunning) { Will queue behind the running job }
                     @else { Regenerate M3U and XMLTV files }
@@ -97,7 +97,7 @@
                     [attr.aria-describedby]="jobRunning ? 'reset-unavailable' : null"
                     (click)="openResetModal()">
                 <lucide-icon name="siren" class="icon icon--lg action-icon" aria-hidden="true"></lucide-icon>
-                <div class="action-title text-danger">Reset Data</div>
+                <div class="action-title text-danger">Reset data</div>
                 <div class="action-desc" id="reset-unavailable">
                     @if (jobRunning) { Unavailable while a sync is running — cancel it first }
                     @else { Choose what to clear — guide, your data, or caches }
@@ -181,8 +181,8 @@
                     <div class="logs-header">
                         <span>Console Logs</span>
                         <div class="logs-actions">
-                            <button class="small-btn" (click)="clearLogs()">Clear Logs</button>
-                            <button class="small-btn" (click)="clearCompletedProgress()">Clear Progress</button>
+                            <button class="small-btn" (click)="clearLogs()">Clear logs</button>
+                            <button class="small-btn" (click)="clearCompletedProgress()">Clear progress</button>
                         </div>
                     </div>
                     <div class="status-logs" #logContainer>
