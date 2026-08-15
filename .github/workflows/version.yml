@@ -1,0 +1,74 @@
+name: Version
+
+# Releases are deliberate here, not automatic. The commit messages in this
+# repository are written for people ("S24c: cover what this programme
+# changed"), not for a machine to parse into a version — so inferring the next
+# number from them would be guessing. This asks instead, then does every part
+# of the bookkeeping exactly the same way each time.
+on:
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: "How large a change is this?"
+        required: true
+        default: patch
+        type: choice
+        options: [patch, minor, major]
+      exact:
+        description: "Or an exact version (1.4.0), which overrides the choice above"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    name: Set the version and tag it
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - run: npm ci
+
+      # Refuse to release from a tree the tests do not pass on. Tagging first
+      # and finding out afterwards leaves a version number that has to be
+      # explained away.
+      - name: Unit tests
+        run: npm test
+
+      - name: Set the version everywhere
+        id: set
+        run: |
+          target="${{ inputs.exact }}"
+          [ -z "$target" ] && target="${{ inputs.kind }}"
+          npx ts-node scripts/set-version.ts "$target"
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Confirm every file agrees
+        run: npx ts-node scripts/set-version.ts --check "v${{ steps.set.outputs.version }}"
+
+      - name: Commit and tag
+        run: |
+          version="${{ steps.set.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json client/package.json client/android/app/build.gradle
+          git commit -m "Release v${version}"
+          git tag -a "v${version}" -m "Release v${version}"
+          git push origin HEAD:"${GITHUB_REF_NAME}"
+          # Pushing the tag is what starts the release workflow.
+          git push origin "v${version}"
+
+      - name: Say what happens next
+        run: |
+          echo "Tagged v${{ steps.set.outputs.version }}." >> "$GITHUB_STEP_SUMMARY"
+          echo "The Release workflow is now building the image and the installers." >> "$GITHUB_STEP_SUMMARY"

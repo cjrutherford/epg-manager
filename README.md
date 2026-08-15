@@ -195,6 +195,43 @@ did.
 
 ---
 
+## Releases
+
+Versions are set in one place and propagated. `package.json`, `client/package.json`
+and the Android `build.gradle` used to say three different things — 0.1.0, 0.0.0
+and 1.0 — which makes a bug report impossible to place against a build.
+
+```bash
+npm run version:set minor     # or patch, major, or an exact 1.4.0
+npm run version:check v1.4.0  # verify every file agrees, without writing
+```
+
+Cutting a release:
+
+1. Run the **Version** workflow (Actions → Version → Run workflow) and choose
+   patch, minor or major. It runs the unit tests, sets the version in all three
+   files, commits and pushes a `vX.Y.Z` tag.
+2. The tag starts the **Release** workflow, which:
+   - refuses to continue unless the tag matches every version in the repository
+   - runs the unit and end-to-end suites
+   - builds and pushes a multi-architecture image to GHCR, and to Docker Hub if
+     `DOCKERHUB_USERNAME` is configured
+   - builds the `mobile` and `tv` Android installers
+   - publishes a GitHub Release with the installers and `docker-compose.yml`
+
+Android builds are debug-signed by default, which installs by side-load without
+anyone holding a release keystore. Set `ANDROID_KEYSTORE_BASE64`,
+`ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD` to
+produce signed release builds instead.
+
+To build the installers locally:
+
+```bash
+npm run build:apk    # uses JAVA_HOME, or the JDK vendored under client/
+```
+
+---
+
 ## Environment Variables
 
 | Variable | Default | Description |

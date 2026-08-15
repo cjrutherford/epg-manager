@@ -7,7 +7,7 @@ API_PORT="${API_PORT:-4000}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}"
 
 echo "┌─────────────────────────────────────────┐"
-echo "│         EPG Manager Starting Up         │"
+echo "│        Tuner Daemon Starting Up         │"
 echo "├─────────────────────────────────────────┤"
 echo "│  Port:         ${PORT}"
 echo "│  API Port:     ${API_PORT}"

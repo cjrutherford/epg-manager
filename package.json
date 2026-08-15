@@ -1,7 +1,7 @@
 {
-  "name": "epg-manager",
-  "version": "0.1.0",
-  "description": "IPTV Playlist and EPG Manager with automatic channel matching and metadata enrichment",
+  "name": "tuner-daemon",
+  "version": "0.2.0",
+  "description": "Self-hosted IPTV suite: playlist and guide acquisition, channel matching, live streaming and a DVR.",
   "main": "dist/server.js",
   "repository": {
     "type": "git",
@@ -22,7 +22,7 @@
     "start": "node dist/server.js",
     "build": "tsc",
     "build:client": "cd client && npx ng build",
-    "build:mobile": "cd client && npx ng build --configuration mobile && npx cap sync && cd android && JAVA_HOME=/home/cjrutherford/workspace/epg-manager/client/jdk-21 ./gradlew assembleDebug",
+    "build:mobile": "sh scripts/build-apk.sh",
     "build:all": "tsc && cd client && npx ng build",
     "dev": "ts-node src/server.ts",
     "dev:client": "cd client && npx ng serve --proxy-config proxy.conf.json",
@@ -35,7 +35,10 @@
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
     "docker:start": "docker compose up -d --build",
-    "test:e2e:docs": "playwright test --project=docs && ts-node e2e/docs/collect-video.ts"
+    "test:e2e:docs": "playwright test --project=docs && ts-node e2e/docs/collect-video.ts",
+    "version:set": "ts-node scripts/set-version.ts",
+    "version:check": "ts-node scripts/set-version.ts --check",
+    "build:apk": "sh scripts/build-apk.sh"
   },
   "license": "MIT",
   "dependencies": {

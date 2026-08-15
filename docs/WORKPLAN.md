@@ -3,7 +3,7 @@
 Single source of truth for the remediation effort. Consolidates the process audit, the UI &
 source-retrieval audit, and the source acquisition architecture into one tracked backlog.
 
-**Status:** 26 hardening + 5 design slices done. S24a–c done; only S24d (CI) remains.
+**Status:** 26 hardening + 5 design slices done. S24a–d complete; releases are automated from a tag.
 **Suite score at baseline:** 2.5 / 5 (process) · 2.3 / 5 (UI)
 **Last updated:** 2026-08-13
 
@@ -90,6 +90,8 @@ Defects are referenced by id from slice descriptions. `D` = process audit, `R` =
 | X5 | Two icon systems, 63 inline styles | all templates | S22 |
 | X6 | Screens fetch overlapping data from divergent endpoints | `api.service.ts` | S21 |
 | X7 | `e2e/ui.spec.ts` is stale and effectively non-functional — asserts the pre-rename app name ("EPG Manager" vs "Tuner Daemon") and assumes a seeded database. Fails on a clean checkout with **and** without changes, so it gates nothing. | `e2e/ui.spec.ts` | S24 |
+| X9 | Three files claim three different versions — root `package.json` 0.1.0, `client/package.json` 0.0.0, Android `versionName "1.0"`. A bug report cannot be placed against a build. | `package.json`, `client/package.json`, `build.gradle` | S24d ✅ |
+| X10 | The Android build works on one machine only: `build:mobile` hardcodes an absolute `JAVA_HOME` under a developer's home directory, and builds `assembleDebug` rather than the `mobile`/`tv` flavours. | `package.json` | S24d ✅ |
 
 ---
 
@@ -772,17 +774,43 @@ Size: **S** ≈ a session · **M** ≈ a day · **L** ≈ multi-day.
   failures that depended on scheduling, which is the kind that gets rerun until it passes. They now
   run serially, after everything else.
 
-- [ ] **S24d · Wire it into CI** — S
-  Only unit tests run today. Last, deliberately: a suite that gates merges has to be reliable first,
-  or it teaches people to ignore it.
-  `e2e/ui.spec.ts` fails wholesale on a clean checkout — stale assertions from before the rename, and
-  an assumption that channels are already seeded. A suite that fails either way gates nothing, so
-  every future slice ships without UI regression cover. Fix the assertions, add a seeded fixture so
-  data-dependent tests have data, and wire e2e into CI (currently only unit tests run).
-  *Fixes X7.* → `e2e/`, `.github/workflows/ci.yml`, `playwright.config.ts`
-  - [ ] `npx playwright test` passes from a clean checkout against a seeded fixture
-  - [ ] CI runs e2e and fails the build on regression
-  - [ ] No test depends on data a previous test created
+- [x] **S24d · Wire it into CI, and release from a tag** — S
+  Only unit tests ran. Last, deliberately: a suite that gates merges has to be reliable first, or it
+  teaches people to ignore it. Extended at Chris's direction to cover versioning and releases,
+  including Android installers and a published image.
+  *Fixes X7, X9, X10.* → `.github/workflows/{ci,release,version}.yml`, `src/services/version.ts` (new),
+  `scripts/set-version.ts` (new), `scripts/build-apk.sh` (new), `README.md`
+  - [x] `npx playwright test` passes from a clean checkout against a seeded fixture
+        — **57 passing, 1 skipped**, in two projects: `e2e` in parallel, then `e2e-destructive`
+  - [x] CI runs e2e and fails the build on regression
+        — `ci.yml` now builds the **client** as well as the server (it built only the server, so a
+        broken client compiled cleanly through CI), installs ffmpeg and Chromium, and uploads the
+        report and failure videos. `docker` publishes both ports and waits for the container to
+        report **healthy** rather than assuming it
+  - [x] No test depends on data a previous test created
+  - [x] One version, set in one place
+        — the repo said **three different things**: root `package.json` 0.1.0, `client/package.json`
+        0.0.0, Android `versionName "1.0"`. `npm run version:set minor` writes all three and derives
+        the Android `versionCode` (1.2.3 → 10203); `version:check v1.4.0` refuses a release whose
+        tag disagrees with any file. 20 unit tests
+  - [x] A tag produces installers and an image
+        — `release.yml` verifies the tag against every file **before** building, then publishes a
+        multi-architecture image to GHCR (no secret needed) and Docker Hub when configured, plus the
+        `mobile` and `tv` APKs. Debug-signed by default so a release side-loads without anyone
+        holding a keystore; signed properly when `ANDROID_KEYSTORE_BASE64` is set
+  - [x] Verified locally, not just in YAML
+        — both APKs built for real and `aapt2 dump badging` reports `versionCode='200'
+        versionName='0.2.0-mobile'` / `'0.2.0-tv'`, so the version reaches the installed artefact.
+        The image was built and run: API 200, web 302, healthcheck **healthy**
+
+  **The Android build only worked on one machine.** `build:mobile` hardcoded
+  `JAVA_HOME=/home/cjrutherford/workspace/epg-manager/client/jdk-21`, an absolute path to one
+  developer's checkout, and ran `assembleDebug` rather than the flavours. Replaced with
+  `scripts/build-apk.sh`, which honours `JAVA_HOME` and falls back to the vendored JDK.
+
+  **Versions cannot be inferred from commit messages.** Conventional-commit tooling was the obvious
+  route, but this repo's history is written for people (`polished interface`, `feature complete`), so
+  deriving a version from it would be guessing. The bump is a deliberate `workflow_dispatch` choice.
 
 - [x] **S14 · Truth pass on repo and docs** — S
   Delete the unserved `src/public/` legacy UIs. Correct the README API table. Publish port 4000 in
@@ -1144,6 +1172,7 @@ memory, so **restart it after `ng build`** or you will screenshot the previous b
 | 2026-08-14 | S22 | Done. Fonts self-hosted and verified with Google's hosts blocked at the browser. One modal directive replaced eight hand-rolled dialogs — focus trap proven with 60 key presses. The focus ring became universal rather than an enumerated list. Contrast measured across all nine themes, which found a genuine failure in the light theme's warning colour (2.91:1, needed 3:1) that no amount of looking had caught. 13 new unit tests; suite 538 -> 551. Inline styles and icon consolidation deliberately left out. |
 | 2026-08-14 | S23 | Done. Errors persist until dismissed and are announced through a live region; hover holds every countdown; the queue cap drops transient messages before persistent ones. All 14 native confirms replaced with a focus-trapping dialog that has room to say what will actually happen. Found that the Watch UI had never rendered a toast at all — the container was mounted only in the admin layout, so thirteen call sites produced nothing. 13 new unit tests; suite 551 -> 564. |
 | 2026-08-14 | — | All 26 planned slices are complete. S24 remains held for subdivision. |
+| 2026-08-15 | S24d | S24 closed. Versioning and releases automated; installers and image published from a tag. |
 | 2026-08-14 | — | Design language audit at Chris's request. Scores **2.1 (High)** overall, with type/spacing scale (1.25) and summary statistics (1.50) in the Critical band. Headline measurements: 42 distinct font sizes, 25 spacing values, 3 icon systems, and the same summary statistic designed three different ways. Proposed as slice group S26a–S26e. |
 | 2026-08-14 | S26a | Done. 539 raw values tokenised — 42 font sizes, 25 spacings and 12 radii all to 0, behind a 10-step type scale and a 12-step spacing scale. Guard tests keep them out. Widening the contrast audit to text-on-fill found four pre-existing AA failures, including a destructive button label at 2.65:1; all fixed with measured per-theme tokens. 9 new unit tests; suite 564 -> 573. |
 | 2026-08-15 | S26b | Done. One page header, one summary statistic and one spinner replace the per-screen copies — the statistic measures identically on all three screens that use it. Admin CSS 2,977 -> 2,780 lines, 34 duplicated rule blocks gone, hand-rolled glass surfaces 11 -> 2. The 10px action-row misalignment turned out to be button content-centring under a stretching grid, not the emoji; spread is now 0. |

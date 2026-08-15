@@ -5,62 +5,249 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: write   # create the release and upload assets
+  packages: write   # push the image to GHCR
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
 jobs:
-  test:
+  verify:
+    name: Verify the tag and the tests
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
 
-      - name: Install dependencies
-        run: npm ci
+      - run: npm ci
 
-      - name: Run unit tests
+      # Before anything is published under this name: a release tagged v1.4.0
+      # that ships a binary reporting 0.1.0 is worse than no version at all,
+      # because it will be believed.
+      - name: The tag matches every version in the repository
+        run: npx ts-node scripts/set-version.ts --check "${GITHUB_REF_NAME}"
+
+      - name: Read the version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Unit tests
         run: npm test
 
-      - name: Build
-        run: npm run build
+      - name: Build server and client
+        run: npm run build && npm run build:client
 
-  build-and-publish:
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install Playwright browser
+        run: npx playwright install chromium --with-deps
+
+      # A release that has not passed the suite is not a release.
+      - name: End-to-end tests
+        run: npm run test:e2e
+
+      - name: Upload failure evidence
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: release-playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+
+  docker:
+    name: Publish the image
     runs-on: ubuntu-latest
-    needs: test
+    needs: verify
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Login to Docker Hub
+      # GHCR needs no configuration beyond the token this workflow already has,
+      # so a fork or a fresh clone can publish without anyone setting secrets.
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
-        if: github.event_name != 'pull_request'
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Docker Hub is optional and only used when it has been configured.
+      - name: Log in to Docker Hub
+        if: vars.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      - name: Work out the tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+            ${{ vars.DOCKERHUB_USERNAME != '' && format('{0}/tuner-daemon', vars.DOCKERHUB_USERNAME) || '' }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
 
-      - name: Build and push Docker image
+      - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: ${{ github.event_name != 'pull_request' && secrets.DOCKERHUB_USERNAME != '' }}
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/epg-manager:${{ steps.version.outputs.VERSION }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/epg-manager:latest
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+  android:
+    name: Build the installers
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
         with:
+          node-version: "20"
+          cache: "npm"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v3
+
+      - run: npm ci
+
+      - name: Build the mobile bundle and sync it into the Android project
+        run: |
+          cd client
+          npx ng build --configuration mobile
+          npx cap sync android
+
+      # Debug builds are signed with the standard debug key, which means they
+      # install by side-load without anyone holding a release keystore. When a
+      # keystore is configured the signed release build is produced instead.
+      - name: Build debug APKs
+        if: env.KEYSTORE == ''
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          cd client/android
+          ./gradlew assembleMobileDebug assembleTvDebug --no-daemon
+
+      - name: Build signed release APKs
+        if: env.KEYSTORE != ''
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          cd client/android
+          echo "$KEYSTORE" | base64 -d > release.keystore
+          ./gradlew assembleMobileRelease assembleTvRelease --no-daemon \
+            -Pandroid.injected.signing.store.file="$PWD/release.keystore" \
+            -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+          rm -f release.keystore
+
+      # Named from the APK's own filename (app-mobile-debug.apk), not from its
+      # path: deriving the flavour by stripping characters out of a directory
+      # name mangles any flavour that happens to contain them.
+      - name: Name the APKs after the release
+        run: |
+          set -euo pipefail
+          mkdir -p dist-apk
+          version="${{ needs.verify.outputs.version }}"
+          found=0
+          for flavour in mobile tv; do
+            for apk in $(find client/android/app/build/outputs/apk/"$flavour" -name "app-${flavour}-*.apk" 2>/dev/null); do
+              cp "$apk" "dist-apk/tuner-daemon-${flavour}-${version}.apk"
+              found=$((found + 1))
+            done
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "No APKs were produced." >&2
+            find client/android/app/build/outputs -name '*.apk' >&2 || true
+            exit 1
+          fi
+          ls -la dist-apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apks
+          path: dist-apk/*.apk
+          retention-days: 30
+
+  publish:
+    name: Publish the release
+    runs-on: ubuntu-latest
+    needs: [verify, docker, android]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-apks
+          path: dist-apk
+
+      - name: Write the install notes
+        run: |
+          version="${{ needs.verify.outputs.version }}"
+          cat > RELEASE_NOTES.md <<NOTES
+          ## Install
+
+          **Docker**
+
+          \`\`\`bash
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${version}
+          \`\`\`
+
+          Or with the bundled compose file:
+
+          \`\`\`bash
+          curl -O https://raw.githubusercontent.com/${{ github.repository }}/v${version}/docker-compose.yml
+          docker compose up -d
+          \`\`\`
+
+          The web interface is on port 3000 and the API on port 4000. Set
+          \`ADMIN_PASSWORD\` before exposing it to anything.
+
+          **Android**
+
+          Attached below: \`mobile\` for phones and tablets, \`tv\` for Android TV.
+          Side-loading requires "install from unknown sources" for whichever app
+          you install from.
+
+          ---
+          NOTES
+
+      - name: Create the release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: RELEASE_NOTES.md
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
-            CHANGELOG.md
-            README.md
+            dist-apk/*.apk
+            docker-compose.yml
