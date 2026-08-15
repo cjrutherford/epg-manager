@@ -4,7 +4,7 @@ import { provideHttpClient, withInterceptors, HttpInterceptorFn } from '@angular
 import { routes } from './app.routes';
 import { authInterceptor } from './services/auth.interceptor';
 import { provideClientHydration } from '@angular/platform-browser';
-import { LucideAngularModule, GripHorizontal, Columns2, SquareMenu, PlaySquare, Cast, Maximize, Minimize, PictureInPicture2, PictureInPicture, Volume2, VolumeX, Menu, Search, X, Heart, Settings, ShieldAlert, MonitorPlay, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Info, AlertTriangle, ArrowUp, ArrowDown, Clock, HelpCircle, Film, Newspaper, Trophy, Music, Monitor, Radio, Baby, Globe, HeartPulse, List, FolderTree, ArrowRight, LayoutDashboard, LogOut, Play, Disc, Video, CalendarDays, Eye, EyeOff, Palette, Activity, Server } from 'lucide-angular';
+import { LucideAngularModule, GripHorizontal, Columns2, SquareMenu, PlaySquare, Cast, Maximize, Minimize, PictureInPicture2, PictureInPicture, Volume2, VolumeX, Menu, Search, X, Heart, Settings, ShieldAlert, MonitorPlay, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Info, AlertTriangle, ArrowUp, ArrowDown, Clock, HelpCircle, Film, Newspaper, Trophy, Music, Monitor, Radio, Baby, Globe, HeartPulse, List, FolderTree, ArrowRight, LayoutDashboard, LogOut, Play, Disc, Video, CalendarDays, Eye, EyeOff, Palette, Activity, Server, RefreshCw, Rocket, Package, Satellite, Siren, StopCircle, Link2, Clapperboard, Zap, HardDrive, FileVideo, Check, Plus, Trash2, CircleAlert } from 'lucide-angular';
 
 const serverUrlInterceptor: HttpInterceptorFn = (req, next) => {
   if (typeof window !== 'undefined') {
@@ -41,7 +41,8 @@ export const appConfig: ApplicationConfig = {
     provideHttpClient(withInterceptors([authInterceptor, serverUrlInterceptor])),
     provideClientHydration(),
     importProvidersFrom(LucideAngularModule.pick({
-        GripHorizontal, Columns2, SquareMenu, PlaySquare, Cast, Maximize, Minimize, PictureInPicture2, PictureInPicture, Volume2, VolumeX, Menu, Search, X, Heart, Settings, ShieldAlert, MonitorPlay, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Info, AlertTriangle, ArrowUp, ArrowDown, Clock, HelpCircle, Film, Newspaper, Trophy, Music, Monitor, Radio, Baby, Globe, HeartPulse, List, FolderTree, ArrowRight, LayoutDashboard, LogOut, Play, Disc, Video, CalendarDays, Eye, EyeOff, Palette, Activity, Server
+        GripHorizontal, Columns2, SquareMenu, PlaySquare, Cast, Maximize, Minimize, PictureInPicture2, PictureInPicture, Volume2, VolumeX, Menu, Search, X, Heart, Settings, ShieldAlert, MonitorPlay, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Info, AlertTriangle, ArrowUp, ArrowDown, Clock, HelpCircle, Film, Newspaper, Trophy, Music, Monitor, Radio, Baby, Globe, HeartPulse, List, FolderTree, ArrowRight, LayoutDashboard, LogOut, Play, Disc, Video, CalendarDays, Eye, EyeOff, Palette, Activity, Server,
+        RefreshCw, Rocket, Package, Satellite, Siren, StopCircle, Link2, Clapperboard, Zap, HardDrive, FileVideo, Check, Plus, Trash2, CircleAlert
     }))
   ]
 };

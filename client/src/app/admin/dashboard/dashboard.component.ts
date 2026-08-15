@@ -1,4 +1,5 @@
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef, AfterViewChecked, ChangeDetectorRef } from '@angular/core';
+import { LucideAngularModule } from 'lucide-angular';
 import { ConfirmService } from '../../services/confirm.service';
 import { ModalFocusDirective } from '../../services/modal-focus.directive';
 import { CommonModule } from '@angular/common';
@@ -24,7 +25,7 @@ interface SyncStage {
 @Component({
     selector: 'app-dashboard',
     standalone: true,
-    imports: [CommonModule, ModalFocusDirective],
+    imports: [CommonModule, ModalFocusDirective, LucideAngularModule],
     templateUrl: './dashboard.component.html',
     styleUrl: './dashboard.component.css'
 })

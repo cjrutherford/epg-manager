@@ -1,10 +1,15 @@
 <div class="diagnostics-page">
-    <div class="page-header">
-        <div class="header-left">
-            <h1>EPG & Match Diagnostics</h1>
+    <header class="page-header">
+        <div class="page-header__text">
+            <h1>EPG &amp; Matches</h1>
+            <p class="page-sub">How well your channels line up with the guide data.</p>
         </div>
-        <button class="btn btn-primary" (click)="loadAll()">🔄 Refresh Data</button>
-    </div>
+        <div class="page-header__actions">
+            <button class="btn btn-primary" (click)="loadAll()">
+                <lucide-icon name="refresh-cw" class="icon"></lucide-icon> Refresh
+            </button>
+        </div>
+    </header>
 
     @if (loading) {
     <div class="loading-container">
@@ -13,32 +18,32 @@
     } @else {
 
     <!-- Summary Metrics -->
-    <div class="metrics-grid">
-        <div class="glass-card metric-card">
-            <div class="metric-val text-primary">{{ analysis?.metrics?.total || 0 }}</div>
-            <div class="metric-label">Total Playlist Channels</div>
+    <div class="stat-grid">
+        <div class="stat stat--primary">
+            <span class="stat__value">{{ analysis?.metrics?.total || 0 }}</span>
+            <span class="stat__label">Playlist channels</span>
         </div>
-        <div class="glass-card metric-card">
-            <div class="metric-val text-success">{{ analysis?.metrics?.matched || 0 }}</div>
-            <div class="metric-label">Matched Channels</div>
+        <div class="stat stat--success">
+            <span class="stat__value">{{ analysis?.metrics?.matched || 0 }}</span>
+            <span class="stat__label">Matched to guide</span>
         </div>
-        <div class="glass-card metric-card">
-            <div class="metric-val text-warning">{{ analysis?.metrics?.match_rate || 0 }}%</div>
-            <div class="metric-label">Overall Match Rate</div>
+        <div class="stat stat--warning">
+            <span class="stat__value">{{ analysis?.metrics?.match_rate || 0 }}%</span>
+            <span class="stat__label">Match rate</span>
         </div>
-        <div class="glass-card metric-card">
-            <div class="metric-val text-danger">{{ analysis?.metrics?.unmatched || 0 }}</div>
-            <div class="metric-label">Unmatched Streams</div>
+        <div class="stat stat--danger">
+            <span class="stat__value">{{ analysis?.metrics?.unmatched || 0 }}</span>
+            <span class="stat__label">Unmatched streams</span>
         </div>
     </div>
 
     <!-- Tab Navigation -->
     <div class="tab-nav">
         <button class="tab-btn" [class.active]="activeTab === 'matches'" (click)="activeTab = 'matches'">
-            🔗 Match Analyzer
+            <lucide-icon name="link-2" class="icon"></lucide-icon> Match Analyzer
         </button>
         <button class="tab-btn" [class.active]="activeTab === 'sources'" (click)="activeTab = 'sources'">
-            📡 EPG Source Reliability
+            <lucide-icon name="satellite" class="icon"></lucide-icon> EPG Source Reliability
         </button>
     </div>
 
@@ -87,7 +92,7 @@
                             @if (ch.matched_epg_id) {
                             <code class="epg-id-badge">{{ ch.matched_epg_id }}</code>
                             } @else {
-                            <span class="unmatched-label">⚠️ No Match</span>
+                            <span class="unmatched-label"><lucide-icon name="alert-triangle" class="icon"></lucide-icon> No match</span>
                             }
                         </td>
                         <td>
@@ -167,7 +172,7 @@
                             <div class="attempt-time-cell">
                                 <span>{{ source.last_sync_status || 'unknown' }}</span>
                                 @if (source.last_error) {
-                                <span class="site-error-badge">⚠️ {{ source.last_error }}</span>
+                                <span class="site-error-badge"><lucide-icon name="alert-triangle" class="icon"></lucide-icon> {{ source.last_error }}</span>
                                 }
                             </div>
                         </td>
@@ -228,7 +233,7 @@
                             <div class="attempt-time-cell">
                                 <span>{{ source.last_attempt | date:'medium' }}</span>
                                 @if (source.overall_failure_count > 0) {
-                                <span class="site-error-badge">⚠️ {{ source.overall_failure_count }} consecutive fails</span>
+                                <span class="site-error-badge"><lucide-icon name="alert-triangle" class="icon"></lucide-icon> {{ source.overall_failure_count }} consecutive fails</span>
                                 }
                             </div>
                             } @else {
@@ -256,7 +261,7 @@
         <div class="modal-content" appModalFocus (dismiss)="showRematchModal = false" aria-labelledby="diagnostics-modal-title" (click)="$event.stopPropagation()">
             <div class="modal-header">
                 <h2 id="diagnostics-modal-title">EPG Manual Rematch</h2>
-                <button class="close-modal-btn" (click)="showRematchModal = false">✕</button>
+                <button class="close-modal-btn" (click)="showRematchModal = false"><lucide-icon name="x" class="icon"></lucide-icon></button>
             </div>
             
             <p class="modal-intro">

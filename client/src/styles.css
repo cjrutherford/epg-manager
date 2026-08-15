@@ -558,6 +558,179 @@ code, pre, .mono {
     border-color: rgba(var(--color-primary-rgb), 0.2);
 }
 
+/* ═══ Shared component vocabulary ═══════════════
+ *
+ * These patterns existed on every screen, defined separately each time — three
+ * page headers, three summary statistics, five loading spinners. Defining them
+ * once is the difference between an application and six applications that share
+ * a navigation bar.
+ */
+
+/* ─── Page header ───────────────────────────── */
+.page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--space-xl);
+    margin-bottom: var(--space-3xl);
+}
+
+.page-header__text {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+    min-width: 0;
+}
+
+.page-header h1 {
+    margin: 0;
+}
+
+/* Every screen states its purpose in one line. */
+.page-sub {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--font-md);
+}
+
+.page-header__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    flex-wrap: wrap;
+}
+
+/* ─── Summary statistic ─────────────────────── */
+.stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--space-xl);
+    margin-bottom: var(--space-3xl);
+}
+
+.stat {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3xs);
+    padding: var(--space-2xl);
+    background: var(--bg-glass);
+    border: var(--border-glass);
+    border-radius: var(--radius-lg);
+    /* Left-aligned deliberately: a column of numbers is read down its left
+       edge, and centring made the three screens disagree about where to look. */
+    text-align: left;
+}
+
+.stat__value {
+    font-family: var(--font-display, var(--font-heading));
+    font-size: var(--font-4xl);
+    font-weight: 700;
+    line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+}
+
+.stat__label {
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+}
+
+.stat__detail {
+    font-size: var(--font-xs);
+    color: var(--text-muted);
+}
+
+/* Interactive variant — Sources uses its statistics as filters. */
+button.stat {
+    cursor: pointer;
+    font: inherit;
+    transition: border-color 0.2s var(--ease-smooth), background 0.2s var(--ease-smooth);
+}
+
+button.stat:hover {
+    border-color: rgba(var(--color-primary-rgb), 0.35);
+}
+
+button.stat.is-active {
+    border-color: var(--color-primary);
+    background: rgba(var(--color-primary-rgb), 0.08);
+}
+
+.stat--primary .stat__value { color: var(--color-primary); }
+.stat--success .stat__value { color: var(--color-success); }
+.stat--warning .stat__value { color: var(--color-warning); }
+.stat--danger .stat__value { color: var(--color-danger); }
+
+/* ─── Empty, loading and error states ───────── */
+.state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-6xl) var(--space-4xl);
+    text-align: center;
+}
+
+.state__icon {
+    color: var(--text-muted);
+    opacity: 0.7;
+}
+
+.state__title {
+    margin: 0;
+    font-size: var(--font-xl);
+}
+
+.state__message {
+    margin: 0;
+    max-width: 46ch;
+    color: var(--text-secondary);
+    font-size: var(--font-md);
+    line-height: 1.55;
+}
+
+.state--error .state__icon { color: var(--color-danger); opacity: 1; }
+
+/* One spinner. Five components had defined their own. */
+.spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid rgba(var(--color-primary-rgb), 0.18);
+    border-top-color: var(--color-primary);
+    border-radius: var(--radius-pill);
+    animation: spin 0.8s linear infinite;
+}
+
+.loading-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-6xl);
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ─── Icons ─────────────────────────────────── */
+/* Icons inherit colour from their context and take size from the scale, which
+   emoji could do neither of. */
+.icon {
+    flex: none;
+    /* Sized from the surrounding text so an icon and its label always agree.
+       Note this class already existed on the navigation, which rendered at
+       lucide's default 24px — those now carry `.icon--lg` explicitly rather
+       than relying on the absence of a rule. */
+    width: 1.15em;
+    height: 1.15em;
+    color: inherit;
+    vertical-align: -0.15em;
+}
+
+.icon--lg { width: 1.5em; height: 1.5em; }
+.icon--xl { width: 2em; height: 2em; }
+
 /* ─── Buttons ──────────────────────────────── */
 .btn {
     padding: var(--space-lg) var(--space-3xl);

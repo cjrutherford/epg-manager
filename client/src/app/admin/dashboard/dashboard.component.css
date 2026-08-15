@@ -3,43 +3,6 @@
     font-size: var(--font-3xl);
 }
 
-.dashboard-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: var(--space-2xl);
-    margin-bottom: var(--space-4xl);
-}
-
-.stat-card {
-    text-align: center;
-}
-
-.stat-card .stat-val {
-    font-size: var(--font-4xl);
-    font-weight: 800;
-    margin-bottom: var(--space-2xs);
-}
-
-.stat-card .stat-label {
-    text-transform: uppercase;
-    font-size: var(--font-xs);
-    color: var(--text-secondary);
-    letter-spacing: 0.08em;
-    margin-bottom: var(--space-2xs);
-}
-
-.stat-card .stat-detail {
-    font-size: var(--font-xs);
-    color: var(--text-secondary);
-}
-
-.loading-container {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 300px;
-}
-
 .actions-section h2 {
     font-size: var(--font-xl);
     margin-bottom: var(--space-xl);
@@ -58,6 +21,14 @@
 .action-card {
     cursor: pointer;
     text-align: center;
+    /* A <button> centres its content box vertically. The grid stretches every
+       card to the tallest, so a card with a two-line description pushed the
+       one-line cards down by half a line — the 10px the audit measured. Laying
+       the content out explicitly from the top removes the guesswork. */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
 }
 
 .action-card:hover {

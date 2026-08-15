@@ -1,38 +1,40 @@
 <div class="sources-page">
-    <div class="page-header">
-        <div class="header-left">
+    <header class="page-header">
+        <div class="page-header__text">
             <h1>Sources</h1>
             <p class="page-sub">Where channels and guide data come from.</p>
         </div>
-        <div class="header-actions">
+        <div class="page-header__actions">
             <button class="btn btn-secondary" (click)="exportAll()">Export / Import</button>
             <button class="btn btn-primary" (click)="openAdd()">+ Add Source</button>
         </div>
-    </div>
+    </header>
 
     @if (loading) {
     <div class="loading-container"><div class="spinner"></div></div>
     } @else {
 
-    <div class="source-summary">
-        <button type="button" class="summary-tab" [class.active]="family === 'all'"
+    <!-- The same statistic component as Dashboard and Diagnostics; here the
+         first three are also filters, which is what button.stat is for. -->
+    <div class="stat-grid">
+        <button type="button" class="stat" [class.is-active]="family === 'all'"
             [attr.aria-pressed]="family === 'all'" (click)="family = 'all'">
-            <span class="summary-num">{{ sources.length }}</span>
-            <span class="summary-lab">All sources</span>
+            <span class="stat__value">{{ sources.length }}</span>
+            <span class="stat__label">All sources</span>
         </button>
-        <button type="button" class="summary-tab" [class.active]="family === 'channels'"
+        <button type="button" class="stat" [class.is-active]="family === 'channels'"
             [attr.aria-pressed]="family === 'channels'" (click)="family = 'channels'">
-            <span class="summary-num">{{ channelSourceCount }}</span>
-            <span class="summary-lab">Channel sources</span>
+            <span class="stat__value">{{ channelSourceCount }}</span>
+            <span class="stat__label">Channel sources</span>
         </button>
-        <button type="button" class="summary-tab" [class.active]="family === 'guide'"
+        <button type="button" class="stat" [class.is-active]="family === 'guide'"
             [attr.aria-pressed]="family === 'guide'" (click)="family = 'guide'">
-            <span class="summary-num">{{ guideSourceCount }}</span>
-            <span class="summary-lab">Guide sources</span>
+            <span class="stat__value">{{ guideSourceCount }}</span>
+            <span class="stat__label">Guide sources</span>
         </button>
-        <div class="summary-tab is-static" [class.has-failures]="failingCount > 0">
-            <span class="summary-num">{{ failingCount }}</span>
-            <span class="summary-lab">Failing</span>
+        <div class="stat" [class.stat--danger]="failingCount > 0">
+            <span class="stat__value">{{ failingCount }}</span>
+            <span class="stat__label">Failing</span>
         </div>
     </div>
 
@@ -110,7 +112,7 @@
             (click)="$event.stopPropagation()">
             <div class="modal-header">
                 <h2 id="add-source-title">Add a source</h2>
-                <button class="close-modal-btn" (click)="closeAdd()" aria-label="Close">✕</button>
+                <button class="close-modal-btn" (click)="closeAdd()" aria-label="Close"><lucide-icon name="x" class="icon"></lucide-icon></button>
             </div>
 
             <p class="modal-intro">
@@ -197,7 +199,7 @@
             (click)="$event.stopPropagation()">
             <div class="modal-header">
                 <h2 id="export-title">Export / import sources</h2>
-                <button class="close-modal-btn" (click)="closeExport()" aria-label="Close">✕</button>
+                <button class="close-modal-btn" (click)="closeExport()" aria-label="Close"><lucide-icon name="x" class="icon"></lucide-icon></button>
             </div>
 
             <p class="modal-intro">

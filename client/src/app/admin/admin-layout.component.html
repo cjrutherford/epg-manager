@@ -30,27 +30,27 @@
 
         <nav class="sidebar-nav">
             <a routerLink="dashboard" routerLinkActive="active" class="nav-item">
-                <lucide-icon name="layout-dashboard" class="icon"></lucide-icon>
+                <lucide-icon name="layout-dashboard" class="icon icon--lg"></lucide-icon>
                 <span>Dashboard</span>
             </a>
             <a routerLink="channels" routerLinkActive="active" class="nav-item">
-                <lucide-icon name="video" class="icon"></lucide-icon>
+                <lucide-icon name="video" class="icon icon--lg"></lucide-icon>
                 <span>Channels</span>
             </a>
             <a routerLink="sources" routerLinkActive="active" class="nav-item">
-                <lucide-icon name="server" class="icon"></lucide-icon>
+                <lucide-icon name="server" class="icon icon--lg"></lucide-icon>
                 <span>Sources</span>
             </a>
             <a routerLink="dvr" routerLinkActive="active" class="nav-item">
-                <lucide-icon name="disc" class="icon"></lucide-icon>
+                <lucide-icon name="disc" class="icon icon--lg"></lucide-icon>
                 <span>DVR</span>
             </a>
             <a routerLink="diagnostics" routerLinkActive="active" class="nav-item">
-                <lucide-icon name="activity" class="icon"></lucide-icon>
+                <lucide-icon name="activity" class="icon icon--lg"></lucide-icon>
                 <span>EPG & Matches</span>
             </a>
             <a routerLink="settings" routerLinkActive="active" class="nav-item">
-                <lucide-icon name="settings" class="icon"></lucide-icon>
+                <lucide-icon name="settings" class="icon icon--lg"></lucide-icon>
                 <span>Settings</span>
             </a>
         </nav>
@@ -59,7 +59,7 @@
             <!-- Theme Picker -->
             <div class="sidebar-theme-picker">
                 <button class="nav-item" (click)="toggleThemePicker()">
-                    <lucide-icon name="palette" class="icon"></lucide-icon>
+                    <lucide-icon name="palette" class="icon icon--lg"></lucide-icon>
                     <span>Theme</span>
                 </button>
                 @if (themePickerOpen) {
@@ -84,11 +84,11 @@
             </div>
 
             <a routerLink="/watch" class="nav-item nav-item-watch">
-                <lucide-icon name="play" class="icon"></lucide-icon>
+                <lucide-icon name="play" class="icon icon--lg"></lucide-icon>
                 <span>Watch TV</span>
             </a>
             <button class="nav-item danger" (click)="logout()">
-                <lucide-icon name="log-out" class="icon"></lucide-icon>
+                <lucide-icon name="log-out" class="icon icon--lg"></lucide-icon>
                 <span>Logout</span>
             </button>
         </div>
@@ -99,7 +99,7 @@
         <!-- Mobile Header -->
         <div class="mobile-header">
             <button class="hamburger" (click)="toggleSidebar()">
-                <lucide-icon name="menu" class="icon"></lucide-icon>
+                <lucide-icon name="menu" class="icon icon--lg"></lucide-icon>
             </button>
             <span class="mobile-title" style="display: flex; align-items: center; gap: 8px;">
                 <img src="assets/tuner-daemon-icon.png" alt="Tuner Daemon" style="width: 24px; height: 24px; border-radius: 4px;">

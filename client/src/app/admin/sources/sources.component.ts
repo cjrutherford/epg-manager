@@ -1,4 +1,5 @@
 import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
+import { LucideAngularModule } from 'lucide-angular';
 import { ConfirmService } from '../../services/confirm.service';
 import { ModalFocusDirective } from '../../services/modal-focus.directive';
 import { CommonModule } from '@angular/common';
@@ -11,7 +12,7 @@ type Family = 'all' | 'channels' | 'guide';
 @Component({
     selector: 'app-sources',
     standalone: true,
-    imports: [CommonModule, FormsModule, ModalFocusDirective],
+    imports: [CommonModule, FormsModule, ModalFocusDirective, LucideAngularModule],
     templateUrl: './sources.component.html',
     styleUrl: './sources.component.css'
 })

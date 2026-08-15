@@ -1,4 +1,5 @@
 import { ChangeDetectorRef, Component, OnInit, Inject, PLATFORM_ID } from '@angular/core';
+import { LucideAngularModule } from 'lucide-angular';
 import { ConfirmService } from '../../services/confirm.service';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -8,7 +9,7 @@ import { ToastService } from '../../services/toast.service';
 @Component({
     selector: 'app-settings',
     standalone: true,
-    imports: [CommonModule, FormsModule],
+    imports: [CommonModule, FormsModule, LucideAngularModule],
     templateUrl: './settings.component.html',
     styleUrl: './settings.component.css'
 })

@@ -1,31 +1,10 @@
+/* No padding or background of its own: the admin shell already provides both.
+   Setting them here made this the only screen that looked like a page inside a
+   card, which is the structural inconsistency the audit picked up. */
 .diagnostics-page {
-    padding: var(--space-4xl);
-    background: var(--bg-deep);
-    min-height: 100%;
-    overflow-y: auto;
-}
-
-.page-header {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: var(--space-3xl);
-}
-
-.page-header h1 {
-    font-size: var(--font-3xl);
-    font-weight: 700;
-    margin: 0;
-    background: linear-gradient(135deg, var(--text-primary) 0%, rgba(var(--color-primary-rgb), 0.7) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-}
-
-.loading-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 400px;
+    flex-direction: column;
+    gap: var(--space-2xl);
 }
 
 /* --- Metrics Grid --- */
@@ -34,34 +13,6 @@
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: var(--space-2xl);
     margin-bottom: var(--space-4xl);
-}
-
-.metric-card {
-    padding: var(--space-3xl);
-    text-align: center;
-    border: 1px solid var(--border-subtle);
-    transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.metric-card:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
-    border-color: rgba(var(--color-primary-rgb), 0.15);
-}
-
-.metric-val {
-    font-size: var(--font-4xl);
-    font-weight: 800;
-    margin-bottom: var(--space-xs);
-    font-family: var(--font-mono);
-}
-
-.metric-label {
-    font-size: var(--font-md);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-muted);
 }
 
 /* --- Tabs --- */

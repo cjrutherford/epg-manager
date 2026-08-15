@@ -3,13 +3,6 @@
     font-size: var(--font-3xl);
 }
 
-.loading-container {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 300px;
-}
-
 .settings-card {
     margin-bottom: var(--space-3xl);
 }

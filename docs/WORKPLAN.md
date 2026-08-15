@@ -3,7 +3,7 @@
 Single source of truth for the remediation effort. Consolidates the process audit, the UI &
 source-retrieval audit, and the source acquisition architecture into one tracked backlog.
 
-**Status:** 26 of 26 hardening slices done. Next: S26 design language (5 slices), then S24 e2e (4 slices).
+**Status:** 26 hardening slices done. S26a–c done; S26d, S26e next, then S24 e2e (4 slices).
 **Suite score at baseline:** 2.5 / 5 (process) · 2.3 / 5 (UI)
 **Last updated:** 2026-08-13
 
@@ -867,22 +867,41 @@ Ordered so each slice makes the next one smaller. S26a is the prerequisite for e
   Verified across all six admin screens after the rewrite: no horizontal overflow, no clipped text,
   no text under 10px. Watch is untouched; its scale work belongs with its panels in a later slice.
 
-- [ ] **S26b · One component vocabulary** — M
+- [x] **S26b · One component vocabulary** — M
   Promote the repeated patterns into shared classes: page header, summary statistic, card shell,
   table, empty/loading/error state. Retire the per-screen copies and the 11 hand-rolled glass
   surfaces.
   → `styles.css`, all admin templates and CSS
-  - [ ] A summary statistic looks identical on Dashboard, Sources and Diagnostics
-  - [ ] All six admin screens use the same page header
-  - [ ] The Dashboard action row aligns — the measured 10px discrepancy is gone
-  - [ ] Component CSS shrinks measurably; no pattern is defined in more than one stylesheet
+  - [x] A summary statistic looks identical on Dashboard, Sources and Diagnostics
+        — measured on all three: **36px/700 value, 13px label, left aligned, 20px padding, 12px
+        radius**, identical. Sources' three are also filters, which is what `button.stat` is for
+  - [x] All six admin screens use the same page header
+        — and every one now states its purpose in one line, which three did not
+  - [x] The Dashboard action row aligns — the measured 10px discrepancy is gone
+        — **spread 0px** across the row. It was never the emoji: a `<button>` centres its content
+        box, and the grid stretches every card to the tallest, so a two-line description pushed its
+        one-line neighbours down by half a line
+  - [x] Component CSS shrinks measurably; no pattern is defined in more than one stylesheet
+        — admin CSS **2,977 → 2,780 lines**, 34 duplicated rule blocks removed, hand-rolled glass
+        surfaces **11 → 2**
 
-- [ ] **S26c · One icon system** — S
+  Diagnostics was also the only screen that set its own padding and background, so it read as a page
+  inside a card. Flattened to match the others.
+
+- [x] **S26c · One icon system** — S
   Replace emoji used as chrome with lucide icons that inherit colour and size. Emoji stay only where
   they are content.
-  → all admin templates
-  - [ ] Zero emoji used as UI icons
-  - [ ] Every icon takes its colour from a token and its size from the scale
+  → all admin templates, `app.config.ts`, `styles.css`
+  - [x] Zero emoji used as UI icons
+        — **32 replaced, 0 remain** across the six screens. The `→` in "Playlist → Match → Grab"
+        stays: it is content, not an icon
+  - [x] Every icon takes its colour from a token and its size from the scale
+        — verified in the browser: `LUCIDE-ICON` elements rendering real SVG, taking
+        `rgb(232, 168, 84)` from the active theme
+
+  **The icon utility collided with an existing class.** `.icon` was already on every navigation item,
+  where it had no rules and rendered at lucide's default 24px; my new global rule shrank them to
+  14px. Caught by comparing screenshots, not by any test. They now carry `.icon--lg` explicitly.
 
 - [ ] **S26d · Say the same thing everywhere** — S
   Reconcile nav labels with page titles, give every screen a one-line purpose, and settle on one verb
@@ -1009,3 +1028,5 @@ memory, so **restart it after `ng build`** or you will screenshot the previous b
 | 2026-08-14 | — | All 26 planned slices are complete. S24 remains held for subdivision. |
 | 2026-08-14 | — | Design language audit at Chris's request. Scores **2.1 (High)** overall, with type/spacing scale (1.25) and summary statistics (1.50) in the Critical band. Headline measurements: 42 distinct font sizes, 25 spacing values, 3 icon systems, and the same summary statistic designed three different ways. Proposed as slice group S26a–S26e. |
 | 2026-08-14 | S26a | Done. 539 raw values tokenised — 42 font sizes, 25 spacings and 12 radii all to 0, behind a 10-step type scale and a 12-step spacing scale. Guard tests keep them out. Widening the contrast audit to text-on-fill found four pre-existing AA failures, including a destructive button label at 2.65:1; all fixed with measured per-theme tokens. 9 new unit tests; suite 564 -> 573. |
+| 2026-08-15 | S26b | Done. One page header, one summary statistic and one spinner replace the per-screen copies — the statistic measures identically on all three screens that use it. Admin CSS 2,977 -> 2,780 lines, 34 duplicated rule blocks gone, hand-rolled glass surfaces 11 -> 2. The 10px action-row misalignment turned out to be button content-centring under a stretching grid, not the emoji; spread is now 0. |
+| 2026-08-15 | S26c | Done. 32 emoji replaced with lucide icons that take colour from the theme and size from the scale; the `→` in "Playlist → Match → Grab" stays because it is content. Introduced and then fixed a regression: my new global `.icon` collided with the class already on every nav item, shrinking those icons from 24px to 14px — caught by comparing screenshots, not by a test. |

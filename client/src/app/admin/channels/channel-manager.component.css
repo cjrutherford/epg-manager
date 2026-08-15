@@ -3,13 +3,6 @@
     font-size: var(--font-3xl);
 }
 
-.loading-container {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 300px;
-}
-
 .toolbar {
     margin-bottom: var(--space-2xl);
     padding: var(--space-xl) var(--space-2xl);

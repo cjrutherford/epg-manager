@@ -1,5 +1,10 @@
 <div class="dashboard">
-    <h1>Dashboard</h1>
+    <header class="page-header">
+        <div class="page-header__text">
+            <h1>Dashboard</h1>
+            <p class="page-sub">System health, and the actions that keep it current.</p>
+        </div>
+    </header>
 
     @if (loading) {
     <div class="loading-container">
@@ -10,7 +15,7 @@
     <!-- ── Empty-state banner ─────────────────────────────────────────── -->
     @if (isEmpty) {
     <div class="empty-state-banner glass-card">
-        <div class="empty-state-icon">🚀</div>
+        <lucide-icon name="rocket" class="icon icon--xl empty-state-icon"></lucide-icon>
         <div class="empty-state-body">
             <h2 class="empty-state-title">No data yet — ready to go!</h2>
             <p class="empty-state-desc">
@@ -18,7 +23,7 @@
                 match channels to the IPTV-ORG guide, grab EPG data, and generate your M3U&nbsp;/&nbsp;XML files.
             </p>
             @if (!dataState?.hasPlaylist) {
-            <p class="empty-state-warn">⚠️ No playlist URL is configured yet. Head to
+            <p class="empty-state-warn"><lucide-icon name="alert-triangle" class="icon"></lucide-icon> No playlist URL is configured yet. Head to
                 <strong>Settings</strong> first and add a playlist URL, then come back here to sync.
             </p>
             }
@@ -31,30 +36,28 @@
             @if (syncStarted) {
             <span class="spinner-sm"></span> Sync running…
             } @else {
-            ▶ Run Initial Sync
+            <lucide-icon name="play" class="icon"></lucide-icon> Run Initial Sync
             }
         </button>
     </div>
     }
 
     <!-- Stats -->
-    <div class="dashboard-grid">
-        <div class="glass-card stat-card">
-            <div class="stat-val text-primary">{{ stats?.channels?.enabled || 0 }}</div>
-            <div class="stat-label">Enabled Channels</div>
-            <div class="stat-detail">{{ stats?.channels?.total || 0 }} total • {{ stats?.channels?.matched || 0 }}
-                matched</div>
+    <div class="stat-grid">
+        <div class="stat stat--primary">
+            <span class="stat__value">{{ stats?.channels?.enabled || 0 }}</span>
+            <span class="stat__label">Enabled channels</span>
+            <span class="stat__detail">{{ stats?.channels?.total || 0 }} total · {{ stats?.channels?.matched || 0 }} matched</span>
         </div>
-        <div class="glass-card stat-card">
-            <div class="stat-val text-success">{{ stats?.programs?.total || 0 }}</div>
-            <div class="stat-label">EPG Programs</div>
-            <div class="stat-detail">{{ stats?.programs?.channels || 0 }} channels • {{ stats?.programs?.enriched || 0
-                }} enriched</div>
+        <div class="stat stat--success">
+            <span class="stat__value">{{ stats?.programs?.total || 0 }}</span>
+            <span class="stat__label">Guide programmes</span>
+            <span class="stat__detail">{{ stats?.programs?.channels || 0 }} channels · {{ stats?.programs?.enriched || 0 }} enriched</span>
         </div>
-        <div class="glass-card stat-card">
-            <div class="stat-val text-warning">{{ health?.status || 'unknown' }}</div>
-            <div class="stat-label">System Status</div>
-            <div class="stat-detail">Uptime: {{ formatUptime(health?.uptime || 0) }}</div>
+        <div class="stat stat--warning">
+            <span class="stat__value">{{ health?.status || 'unknown' }}</span>
+            <span class="stat__label">System status</span>
+            <span class="stat__detail">Uptime: {{ formatUptime(health?.uptime || 0) }}</span>
         </div>
     </div>    <!-- Actions -->
     <div class="actions-section">
@@ -66,7 +69,7 @@
                  is genuinely refused mid-sync, so it is disabled and explains
                  itself rather than failing with a 409 after the fact. -->
             <button type="button" class="glass-card action-card" (click)="runFullSync()">
-                <div class="action-icon" aria-hidden="true">🔄</div>
+                <lucide-icon name="refresh-cw" class="icon icon--lg action-icon" aria-hidden="true"></lucide-icon>
                 <div class="action-title">Run Full Sync</div>
                 <div class="action-desc">
                     @if (jobRunning) { Will queue behind the running job }
@@ -74,7 +77,7 @@
                 </div>
             </button>
             <button type="button" class="glass-card action-card" (click)="grabMissing()">
-                <div class="action-icon" aria-hidden="true">📡</div>
+                <lucide-icon name="satellite" class="icon icon--lg action-icon" aria-hidden="true"></lucide-icon>
                 <div class="action-title">Grab EPG Data</div>
                 <div class="action-desc">
                     @if (jobRunning) { Will queue behind the running job }
@@ -82,7 +85,7 @@
                 </div>
             </button>
             <button type="button" class="glass-card action-card" (click)="rebuildFiles()">
-                <div class="action-icon" aria-hidden="true">📦</div>
+                <lucide-icon name="package" class="icon icon--lg action-icon" aria-hidden="true"></lucide-icon>
                 <div class="action-title">Rebuild Files</div>
                 <div class="action-desc">
                     @if (jobRunning) { Will queue behind the running job }
@@ -93,7 +96,7 @@
                     [disabled]="jobRunning"
                     [attr.aria-describedby]="jobRunning ? 'reset-unavailable' : null"
                     (click)="openResetModal()">
-                <div class="action-icon" aria-hidden="true">🚨</div>
+                <lucide-icon name="siren" class="icon icon--lg action-icon" aria-hidden="true"></lucide-icon>
                 <div class="action-title text-danger">Reset Data</div>
                 <div class="action-desc" id="reset-unavailable">
                     @if (jobRunning) { Unavailable while a sync is running — cancel it first }
@@ -128,7 +131,7 @@
                 </button>
                 @if (syncStarted) {
                 <button class="btn-cancel-sync" (click)="cancelSync()">
-                    🛑 Cancel Sync
+                    <lucide-icon name="stop-circle" class="icon"></lucide-icon> Cancel Sync
                 </button>
                 }
             </div>
@@ -142,7 +145,7 @@
                             @if (stage.status === 'active') {
                             <div class="stage-spinner"></div>
                             } @else if (stage.status === 'done') {
-                            <span class="stage-check">✓</span>
+                            <lucide-icon name="check" class="icon stage-check"></lucide-icon>
                             } @else {
                             <span class="stage-icon">{{ stage.icon }}</span>
                             }
@@ -206,7 +209,7 @@
             (click)="$event.stopPropagation()">
             <div class="modal-header">
                 <h2 id="reset-title">Reset data</h2>
-                <button class="close-modal-btn" (click)="closeResetModal()" aria-label="Close">✕</button>
+                <button class="close-modal-btn" (click)="closeResetModal()" aria-label="Close"><lucide-icon name="x" class="icon"></lucide-icon></button>
             </div>
 
             <p class="reset-intro">

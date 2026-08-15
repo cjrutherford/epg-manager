@@ -1,13 +1,16 @@
 <div class="dvr-page" [class.dvr-overlay]="isOverlay">
-    <div class="page-header">
-        <div class="header-left">
-            <h1>DVR Manager</h1>
-            @if (isOverlay) {
-                <button class="btn btn-secondary close-btn" (click)="close.emit()">✕ Close</button>
-            }
+    <header class="page-header">
+        <div class="page-header__text">
+            <h1>DVR</h1>
+            <p class="page-sub">Scheduled, recording and completed programmes.</p>
         </div>
-        <button class="btn btn-primary" (click)="openScheduleModal()">+ Schedule Recording</button>
-    </div>
+        <div class="page-header__actions">
+            @if (isOverlay) {
+                <button class="btn btn-secondary close-btn" (click)="close.emit()">Close</button>
+            }
+            <button class="btn btn-primary" (click)="openScheduleModal()">+ Schedule Recording</button>
+        </div>
+    </header>
 
     @if (loading) {
     <div class="loading-container">
@@ -176,7 +179,7 @@
 
         @if (recordings.length === 0) {
         <div class="glass-card empty-state">
-            <div class="empty-icon">📹</div>
+            <lucide-icon name="file-video" class="icon icon--xl empty-icon"></lucide-icon>
             <h3>No Server Recordings</h3>
             <p>Schedule a server recording to get started.</p>
         </div>
@@ -234,7 +237,7 @@
     } @else {
         @if (localRecordings.length === 0) {
         <div class="glass-card empty-state">
-            <div class="empty-icon">💾</div>
+            <lucide-icon name="hard-drive" class="icon icon--xl empty-icon"></lucide-icon>
             <h3>No Local Recordings</h3>
             <p>Local recordings created from the watch guide on this device will appear here.</p>
         </div>
@@ -367,7 +370,7 @@
     <div class="modal-content" appModalFocus (dismiss)="closeVideoModal()" aria-labelledby="play-recording-title" (click)="$event.stopPropagation()" style="max-width: 800px; width: 90%; padding: 20px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
             <h3 id="play-recording-title" style="margin: 0; font-size: 1.1rem; color: var(--text-primary);">{{ playingServerRec.program_title }}</h3>
-            <button class="btn btn-secondary small-btn" (click)="closeVideoModal()">✕ Close</button>
+            <button class="btn btn-secondary small-btn" (click)="closeVideoModal()"><lucide-icon name="x" class="icon"></lucide-icon> Close</button>
         </div>
         <video [src]="'/api/dvr/stream/' + playingServerRec.filename" controls autoplay style="width: 100%; max-height: 70vh; border-radius: var(--radius-md); background: #000;"></video>
     </div>
