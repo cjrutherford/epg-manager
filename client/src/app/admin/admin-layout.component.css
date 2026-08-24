@@ -58,7 +58,9 @@
 .admin-shell {
     display: flex;
     height: 100vh;
+    max-width: 100vw;
     overflow: hidden;
+    box-sizing: border-box;
 }
 
 /* Sidebar */
@@ -156,6 +158,8 @@
 /* Main Content */
 .main-content {
     flex: 1;
+    min-width: 0;
+    max-width: 100%;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -164,8 +168,12 @@
 
 .content-scroll {
     flex: 1;
+    min-width: 0;
+    max-width: 100%;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: var(--space-4xl);
+    box-sizing: border-box;
 }
 
 /* Mobile Header */
