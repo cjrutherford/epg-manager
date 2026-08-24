@@ -226,7 +226,8 @@ video:fullscreen {
     padding: 0 24px;
     max-width: 100%;
     box-sizing: border-box;
-    overflow: hidden;
+    overflow-x: clip;
+    overflow-y: visible;
     background: linear-gradient(180deg, var(--bg-glass-strong) 0%, var(--bg-glass) 60%, transparent 100%);
     z-index: 100;
     position: relative;
