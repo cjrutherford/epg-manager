@@ -2,10 +2,10 @@ import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import * as http from 'node:http';
-import { 
-  AngularNodeAppEngine, 
-  writeResponseToNodeResponse, 
-  isMainModule 
+import {
+  AngularNodeAppEngine,
+  writeResponseToNodeResponse,
+  isMainModule
 } from '@angular/ssr/node';
 
 const serverDistFolder = dirname(fileURLToPath(import.meta.url));
@@ -13,16 +13,7 @@ const browserDistFolder = resolve(serverDistFolder, '../browser');
 
 const angularNodeAppEngine = new AngularNodeAppEngine({
   allowedHosts: ['*'],
-  trustProxyHeaders: [
-    'x-forwarded-for',
-    'x-forwarded-host',
-    'x-forwarded-proto',
-    'x-forwarded-port',
-    'x-forwarded-server',
-    'x-forwarded-ssl',
-    'x-forwarded-uri',
-    'x-forwarded-prefix'
-  ]
+  trustProxyHeaders: true,
 });
 
 export function app(): express.Express {
