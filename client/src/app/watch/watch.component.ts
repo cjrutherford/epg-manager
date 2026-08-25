@@ -13,6 +13,7 @@ import { LucideAngularModule } from 'lucide-angular';
 import { ToastService } from '../services/toast.service';
 import { ClientRecordingService } from '../services/client-recording.service';
 import { DvrService } from '../services/dvr.service';
+import { ChannelEventsService } from '../services/channel-events.service';
 import { ClientRecording, SystemRecording } from '../services/client-recording.types';
 
 interface Channel {
@@ -234,6 +235,8 @@ export class WatchComponent implements OnInit, OnDestroy {
     private castSub: Subscription | null = null;
     private recordingsSub: Subscription | null = null;
     private jobStatusSub: Subscription | null = null;
+    private channelEventsSub: Subscription | null = null;
+    private storageListener: ((e: StorageEvent) => void) | null = null;
     private streamGeneration = 0;
 
     private isBrowser: boolean;
@@ -247,6 +250,7 @@ export class WatchComponent implements OnInit, OnDestroy {
         private clientRecordings: ClientRecordingService,
         private dvr: DvrService,
         private confirm: ConfirmService,
+        private channelEvents: ChannelEventsService,
         @Inject(PLATFORM_ID) platformId: Object,
         private cdr: ChangeDetectorRef
     ) {
@@ -339,6 +343,13 @@ export class WatchComponent implements OnInit, OnDestroy {
         this.boundDragMove = this.onGuideDragMove.bind(this);
         this.boundDragEnd = this.onGuideDragEnd.bind(this);
 
+        // React to channel enable/disable from admin (same-tab via service + cross-tab via storage)
+        this.channelEventsSub = this.channelEvents.updates.subscribe(() => this.loadGuide());
+        this.storageListener = (e: StorageEvent) => {
+            if (e.key === 'tuner_daemon_channels_updated') this.loadGuide();
+        };
+        window.addEventListener('storage', this.storageListener);
+
         this.loadCategories();
         this.loadGuide();
         this.loadRecordings();
@@ -361,6 +372,7 @@ export class WatchComponent implements OnInit, OnDestroy {
         if (this.castSub) { this.castSub.unsubscribe(); this.castSub = null; }
         if (this.recordingsSub) { this.recordingsSub.unsubscribe(); this.recordingsSub = null; }
         if (this.jobStatusSub) { this.jobStatusSub.unsubscribe(); this.jobStatusSub = null; }
+        if (this.channelEventsSub) { this.channelEventsSub.unsubscribe(); this.channelEventsSub = null; }
         clearTimeout(this.overlayTimer);
         clearTimeout(this.osdTimer);
         clearTimeout(this.idleTimer);
@@ -375,6 +387,7 @@ export class WatchComponent implements OnInit, OnDestroy {
             document.removeEventListener('touchend', this.boundDragEnd);
             document.removeEventListener('mousemove', this.boundOnUserActivity);
             document.removeEventListener('click', this.boundOnUserActivity);
+            if (this.storageListener) window.removeEventListener('storage', this.storageListener);
         }
     }
 
@@ -477,6 +490,11 @@ export class WatchComponent implements OnInit, OnDestroy {
                 start: startDate.toISOString()
             }).toPromise();
 
+            // Remember currently playing id before we replace the list
+            const prevPlayingId = this.currentChannelIndex >= 0 && this.channels[this.currentChannelIndex]
+                ? String(this.channels[this.currentChannelIndex].id)
+                : null;
+
             // Normalize all channel IDs to strings and filter enabled-only
             const rawChannels: Channel[] = (data.channels || []).map((ch: any) => ({
                 ...ch,
@@ -492,6 +510,19 @@ export class WatchComponent implements OnInit, OnDestroy {
             this.guideTimeLabel = `${this.fmtTime(startD)} — ${this.fmtTime(endD)}`;
 
             this.applyFilters();
+
+            // If the currently playing channel was disabled (no longer in guide), clear selection
+            if (prevPlayingId && !this.channels.some(c => String(c.id) === prevPlayingId)) {
+                this.currentChannelIndex = -1;
+                // stop current stream if the channel itself was disabled
+                if (this.hls) { this.hls.destroy(); this.hls = null; }
+                if (this.videoRef?.nativeElement) {
+                    this.videoRef.nativeElement.pause();
+                    this.videoRef.nativeElement.removeAttribute('src');
+                    this.videoRef.nativeElement.load();
+                }
+                this.activeProgram = null;
+            }
 
             // Auto-tune to popout channel, last channel, or first
             if (this.currentChannelIndex < 0 && this.channels.length > 0) {
