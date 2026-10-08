@@ -89,13 +89,12 @@ test.describe('Background job queue', () => {
 
     test('Reset is unavailable during a job, and says why', async ({ page, request }) => {
         await signIn(page);
+        await expect(page.locator('.page-header h1')).toHaveText('Dashboard');
 
         const token = await apiToken(request);
         await request.post('/api/jobs', {
             headers: authHeaders(token), data: { kind: 'full_sync' }
         });
-
-        await goToSection(page, 'Dashboard', 'Dashboard');
 
         const reset = page.locator('.action-card').filter({ hasText: 'Reset data' });
         await expect(reset).toBeDisabled();

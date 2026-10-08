@@ -95,7 +95,7 @@ export default defineConfig({
     {
       command: `node client/dist/client/server/server.mjs`,
       port: WEB_PORT,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 120_000,
       stdout: 'pipe',
       stderr: 'pipe',
