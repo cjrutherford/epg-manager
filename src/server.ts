@@ -477,7 +477,7 @@ app.get('/api/settings', requireAuth, async (req: any, res: any) => {
 // GET /api/channels-with-programs - Returns channels with current/next program info
 app.get('/api/channels-with-programs', requireAuth, async (req: any, res: any) => {
     try {
-        const now = new Date().toISOString().replace(/[-:]/g, '').slice(0, 14) + '00 +0000';
+        const now = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14) + ' +0000';
 
         const result = await db.execute(`
 SELECT
@@ -2937,7 +2937,7 @@ app.get('/api/guide', async (req, res) => {
 
         // Format times for EPG comparison (YYYYMMDDHHMMSS +0000)
         const fmtTime = (d: Date) => {
-            return d.toISOString().replace(/[-:T]/g, '').slice(0, 14) + '00 +0000';
+            return d.toISOString().replace(/[-:T]/g, '').slice(0, 14) + ' +0000';
         };
         const startStr = fmtTime(startTime);
         const endStr = fmtTime(endTime);
@@ -3086,7 +3086,7 @@ app.get('/api/channel/:id/programs', async (req, res) => {
 
         const now = new Date();
         const end = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-        const fmtTime = (d: Date) => d.toISOString().replace(/[-:T]/g, '').slice(0, 14) + '00 +0000';
+        const fmtTime = (d: Date) => d.toISOString().replace(/[-:T]/g, '').slice(0, 14) + ' +0000';
 
         const programsRes = await db.execute({
             sql: `
