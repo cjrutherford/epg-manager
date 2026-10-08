@@ -2,10 +2,10 @@ import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import * as http from 'node:http';
-import { 
-  AngularNodeAppEngine, 
-  writeResponseToNodeResponse, 
-  isMainModule 
+import {
+  AngularNodeAppEngine,
+  writeResponseToNodeResponse,
+  isMainModule
 } from '@angular/ssr/node';
 
 const serverDistFolder = dirname(fileURLToPath(import.meta.url));
@@ -13,16 +13,7 @@ const browserDistFolder = resolve(serverDistFolder, '../browser');
 
 const angularNodeAppEngine = new AngularNodeAppEngine({
   allowedHosts: ['*'],
-  trustProxyHeaders: [
-    'x-forwarded-for',
-    'x-forwarded-host',
-    'x-forwarded-proto',
-    'x-forwarded-port',
-    'x-forwarded-server',
-    'x-forwarded-ssl',
-    'x-forwarded-uri',
-    'x-forwarded-prefix'
-  ]
+  trustProxyHeaders: true,
 });
 
 export function app(): express.Express {
@@ -41,11 +32,18 @@ export function app(): express.Express {
     next();
   });
 
-  // Proxy /api and /files requests to the backend API
+  // Proxy /api, /files, and exported playlist/guide files to the backend API
   const apiHost = process.env['API_HOST'] || '127.0.0.1';
   const apiPort = parseInt(process.env['API_PORT'] || '4000', 10);
 
-  server.use(['/api', '/files'], (req, res) => {
+  server.use([
+    '/api',
+    '/files',
+    '/playlist.m3u',
+    '/channels.m3u',
+    '/epg.xml',
+    '/guide.xml'
+  ], (req, res) => {
     const proxyReq = http.request({
       hostname: apiHost,
       port: apiPort,

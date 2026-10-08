@@ -89,13 +89,10 @@ test.describe('Background job queue', () => {
 
     test('Reset is unavailable during a job, and says why', async ({ page, request }) => {
         await signIn(page);
+        await expect(page.locator('.page-header h1')).toHaveText('Dashboard');
 
-        const token = await apiToken(request);
-        await request.post('/api/jobs', {
-            headers: authHeaders(token), data: { kind: 'full_sync' }
-        });
-
-        await goToSection(page, 'Dashboard', 'Dashboard');
+        const sync = page.locator('.action-card').filter({ hasText: 'Run full sync' });
+        await sync.click();
 
         const reset = page.locator('.action-card').filter({ hasText: 'Reset data' });
         await expect(reset).toBeDisabled();
@@ -103,9 +100,9 @@ test.describe('Background job queue', () => {
 
         // The others queue rather than being refused, so they say that instead
         // of looking broken.
-        const sync = page.locator('.action-card').filter({ hasText: 'Run full sync' });
         await expect(sync).toContainText('Will queue behind the running job');
 
+        const token = await apiToken(request);
         await request.post('/api/sync/cancel', { headers: authHeaders(token) });
     });
 });

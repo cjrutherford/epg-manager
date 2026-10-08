@@ -141,10 +141,10 @@ export class DvrComponent implements OnInit, OnDestroy {
     }
 
     async openScheduleModal(): Promise<void> {
-        const now = new Date();
-        const end = new Date(now.getTime() + 3600000);
-        this.newRec.startTime = now.toISOString().slice(0, 16);
-        this.newRec.endTime = end.toISOString().slice(0, 16);
+        const start = new Date(Date.now() + 3600000);
+        const end = new Date(Date.now() + 7200000);
+        this.newRec.startTime = new Date(start.getTime() - (start.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
+        this.newRec.endTime = new Date(end.getTime() - (end.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
         this.newRec.channelId = '';
         this.newRec.title = '';
         this.selectedChannelPrograms = [];

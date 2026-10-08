@@ -12,8 +12,8 @@
  * resolve here either, which is the same trap that took the server down during
  * a sync (X8).
  */
+import fs from 'fs';
 import path from 'path';
-import { seedFixture } from './seed';
 
 const target = process.argv[2];
 if (!target) {
@@ -26,12 +26,21 @@ if (path.resolve(process.env.DB_DIR || '') !== path.resolve(target)) {
     process.exit(1);
 }
 
+// Clean up target directory BEFORE requiring ./seed, because requiring ./seed opens SQLite
+if (fs.existsSync(target)) {
+    fs.rmSync(target, { recursive: true, force: true });
+}
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { seedFixture } = require('./seed');
+
 seedFixture(target)
     .then(() => {
         console.log(`[fixture] seeded ${target}`);
         process.exit(0);
     })
-    .catch(error => {
+    .catch((error: any) => {
         console.error('[fixture] seeding failed:', error.message);
         process.exit(1);
     });
+

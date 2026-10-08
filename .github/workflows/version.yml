@@ -1,15 +1,13 @@
-name: Version
+name: Version (deprecated – releases are now fully automatic via Release Please)
 
-# Releases are deliberate here, not automatic. The commit messages in this
-# repository are written for people ("S24c: cover what this programme
-# changed"), not for a machine to parse into a version — so inferring the next
-# number from them would be guessing. This asks instead, then does every part
-# of the bookkeeping exactly the same way each time.
+# Deprecated: Releases are now fully automatic on merge to main via
+# `.github/workflows/release-please.yml`. This workflow is kept as a manual
+# fallback for exact hotfixes only and will only run on `main`.
 on:
   workflow_dispatch:
     inputs:
       kind:
-        description: "How large a change is this?"
+        description: "How large a change is this? (deprecated – use conventional commits on main)"
         required: true
         default: patch
         type: choice
@@ -61,7 +59,7 @@ jobs:
           version="${{ steps.set.outputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json client/package.json client/android/app/build.gradle
+          git add package.json client/package.json client/android/app/build.gradle docker-compose.yml .env.example
           git commit -m "Release v${version}"
           git tag -a "v${version}" -m "Release v${version}"
           git push origin HEAD:"${GITHUB_REF_NAME}"

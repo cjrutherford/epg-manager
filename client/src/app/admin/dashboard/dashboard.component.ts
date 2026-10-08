@@ -6,6 +6,7 @@ import { CommonModule } from '@angular/common';
 import { ApiService, ResetPreview, ResetScope } from '../../services/api.service';
 import { SseService } from '../../services/sse.service';
 import { ToastService } from '../../services/toast.service';
+import { UpdateService, VersionInfo, UpdateCheck } from '../../services/update.service';
 import { Subscription } from 'rxjs';
 
 interface ResetScopeOption {
@@ -55,6 +56,11 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
     resetPreview: ResetPreview | null = null;
     resetPreviewLoading = false;
 
+    versionInfo: VersionInfo | null = null;
+    updateInfo: UpdateCheck | null = null;
+    checkingUpdate = false;
+    applyingUpdate = false;
+
     readonly resetScopeOptions: ResetScopeOption[] = [
         {
             scope: 'guide',
@@ -102,12 +108,14 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
         private sse: SseService,
         private toast: ToastService,
         private cdr: ChangeDetectorRef,
-        private confirm: ConfirmService
+        private confirm: ConfirmService,
+        private updateService: UpdateService
     ) { }
 
     ngOnInit(): void {
         this.loadData();
         this.setupSseListeners();
+        this.loadVersionInfo();
 
         // Check if sync is already running in background
         this.api.getJobStatus().subscribe(status => {
@@ -170,6 +178,48 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
 
     get isEmpty(): boolean {
         return this.dataState?.isEmpty === true && !this.syncStarted;
+    }
+
+    loadVersionInfo(): void {
+        this.updateService.getVersion().subscribe({
+            next: v => { this.versionInfo = v; this.cdr.markForCheck(); },
+            error: () => {}
+        });
+        this.checkingUpdate = true;
+        this.updateService.checkUpdate().subscribe({
+            next: u => { this.updateInfo = u; this.checkingUpdate = false; this.cdr.markForCheck(); },
+            error: () => { this.checkingUpdate = false; this.cdr.markForCheck(); }
+        });
+    }
+
+    copyPullCommand(): void {
+        const cmd = this.updateInfo?.pullCommand || `TAG=${this.updateInfo?.latest} docker compose pull && TAG=${this.updateInfo?.latest} docker compose up -d`;
+        navigator.clipboard?.writeText(cmd).then(() => this.toast.show('Copied: ' + cmd, 'success')).catch(() => this.toast.show(cmd, 'info'));
+    }
+
+    async applyUpdate(): Promise<void> {
+        if (!this.updateInfo?.latest) return;
+        const confirmed = await this.confirm.ask({
+            title: `Update to ${this.updateInfo.latest}?`,
+            message: `This will pull ghcr.io/cjrutherford/epg-manager:${this.updateInfo.latest} inside the container (requires ENABLE_IN_APP_UPGRADE=1 and docker.sock).`,
+            detail: 'If one-click is not enabled, copy the pinned command instead.',
+            confirmLabel: 'Pull image'
+        });
+        if (!confirmed) return;
+        this.applyingUpdate = true;
+        this.cdr.markForCheck();
+        this.updateService.applyUpdate(this.updateInfo.latest).subscribe({
+            next: (res: any) => {
+                this.applyingUpdate = false;
+                this.toast.show(res.message || 'Image pulled. Restart with TAG=' + this.updateInfo?.latest + ' docker compose up -d', 'success');
+                this.cdr.markForCheck();
+            },
+            error: (e) => {
+                this.applyingUpdate = false;
+                this.toast.show(e?.error?.error || 'Pull failed: ' + e.message, 'error');
+                this.cdr.markForCheck();
+            }
+        });
     }
 
     setupSseListeners(): void {

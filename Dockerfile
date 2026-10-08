@@ -43,7 +43,8 @@ RUN apk add --no-cache \
     git \
     tini \
     su-exec \
-    unzip
+    unzip \
+    docker-cli
 
 WORKDIR /app
 
@@ -70,6 +71,12 @@ COPY --chown=epg:epg --from=epg-builder /tmp/iptv-org-epg ./data/iptv-org-epg
 # Startup script
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Build metadata for /api/version
+ARG GIT_SHA=""
+ARG BUILD_TIME=""
+ENV GIT_SHA=${GIT_SHA}
+ENV BUILD_TIME=${BUILD_TIME}
 
 # Data directory with proper permissions
 ENV DB_DIR=/app/data

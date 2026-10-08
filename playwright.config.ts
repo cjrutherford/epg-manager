@@ -47,13 +47,19 @@ export default defineConfig({
       ],
     },
     {
+      name: 'e2e-destructive',
+      testMatch: /(series-rules|dvr-lifecycle|job-queue)\.spec\.ts/,
+      dependencies: ['e2e'],
+      fullyParallel: false,
+    },
+    {
       // Reset genuinely destroys the fixture, so it cannot share a database
       // with tests asserting on seeded counts. Running it after everything
       // else, on its own, is the difference between a suite that passes and
       // one that passes only when the scheduler happens to order it last.
-      name: 'e2e-destructive',
-      testMatch: /(reset-scopes|series-rules|dvr-lifecycle|job-queue)\.spec\.ts/,
-      dependencies: ['e2e'],
+      name: 'e2e-reset',
+      testMatch: /reset-scopes\.spec\.ts/,
+      dependencies: ['e2e-destructive'],
       fullyParallel: false,
     },
     {
@@ -77,9 +83,9 @@ export default defineConfig({
 
   webServer: [
     {
-      command: `npx ts-node src/server.ts`,
+      command: `npx ts-node e2e/fixture/seed-cli.ts "${FIXTURE_DIR}" && npx ts-node src/server.ts`,
       port: API_PORT,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 120_000,
       stdout: 'pipe',
       stderr: 'pipe',
@@ -95,7 +101,7 @@ export default defineConfig({
     {
       command: `node client/dist/client/server/server.mjs`,
       port: WEB_PORT,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 120_000,
       stdout: 'pipe',
       stderr: 'pipe',

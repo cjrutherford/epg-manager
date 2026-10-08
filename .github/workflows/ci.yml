@@ -107,7 +107,7 @@ jobs:
       # ffmpeg is not optional: the DVR and stream routes shell out to it, and
       # without it those failures look like application bugs.
       - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+        run: which ffmpeg || (sudo apt-get update && sudo apt-get install -y ffmpeg)
 
       - name: Download client bundle
         uses: actions/download-artifact@v4

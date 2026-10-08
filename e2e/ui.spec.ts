@@ -326,6 +326,14 @@ test.describe('Admin Console Features', () => {
     const titleInput = modal.locator('input[placeholder="Recording name..."]');
     await titleInput.fill(showTitle);
 
+    // Set future start and end times so the recording is reliably in 'scheduled' state
+    const futureStart = new Date(Date.now() + 2 * 3600_000);
+    const futureEnd = new Date(Date.now() + 3 * 3600_000);
+    const startStr = new Date(futureStart.getTime() - (futureStart.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
+    const endStr = new Date(futureEnd.getTime() - (futureEnd.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
+    await modal.locator('#rec-start').fill(startStr);
+    await modal.locator('#rec-end').fill(endStr);
+
     // Click Schedule
     await modal.locator('button.btn-primary:has-text("Schedule")').click();
     await expect(modal).not.toBeVisible();
@@ -439,6 +447,7 @@ test.describe('Watch TV Interface', () => {
 
   test('server connection modal opens and contains inputs', async ({ page }) => {
     await page.goto('/watch');
+    await revealPlayerChrome(page);
     
     // Click connection settings button
     const connBtn = page.locator('header.topbar button[title="Server Connection"]');
@@ -464,6 +473,7 @@ test.describe('Watch TV Interface', () => {
     });
 
     await page.goto('/watch');
+    await revealPlayerChrome(page);
 
     // Toggle Guide
     const guideBtn = page.locator('button[title="Toggle Guide"]');
@@ -489,6 +499,7 @@ test.describe('Watch TV Interface', () => {
 
   test('guide sidebar layout is resizable horizontally via drag handle', async ({ page }) => {
     await page.goto('/watch');
+    await revealPlayerChrome(page);
 
     // Ensure guide is open
     const guideBtn = page.locator('button[title="Toggle Guide"]');

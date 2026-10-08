@@ -483,6 +483,11 @@ body.theme-omni {
     -moz-osx-font-smoothing: grayscale;
 }
 
+html {
+    overflow-x: hidden;
+    max-width: 100%;
+}
+
 body {
     background: var(--bg-void);
     background-image: var(--bg-gradient);
@@ -494,6 +499,8 @@ body {
     padding: 0;
     line-height: 1.6;
     min-height: 100vh;
+    max-width: 100%;
+    overflow-x: hidden;
     position: relative;
     transition: background-color 0.5s var(--ease-smooth),
                color 0.5s var(--ease-smooth),
@@ -746,6 +753,10 @@ button.stat.is-active {
 
 /* ─── Buttons ──────────────────────────────── */
 .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
     padding: var(--space-lg) var(--space-3xl);
     border-radius: var(--radius-sm);
     border: none;
@@ -754,6 +765,9 @@ button.stat.is-active {
     font-weight: 600;
     font-size: var(--font-md);
     letter-spacing: 0.03em;
+    line-height: 1;
+    vertical-align: middle;
+    white-space: nowrap;
     position: relative;
     overflow: hidden;
     transition: all 0.35s var(--ease-smooth);
@@ -1052,6 +1066,7 @@ input::placeholder {
 /* ─── Tables ───────────────────────────────── */
 table {
     width: 100%;
+    max-width: 100%;
     border-collapse: separate;
     border-spacing: 0;
 }
@@ -1158,14 +1173,19 @@ tbody tr:hover {
 .icon-btn {
     width: 44px;
     height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    flex-shrink: 0;
     border-radius: var(--radius-md);
     border: 1px solid rgba(var(--color-primary-rgb), 0.15);
     background: rgba(var(--color-primary-rgb), 0.05);
     color: var(--text-secondary);
     cursor: pointer;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
+    line-height: 1;
+    padding: 0;
     transition: all 0.25s var(--ease-smooth);
 }
 
@@ -1183,8 +1203,13 @@ tbody tr:hover {
     box-shadow: 0 0 20px rgba(var(--color-primary-rgb), 0.15);
 }
 
+.icon-btn svg,
+.icon-btn .icon,
+.btn .icon {
+    flex-shrink: 0;
+}
+
 .icon-btn svg {
-    margin: 1em;
     width: 18px;
     height: 18px;
 }

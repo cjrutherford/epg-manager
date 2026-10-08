@@ -6,6 +6,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
 import { ToastService } from '../../services/toast.service';
+import { ChannelEventsService } from '../../services/channel-events.service';
 import { computeWindow } from './channel-window';
 
 @Component({
@@ -62,7 +63,7 @@ export class ChannelManagerComponent implements OnInit, OnDestroy {
     customRangesStr = '{}';
 
     constructor(private api: ApiService, private toast: ToastService, private cdr: ChangeDetectorRef,
-        private confirm: ConfirmService) { }
+        private confirm: ConfirmService, private channelEvents: ChannelEventsService) { }
 
     ngOnInit(): void {
         this.loadChannels();
@@ -251,6 +252,7 @@ export class ChannelManagerComponent implements OnInit, OnDestroy {
                 this.channels.forEach(c => {
                     if (ids.includes(c.id)) c.enabled = enabled ? 1 : 0;
                 });
+                this.channelEvents.notifyUpdated();
                 this.toast.show(`${ids.length} channels ${enabled ? 'enabled' : 'disabled'}`, 'success');
             } else if (action === 'auto-assign') {
                 const config = await this.api.getConfig().toPromise();
@@ -345,6 +347,7 @@ export class ChannelManagerComponent implements OnInit, OnDestroy {
                 enabled: ch.enabled
             }).toPromise();
             ch._badge = this.computeMatchBadge(ch);
+            this.channelEvents.notifyUpdated();
             this.toast.show('Channel saved', 'success');
             this.applyFilters();
         } catch (e) {

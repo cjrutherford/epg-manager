@@ -82,6 +82,8 @@
 .table-container {
     padding: 0;
     overflow-x: auto;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 .channel-cell {
@@ -216,6 +218,8 @@
     max-height: 70vh;
     overflow-y: auto;
     overflow-x: auto;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 /* Stand-ins for the rows outside the window. They must not pick up row

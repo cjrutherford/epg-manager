@@ -37,26 +37,32 @@ _Full workflow: Configure playlist & EPG sources → Real-time pipeline processi
 
 ## Quick Start
 
-### Using Docker (Recommended)
+### Using Docker (Recommended) – pinned GHCR image
 
 ```bash
-# Build the Docker image
-docker build -t tuner-daemon .
+# Pull the pinned stable image (no local build)
+curl -O https://raw.githubusercontent.com/cjrutherford/epg-manager/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/cjrutherford/epg-manager/main/.env.example
+cp .env.example .env  # set TAG and ADMIN_PASSWORD
 
-# Run container (exposing web client on 3000 and API on 4000)
-docker run -d \
-  -p 3000:3000 \
-  -p 4000:4000 \
-  -v $(pwd)/data:/app/data \
-  --name tuner-daemon \
-  tuner-daemon
+# TAG is pinned in docker-compose.yml (e.g. 0.3.1). Upgrade with:
+TAG=0.3.1 docker compose pull && TAG=0.3.1 docker compose up -d
+
+# Or float latest within a major:
+docker pull ghcr.io/cjrutherford/epg-manager:0
 ```
 
-Or using **Docker Compose**:
+Dev / edge (also by branch & commit):
 
 ```bash
-docker compose up --build -d
+docker pull ghcr.io/cjrutherford/epg-manager:edge
+docker pull ghcr.io/cjrutherford/epg-manager:branch-main
+docker pull ghcr.io/cjrutherford/epg-manager:sha-827b485
+# local build (contributors)
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
 ```
+
+In-app: Dashboard → Version checks `/api/version` vs latest GitHub release; if `ENABLE_IN_APP_UPGRADE=1` and `/var/run/docker.sock` is mounted, one-click pull is offered, otherwise a copy-paste pinned command is shown.
 
 ### Manual Setup
 
@@ -181,6 +187,9 @@ did.
 | `/api/sync` | POST | Yes | Clean alias for full pipeline trigger |
 | `/api/sync-playlist` | POST | Yes | — |
 | `/api/sync/cancel` | POST | Yes | Cancel any running sync process |
+| `/api/update/apply` | POST | Yes | one-click pull when docker.sock is mounted and ENABLE_IN_APP_UPGRADE=1 |
+| `/api/update/check` | GET | No | compare pinned version vs latest GitHub release (for in-app upgrade banner) |
+| `/api/version` | GET | No | pinned version + build metadata for in-app upgrade checks |
 <!-- END API TABLE -->
 
 ### Generated Export Files
@@ -197,27 +206,26 @@ did.
 
 ## Releases
 
-Versions are set in one place and propagated. `package.json`, `client/package.json`
-and the Android `build.gradle` used to say three different things — 0.1.0, 0.0.0
-and 1.0 — which makes a bug report impossible to place against a build.
+Versions are set in one place and propagated. `package.json`, `client/package.json`,
+`client/android/app/build.gradle`, `docker-compose.yml` (pinned `TAG`) and `.env.example`
+used to disagree — `0.1.0` vs `0.0.0` vs `1.0` — which makes a bug report impossible to place.
 
 ```bash
 npm run version:set minor     # or patch, major, or an exact 1.4.0
 npm run version:check v1.4.0  # verify every file agrees, without writing
 ```
 
-Cutting a release:
+Cutting a release (fully automatic, GHCR-only):
 
-1. Run the **Version** workflow (Actions → Version → Run workflow) and choose
-   patch, minor or major. It runs the unit tests, sets the version in all three
-   files, commits and pushes a `vX.Y.Z` tag.
+1. Merge to `main` with conventional commits (`feat:`, `fix:`, `BREAKING CHANGE:`). On push to `main`, **Release Please** (`release-please.yml`) opens/updates a `chore: release X.Y.Z` PR that bumps all version files. Merging that PR creates tag `vX.Y.Z`.
 2. The tag starts the **Release** workflow, which:
    - refuses to continue unless the tag matches every version in the repository
    - runs the unit and end-to-end suites
-   - builds and pushes a multi-architecture image to GHCR, and to Docker Hub if
-     `DOCKERHUB_USERNAME` is configured
+   - builds and pushes a pinned multi-arch image to **GHCR only** (`ghcr.io/cjrutherford/epg-manager:X.Y.Z`, `X.Y`, `X`, `latest` if stable)
    - builds the `mobile` and `tv` Android installers
-   - publishes a GitHub Release with the installers and `docker-compose.yml`
+   - publishes a GitHub Release with the installers and pinned `docker-compose.yml` + `.env.example`
+
+Dev branches push `edge`, `branch-<name>`, `branch-<name>-<sha>` and `sha-<short>` via `edge.yml` on every non-`main` push.
 
 Android builds are debug-signed by default, which installs by side-load without
 anyone holding a release keystore. Set `ANDROID_KEYSTORE_BASE64`,

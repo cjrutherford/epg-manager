@@ -126,6 +126,30 @@ app.use('/files/streams', express.static(path.join(DB_DIR, 'streams'), {
 // Import reads these off disk, so this mount is for browsing only.
 app.use('/files/iptv-org-playlists', requireAuth, express.static(path.join(DB_DIR, 'iptv-org-playlists')));
 
+// Output playlist and guide files (accessible at root or /files/ for backward compatibility)
+const servePlaylistM3u = async (req: express.Request, res: express.Response) => {
+    const m3uPath = path.join(DB_DIR, 'playlist.m3u');
+    if (fs.existsSync(m3uPath)) {
+        res.header('Content-Type', 'audio/x-mpegurl');
+        res.sendFile(m3uPath);
+    } else {
+        res.status(404).send("Not generated yet");
+    }
+};
+
+const serveEpgXml = async (req: express.Request, res: express.Response) => {
+    const epgPath = path.join(DB_DIR, 'epg.xml');
+    if (fs.existsSync(epgPath)) {
+        res.header('Content-Type', 'text/xml');
+        res.sendFile(epgPath);
+    } else {
+        res.status(404).send("Not generated yet");
+    }
+};
+
+app.get(['/playlist.m3u', '/channels.m3u', '/files/playlist.m3u', '/files/channels.m3u'], servePlaylistM3u);
+app.get(['/epg.xml', '/guide.xml', '/files/epg.xml', '/files/guide.xml'], serveEpgXml);
+
 // Anything else under /files is not public data.
 app.use('/files', (req: any, res: any) => {
     res.status(404).json({ error: 'Not found' });
@@ -453,7 +477,7 @@ app.get('/api/settings', requireAuth, async (req: any, res: any) => {
 // GET /api/channels-with-programs - Returns channels with current/next program info
 app.get('/api/channels-with-programs', requireAuth, async (req: any, res: any) => {
     try {
-        const now = new Date().toISOString().replace(/[-:]/g, '').slice(0, 14) + '00 +0000';
+        const now = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14) + ' +0000';
 
         const result = await db.execute(`
 SELECT
@@ -1069,35 +1093,7 @@ app.post('/api/reset', requireAuth, async (req: any, res: any) => {
     }
 });
 
-app.get('/playlist.m3u', async (req, res) => {
-    // Generate fresh or serve from file?
-    // Requirement "export an m3u file ... resulting from selections".
-    // Let's generate it on demand or on save?
-    // User asked to "persist ... playlist.m3u".
-    // Let's generate it here but also save it during processEpg?
-    // Actually, processEpg modifies channels. 
-    // Let's generate it dynamically for now but maybe save?
-    // Wait, requirement: "rebuilds should be on a schedule... build once and then serve".
-    // So we should generate the M3U at the end of processEpg too.
 
-    const m3uPath = path.join(DB_DIR, 'playlist.m3u');
-    if (fs.existsSync(m3uPath)) {
-        res.header('Content-Type', 'audio/x-mpegurl');
-        res.sendFile(m3uPath);
-    } else {
-        res.status(404).send("Not generated yet");
-    }
-});
-
-app.get('/epg.xml', async (req, res) => {
-    const epgPath = path.join(DB_DIR, 'epg.xml');
-    if (fs.existsSync(epgPath)) {
-        res.header('Content-Type', 'text/xml');
-        res.sendFile(epgPath);
-    } else {
-        res.status(404).send("Not generated yet");
-    }
-});
 
 /**
  * Every table must belong to exactly one reset scope. A table added to the
@@ -2760,6 +2756,75 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
+// GET /api/version - pinned version + build metadata for in-app upgrade checks
+app.get('/api/version', (req, res) => {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const pkg = require('../package.json');
+        res.json({
+            version: pkg.version || null,
+            commit: process.env.GIT_SHA || process.env.GITHUB_SHA || null,
+            buildTime: process.env.BUILD_TIME || null
+        });
+    } catch (e: any) {
+        res.json({ version: null, commit: null, buildTime: null });
+    }
+});
+
+// GET /api/update/check - compare pinned version vs latest GitHub release (for in-app upgrade banner)
+app.get('/api/update/check', async (req, res) => {
+    try {
+        const pkg = require('../package.json');
+        const current = String(pkg.version || '0.0.0');
+        // Fetch latest release from GitHub (cached, no auth)
+        const resp = await axios.get('https://api.github.com/repos/cjrutherford/epg-manager/releases/latest', {
+            headers: { 'Accept': 'application/vnd.github+json', 'User-Agent': 'tuner-daemon-update-check' },
+            timeout: 5000
+        });
+        const latestTag = String(resp.data?.tag_name || resp.data?.name || '').replace(/^v/, '');
+        const latest = latestTag || null;
+        const updateAvailable = latest ? latest !== current : false;
+        res.json({
+            current,
+            latest,
+            updateAvailable,
+            releaseUrl: resp.data?.html_url || null,
+            publishedAt: resp.data?.published_at || null,
+            // Pinned pull command for docs/UI
+            pullCommand: latest ? `TAG=${latest} docker compose pull && TAG=${latest} docker compose up -d` : null,
+            inContainerUpgradeEnabled: process.env.ENABLE_IN_APP_UPGRADE === '1'
+        });
+    } catch (e: any) {
+        // GitHub API may be rate-limited or offline – don't fail the page
+        try {
+            const pkg = require('../package.json');
+            res.json({ current: pkg.version || null, latest: null, updateAvailable: false, error: e.message });
+        } catch {
+            res.json({ current: null, latest: null, updateAvailable: false, error: e.message });
+        }
+    }
+});
+
+// POST /api/update/apply - one-click pull when docker.sock is mounted and ENABLE_IN_APP_UPGRADE=1
+app.post('/api/update/apply', requireAuth, async (req: any, res: any) => {
+    if (process.env.ENABLE_IN_APP_UPGRADE !== '1') {
+        return res.status(403).json({ error: 'In-container upgrade is disabled. Set ENABLE_IN_APP_UPGRADE=1 and mount /var/run/docker.sock:ro' });
+    }
+    const tag = String(req.body?.tag || '').trim();
+    if (!tag) return res.status(400).json({ error: 'Missing tag' });
+    // Basic semver / edge validation
+    if (!/^[\w.\-]+$/.test(tag)) return res.status(400).json({ error: 'Invalid tag' });
+    const image = `ghcr.io/cjrutherford/epg-manager:${tag}`;
+    try {
+        const { execSync } = require('child_process');
+        // Use docker CLI if available inside container (requires docker.sock)
+        execSync(`docker pull ${image}`, { timeout: 120000, stdio: 'pipe' });
+        res.json({ success: true, message: `Pulled ${image}. Run: TAG=${tag} docker compose up -d on the host to restart.` });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message || String(e) });
+    }
+});
+
 // GET /api/stats - Comprehensive statistics
 app.get('/api/stats', async (req, res) => {
     try {
@@ -2872,7 +2937,7 @@ app.get('/api/guide', async (req, res) => {
 
         // Format times for EPG comparison (YYYYMMDDHHMMSS +0000)
         const fmtTime = (d: Date) => {
-            return d.toISOString().replace(/[-:T]/g, '').slice(0, 14) + '00 +0000';
+            return d.toISOString().replace(/[-:T]/g, '').slice(0, 14) + ' +0000';
         };
         const startStr = fmtTime(startTime);
         const endStr = fmtTime(endTime);
@@ -3021,7 +3086,7 @@ app.get('/api/channel/:id/programs', async (req, res) => {
 
         const now = new Date();
         const end = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-        const fmtTime = (d: Date) => d.toISOString().replace(/[-:T]/g, '').slice(0, 14) + '00 +0000';
+        const fmtTime = (d: Date) => d.toISOString().replace(/[-:T]/g, '').slice(0, 14) + ' +0000';
 
         const programsRes = await db.execute({
             sql: `
