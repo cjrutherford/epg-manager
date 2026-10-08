@@ -45,7 +45,7 @@ export function isRetryableError(error: { code?: string } | null | undefined): b
     if (!error?.code) return false;
     return [
         'ECONNRESET', 'ETIMEDOUT', 'ECONNABORTED', 'EAI_AGAIN',
-        'ENOTFOUND', 'ECONNREFUSED', 'EPIPE', 'ERR_SOCKET_TIMEOUT'
+        'ECONNREFUSED', 'EPIPE', 'ERR_SOCKET_TIMEOUT'
     ].includes(error.code);
 }
 

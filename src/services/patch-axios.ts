@@ -76,7 +76,7 @@ export function isTransientError(error: any): boolean {
     return true;
   }
   const code = error.code;
-  if (code && ['ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ERR_NETWORK'].includes(code)) {
+  if (code && ['ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'EAI_AGAIN', 'ERR_NETWORK'].includes(code)) {
     return true;
   }
   if (error.message && (error.message.includes('timeout') || error.message.includes('network error'))) {

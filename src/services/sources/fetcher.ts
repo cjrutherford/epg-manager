@@ -117,6 +117,7 @@ export async function fetchSource(url: string, options: FetchOptions = {}): Prom
                 maxContentLength: maxBytes,
                 maxBodyLength: maxBytes,
                 decompress: true,
+                ...({ maxRetries: 0 } as any),
                 // 304 is a success for our purposes, not an error
                 validateStatus: status => (status >= 200 && status < 300) || status === 304,
                 headers: {
@@ -208,6 +209,7 @@ export async function fetchSourceStream(url: string, options: FetchOptions = {})
         responseType: 'stream',
         timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         decompress: true,
+        ...({ maxRetries: 0 } as any),
         validateStatus: status => (status >= 200 && status < 300) || status === 304,
         headers: {
             'User-Agent': USER_AGENT,

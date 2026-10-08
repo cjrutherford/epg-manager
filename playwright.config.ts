@@ -77,9 +77,9 @@ export default defineConfig({
 
   webServer: [
     {
-      command: `npx ts-node src/server.ts`,
+      command: `npx ts-node e2e/fixture/seed-cli.ts "${FIXTURE_DIR}" && npx ts-node src/server.ts`,
       port: API_PORT,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 120_000,
       stdout: 'pipe',
       stderr: 'pipe',
