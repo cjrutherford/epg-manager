@@ -32,11 +32,18 @@ export function app(): express.Express {
     next();
   });
 
-  // Proxy /api and /files requests to the backend API
+  // Proxy /api, /files, and exported playlist/guide files to the backend API
   const apiHost = process.env['API_HOST'] || '127.0.0.1';
   const apiPort = parseInt(process.env['API_PORT'] || '4000', 10);
 
-  server.use(['/api', '/files'], (req, res) => {
+  server.use([
+    '/api',
+    '/files',
+    '/playlist.m3u',
+    '/channels.m3u',
+    '/epg.xml',
+    '/guide.xml'
+  ], (req, res) => {
     const proxyReq = http.request({
       hostname: apiHost,
       port: apiPort,

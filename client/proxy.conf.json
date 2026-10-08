@@ -6,5 +6,21 @@
     "/files": {
         "target": "http://localhost:6875",
         "secure": false
+    },
+    "/playlist.m3u": {
+        "target": "http://localhost:6875",
+        "secure": false
+    },
+    "/channels.m3u": {
+        "target": "http://localhost:6875",
+        "secure": false
+    },
+    "/epg.xml": {
+        "target": "http://localhost:6875",
+        "secure": false
+    },
+    "/guide.xml": {
+        "target": "http://localhost:6875",
+        "secure": false
     }
 }

@@ -126,6 +126,30 @@ app.use('/files/streams', express.static(path.join(DB_DIR, 'streams'), {
 // Import reads these off disk, so this mount is for browsing only.
 app.use('/files/iptv-org-playlists', requireAuth, express.static(path.join(DB_DIR, 'iptv-org-playlists')));
 
+// Output playlist and guide files (accessible at root or /files/ for backward compatibility)
+const servePlaylistM3u = async (req: express.Request, res: express.Response) => {
+    const m3uPath = path.join(DB_DIR, 'playlist.m3u');
+    if (fs.existsSync(m3uPath)) {
+        res.header('Content-Type', 'audio/x-mpegurl');
+        res.sendFile(m3uPath);
+    } else {
+        res.status(404).send("Not generated yet");
+    }
+};
+
+const serveEpgXml = async (req: express.Request, res: express.Response) => {
+    const epgPath = path.join(DB_DIR, 'epg.xml');
+    if (fs.existsSync(epgPath)) {
+        res.header('Content-Type', 'text/xml');
+        res.sendFile(epgPath);
+    } else {
+        res.status(404).send("Not generated yet");
+    }
+};
+
+app.get(['/playlist.m3u', '/channels.m3u', '/files/playlist.m3u', '/files/channels.m3u'], servePlaylistM3u);
+app.get(['/epg.xml', '/guide.xml', '/files/epg.xml', '/files/guide.xml'], serveEpgXml);
+
 // Anything else under /files is not public data.
 app.use('/files', (req: any, res: any) => {
     res.status(404).json({ error: 'Not found' });
@@ -1069,35 +1093,7 @@ app.post('/api/reset', requireAuth, async (req: any, res: any) => {
     }
 });
 
-app.get('/playlist.m3u', async (req, res) => {
-    // Generate fresh or serve from file?
-    // Requirement "export an m3u file ... resulting from selections".
-    // Let's generate it on demand or on save?
-    // User asked to "persist ... playlist.m3u".
-    // Let's generate it here but also save it during processEpg?
-    // Actually, processEpg modifies channels. 
-    // Let's generate it dynamically for now but maybe save?
-    // Wait, requirement: "rebuilds should be on a schedule... build once and then serve".
-    // So we should generate the M3U at the end of processEpg too.
 
-    const m3uPath = path.join(DB_DIR, 'playlist.m3u');
-    if (fs.existsSync(m3uPath)) {
-        res.header('Content-Type', 'audio/x-mpegurl');
-        res.sendFile(m3uPath);
-    } else {
-        res.status(404).send("Not generated yet");
-    }
-});
-
-app.get('/epg.xml', async (req, res) => {
-    const epgPath = path.join(DB_DIR, 'epg.xml');
-    if (fs.existsSync(epgPath)) {
-        res.header('Content-Type', 'text/xml');
-        res.sendFile(epgPath);
-    } else {
-        res.status(404).send("Not generated yet");
-    }
-});
 
 /**
  * Every table must belong to exactly one reset scope. A table added to the
