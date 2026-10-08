@@ -42,6 +42,32 @@
     </div>
     }
 
+    <!-- Version & Update -->
+    <div class="glass-card" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:24px;padding:16px 20px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+            <lucide-icon name="tag" class="icon"></lucide-icon>
+            <span class="text-secondary" style="font-size:0.85em;">Version</span>
+            <strong>{{ versionInfo?.version || '...' }}</strong>
+            @if (versionInfo?.commit) {
+                <code style="font-size:0.75em;opacity:0.7;">{{ versionInfo?.commit | slice:0:7 }}</code>
+            }
+        </div>
+        <span style="flex:1"></span>
+        @if (checkingUpdate) {
+            <span class="text-secondary" style="font-size:0.85em;">Checking for updates…</span>
+        } @else if (updateInfo?.updateAvailable) {
+            <span class="badge badge-warning">Update {{ updateInfo?.latest }} available</span>
+            <a [href]="updateInfo?.releaseUrl" target="_blank" class="btn btn-secondary small-btn">Release notes</a>
+            <button class="btn btn-secondary small-btn" (click)="copyPullCommand()">Copy pull</button>
+            @if (updateInfo?.inContainerUpgradeEnabled) {
+                <button class="btn btn-primary small-btn" (click)="applyUpdate()" [disabled]="applyingUpdate">{{ applyingUpdate ? 'Pulling…' : 'One-click pull' }}</button>
+            }
+        } @else if (updateInfo?.latest) {
+            <span class="badge badge-success">Up to date ({{ updateInfo?.latest }})</span>
+        }
+        <code style="font-size:0.75em;background:rgba(0,0,0,0.3);padding:4px 8px;border-radius:4px;">ghcr.io/cjrutherford/epg-manager:{{ versionInfo?.version || 'pinned' }}</code>
+    </div>
+
     <!-- Stats -->
     <div class="stat-grid">
         <div class="stat stat--primary">

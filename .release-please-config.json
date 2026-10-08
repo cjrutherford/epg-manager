@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "node",
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "package-name": "tuner-daemon",
+      "changelog-types": [
+        { "type": "feat", "section": "Features", "hidden": false },
+        { "type": "fix", "section": "Bug Fixes", "hidden": false },
+        { "type": "chore", "section": "Misc", "hidden": true }
+      ],
+      "extra-files": [
+        "client/package.json"
+      ]
+    }
+  },
+  "include-v-in-tag": true,
+  "include-component-in-tag": false
+}

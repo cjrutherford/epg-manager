@@ -23,6 +23,8 @@ const PACKAGES = [
     path.join(root, 'client/package.json')
 ];
 const GRADLE = path.join(root, 'client/android/app/build.gradle');
+const COMPOSE = path.join(root, 'docker-compose.yml');
+const ENV_EXAMPLE = path.join(root, '.env.example');
 
 const args = process.argv.slice(2);
 const checking = args[0] === '--check';
@@ -44,6 +46,18 @@ if (checking) {
     const gradle = fs.readFileSync(GRADLE, 'utf8');
     const gradleName = /versionName\s+"([^"]*)"/.exec(gradle);
     files.push({ name: relative(GRADLE), version: gradleName ? gradleName[1] : null });
+
+    // Also check pinned compose TAG
+    try {
+        const compose = fs.readFileSync(COMPOSE, 'utf8');
+        const m = /image:\s*ghcr\.io\/cjrutherford\/epg-manager:\$\{TAG:-(.+?)\}/.exec(compose);
+        files.push({ name: relative(COMPOSE), version: m ? m[1].trim() : null });
+    } catch {}
+    try {
+        const env = fs.readFileSync(ENV_EXAMPLE, 'utf8');
+        const m2 = /^TAG=(.+)$/m.exec(env);
+        files.push({ name: relative(ENV_EXAMPLE), version: m2 ? m2[1].trim() : null });
+    } catch {}
 
     const result = checkVersionsAgree(input, files);
     if (!result.ok) {
@@ -79,5 +93,21 @@ for (const file of PACKAGES) {
 
 fs.writeFileSync(GRADLE, setGradleVersion(fs.readFileSync(GRADLE, 'utf8'), target));
 console.log(`  ${relative(GRADLE)} -> ${version}`);
+
+if (fs.existsSync(COMPOSE)) {
+    let compose = fs.readFileSync(COMPOSE, 'utf8');
+    compose = compose.replace(
+        /image:\s*ghcr\.io\/cjrutherford\/epg-manager:\$\{TAG:-.+?\}/,
+        `image: ghcr.io/cjrutherford/epg-manager:\${TAG:-${version}}`
+    );
+    fs.writeFileSync(COMPOSE, compose);
+    console.log(`  ${relative(COMPOSE)} -> ${version}`);
+}
+if (fs.existsSync(ENV_EXAMPLE)) {
+    let env = fs.readFileSync(ENV_EXAMPLE, 'utf8');
+    env = env.replace(/^TAG=.*$/m, `TAG=${version}`);
+    fs.writeFileSync(ENV_EXAMPLE, env);
+    console.log(`  ${relative(ENV_EXAMPLE)} -> ${version}`);
+}
 
 console.log(`\nVersion set to ${version}. Tag it with:  git tag v${version}`);

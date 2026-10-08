@@ -1,0 +1,6 @@
+services:
+  epg-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/cjrutherford/epg-manager:edge

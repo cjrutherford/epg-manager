@@ -2760,6 +2760,75 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
+// GET /api/version - pinned version + build metadata for in-app upgrade checks
+app.get('/api/version', (req, res) => {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const pkg = require('../package.json');
+        res.json({
+            version: pkg.version || null,
+            commit: process.env.GIT_SHA || process.env.GITHUB_SHA || null,
+            buildTime: process.env.BUILD_TIME || null
+        });
+    } catch (e: any) {
+        res.json({ version: null, commit: null, buildTime: null });
+    }
+});
+
+// GET /api/update/check - compare pinned version vs latest GitHub release (for in-app upgrade banner)
+app.get('/api/update/check', async (req, res) => {
+    try {
+        const pkg = require('../package.json');
+        const current = String(pkg.version || '0.0.0');
+        // Fetch latest release from GitHub (cached, no auth)
+        const resp = await axios.get('https://api.github.com/repos/cjrutherford/epg-manager/releases/latest', {
+            headers: { 'Accept': 'application/vnd.github+json', 'User-Agent': 'tuner-daemon-update-check' },
+            timeout: 5000
+        });
+        const latestTag = String(resp.data?.tag_name || resp.data?.name || '').replace(/^v/, '');
+        const latest = latestTag || null;
+        const updateAvailable = latest ? latest !== current : false;
+        res.json({
+            current,
+            latest,
+            updateAvailable,
+            releaseUrl: resp.data?.html_url || null,
+            publishedAt: resp.data?.published_at || null,
+            // Pinned pull command for docs/UI
+            pullCommand: latest ? `TAG=${latest} docker compose pull && TAG=${latest} docker compose up -d` : null,
+            inContainerUpgradeEnabled: process.env.ENABLE_IN_APP_UPGRADE === '1'
+        });
+    } catch (e: any) {
+        // GitHub API may be rate-limited or offline – don't fail the page
+        try {
+            const pkg = require('../package.json');
+            res.json({ current: pkg.version || null, latest: null, updateAvailable: false, error: e.message });
+        } catch {
+            res.json({ current: null, latest: null, updateAvailable: false, error: e.message });
+        }
+    }
+});
+
+// POST /api/update/apply - one-click pull when docker.sock is mounted and ENABLE_IN_APP_UPGRADE=1
+app.post('/api/update/apply', requireAuth, async (req: any, res: any) => {
+    if (process.env.ENABLE_IN_APP_UPGRADE !== '1') {
+        return res.status(403).json({ error: 'In-container upgrade is disabled. Set ENABLE_IN_APP_UPGRADE=1 and mount /var/run/docker.sock:ro' });
+    }
+    const tag = String(req.body?.tag || '').trim();
+    if (!tag) return res.status(400).json({ error: 'Missing tag' });
+    // Basic semver / edge validation
+    if (!/^[\w.\-]+$/.test(tag)) return res.status(400).json({ error: 'Invalid tag' });
+    const image = `ghcr.io/cjrutherford/epg-manager:${tag}`;
+    try {
+        const { execSync } = require('child_process');
+        // Use docker CLI if available inside container (requires docker.sock)
+        execSync(`docker pull ${image}`, { timeout: 120000, stdio: 'pipe' });
+        res.json({ success: true, message: `Pulled ${image}. Run: TAG=${tag} docker compose up -d on the host to restart.` });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message || String(e) });
+    }
+});
+
 // GET /api/stats - Comprehensive statistics
 app.get('/api/stats', async (req, res) => {
     try {

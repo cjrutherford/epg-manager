@@ -1,0 +1,26 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    if: github.repository == 'cjrutherford/epg-manager'
+    steps:
+      - uses: google-github-actions/release-please-action@v4
+        id: release
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: .release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      # Release-please opened/updated a PR – no further action
+      # When the release PR is merged, it will have created a tag like v0.4.0
+      # That tag push then triggers `release.yml` which builds & publishes GHCR + APKs
