@@ -24,7 +24,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
           # client/ is a second npm project with its own lockfile. Cache on both,
           # or the client install is uncached on every run.
@@ -132,7 +132,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
           # client/ is a second npm project with its own lockfile. Cache on both,
           # or the client install is uncached on every run.
