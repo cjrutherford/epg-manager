@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0](https://github.com/cjrutherford/epg-manager/compare/v0.3.1...v0.4.0) (2026-10-27)
+
+
+### Features
+
+* add in-app update notifications, release workflows, and compose image pinning ([e13241e](https://github.com/cjrutherford/epg-manager/commit/e13241e7e5b34bc736500d2fbdaeca73aa9466ca))
+* **xml & ci:** improve xmltv compliance, gzip support, and android apk packaging in github actions ([a8a5ac9](https://github.com/cjrutherford/epg-manager/commit/a8a5ac9600eaa75efbab31529a89a8d67b4dd0e6))
+
+
+### Bug Fixes
+
+* **api:** correct xmltv timestamp formatting in channel programs and guide queries ([32da3ae](https://github.com/cjrutherford/epg-manager/commit/32da3aeab912d5e76dd765794c182ce8aa730faa))
+* **ci:** pin ubuntu-24.04 runner image for playwright and e2e test compatibility ([2f3575c](https://github.com/cjrutherford/epg-manager/commit/2f3575c020fd04f1341ab0eff5ab96c0faba46e9))
+* **ci:** resolve e2e fixture race condition, retry delays, and edge build platform ([80fce31](https://github.com/cjrutherford/epg-manager/commit/80fce31d31a3ea08b5fccd616e78b388d5c00511))
+* **ci:** specify packages for android setup to prevent obsolete tools package lookup failure ([9785218](https://github.com/cjrutherford/epg-manager/commit/97852184297be75ca3ebf356367144a169310e70))
+* **e2e:** decouple reset project order and eliminate job-queue dashboard race ([79e1ec3](https://github.com/cjrutherford/epg-manager/commit/79e1ec3e142a83f1c1d0651241d4ad2008541d45))
+* **e2e:** fix dvr manual schedule timing, watch overlay controls, and job queue dashboard race ([dae3cdc](https://github.com/cjrutherford/epg-manager/commit/dae3cdc7e762e9f33c33ea84d609afad4b5664ab))
+* proxy and serve playlist and epg files from advertised and legacy paths ([ea29333](https://github.com/cjrutherford/epg-manager/commit/ea293337261dd08065ccb18bee40e6a8027edb0f))
+* sync disabled channels between settings and list ([827b485](https://github.com/cjrutherford/epg-manager/commit/827b485c818f291881f7f45af4fc593d785d6408))
+
 ## [0.2.0] - 2026-07-31
 
 ### Added
