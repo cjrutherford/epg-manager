@@ -22,5 +22,13 @@
     "/guide.xml": {
         "target": "http://localhost:6875",
         "secure": false
+    },
+    "/epg.xml.gz": {
+        "target": "http://localhost:6875",
+        "secure": false
+    },
+    "/guide.xml.gz": {
+        "target": "http://localhost:6875",
+        "secure": false
     }
 }

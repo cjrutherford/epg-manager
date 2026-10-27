@@ -147,6 +147,7 @@ export function cleanName(name: string): string {
 export function getText(val: any): string {
     if (val === undefined || val === null) return "";
     return String(val)
+        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
@@ -977,7 +978,7 @@ export async function generatePlaylistAndEpg(): Promise<{ playlistCount: number,
 
         const stream = createAtomicWriteStream(path.join(DB_DIR, 'epg.xml'));
         try {
-            await stream.write('<?xml version="1.0" encoding="UTF-8"?>\n<tv>\n');
+            await stream.write('<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE tv SYSTEM "xmltv.dtd">\n<tv generator-info-name="tuner-daemon" generator-info-url="https://github.com/cjrutherford/epg-manager">\n');
 
             // First, write channel info from epg_channels table (if available)
             const epgChannelsData = await db.execute(
@@ -1024,32 +1025,38 @@ export async function generatePlaylistAndEpg(): Promise<{ playlistCount: number,
                     args: [offset]
                 });
                 for (const p of progs.rows) {
-                    let xml = `  <programme start="${p.start}" stop="${p.stop}" channel="${getText(p.channel_id)}">`;
-                    xml += `<title>${getText(p.title)}</title>`;
-                    if (p.sub_title) xml += `<sub-title>${getText(p.sub_title)}</sub-title>`;
-                    if (p.desc) xml += `<desc>${getText(p.desc)}</desc>`;
-                    if (p.episode_num) xml += `<episode-num system="onscreen">${getText(p.episode_num)}</episode-num>`;
+                    const start = getText(p.start);
+                    const stop = getText(p.stop);
+                    const channelId = getText(p.channel_id);
+                    const title = getText(p.title) || "No Information";
+                    let xml = `  <programme start="${start}" stop="${stop}" channel="${channelId}">\n`;
+                    xml += `    <title>${title}</title>\n`;
+                    if (p.sub_title) xml += `    <sub-title>${getText(p.sub_title)}</sub-title>\n`;
+                    if (p.desc) xml += `    <desc>${getText(p.desc)}</desc>\n`;
+                    if (p.episode_num) xml += `    <episode-num system="onscreen">${getText(p.episode_num)}</episode-num>\n`;
 
                     // Use TVMaze genres if available, fallback to original category
                     const categories = p.tvmaze_genres || p.category;
                     if (categories) {
                         const cats = String(categories).split(', ');
                         for (const cat of cats) {
-                            xml += `<category>${getText(cat)}</category>`;
+                            if (cat.trim()) {
+                                xml += `    <category>${getText(cat.trim())}</category>\n`;
+                            }
                         }
                     }
 
                     // Use TVMaze rating if available, fallback to original
                     const rating = p.tvmaze_rating || p.rating;
-                    if (rating) xml += `<rating><value>${getText(rating)}</value></rating>`;
-                    if (p.icon) xml += `<icon src="${getText(p.icon)}" />`;
-                    xml += `</programme>\n`;
+                    if (rating) xml += `    <rating><value>${getText(rating)}</value></rating>\n`;
+                    if (p.icon) xml += `    <icon src="${getText(p.icon)}" />\n`;
+                    xml += `  </programme>\n`;
                     await stream.write(xml);
                 }
                 written += progs.rows.length;
             }
 
-            await stream.write('</tv>');
+            await stream.write('</tv>\n');
             await stream.commit();
 
             // The count is what was actually written, not what was expected.
@@ -1057,6 +1064,33 @@ export async function generatePlaylistAndEpg(): Promise<{ playlistCount: number,
                 emitLog(`epg.xml wrote ${written.toLocaleString()} of ${epgProgramCount.toLocaleString()} expected programmes`, "warning");
             }
             epgProgramCount = written;
+
+            // Generate gzipped copy epg.xml.gz atomically
+            try {
+                const epgXmlPath = path.join(DB_DIR, 'epg.xml');
+                const epgGzPath = path.join(DB_DIR, 'epg.xml.gz');
+                const tmpGz = path.join(DB_DIR, `.${path.basename(epgGzPath)}.tmp-${process.pid}-${Date.now()}`);
+                await new Promise<void>((resolve, reject) => {
+                    const src = fs.createReadStream(epgXmlPath);
+                    const gz = zlib.createGzip({ level: 6 });
+                    const dest = fs.createWriteStream(tmpGz);
+                    src.pipe(gz).pipe(dest)
+                        .on('finish', () => {
+                            try {
+                                fs.renameSync(tmpGz, epgGzPath);
+                                resolve();
+                            } catch (e) {
+                                reject(e);
+                            }
+                        })
+                        .on('error', (err) => {
+                            try { fs.unlinkSync(tmpGz); } catch (_) {}
+                            reject(err);
+                        });
+                });
+            } catch (gzErr: any) {
+                emitLog(`epg.xml.gz generation failed: ${gzErr.message}`, "warning");
+            }
         } catch (e: any) {
             // The previous epg.xml stays in place rather than being replaced by
             // a truncated one.

@@ -42,7 +42,9 @@ export function app(): express.Express {
     '/playlist.m3u',
     '/channels.m3u',
     '/epg.xml',
-    '/guide.xml'
+    '/epg.xml.gz',
+    '/guide.xml',
+    '/guide.xml.gz'
   ], (req, res) => {
     const proxyReq = http.request({
       hostname: apiHost,

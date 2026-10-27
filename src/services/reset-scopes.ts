@@ -63,7 +63,7 @@ export const SYSTEM_TABLES = [
 ] as const;
 
 /** Files and directories under DB_DIR, by class. */
-export const GUIDE_FILES = ['playlist.m3u', 'epg.xml'] as const;
+export const GUIDE_FILES = ['playlist.m3u', 'epg.xml', 'epg.xml.gz'] as const;
 export const USER_DIRS = ['recordings', 'streams'] as const;
 export const COLLECTION_DIRS = ['iptv-org-epg', 'iptv-org-playlists', 'imdb-data', 'http-cache'] as const;
 
