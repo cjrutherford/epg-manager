@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1](https://github.com/cjrutherford/epg-manager/compare/v0.4.0...v0.4.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* **ci:** bump node-version to 22 for capacitor cli compatibility and enable android job on pull requests ([#6](https://github.com/cjrutherford/epg-manager/issues/6)) ([48f9f2b](https://github.com/cjrutherford/epg-manager/commit/48f9f2ba0f35f4fd307ab79e90da2429606948a3))
+
 ## [0.4.0](https://github.com/cjrutherford/epg-manager/compare/v0.3.1...v0.4.0) (2026-10-27)
 
 
