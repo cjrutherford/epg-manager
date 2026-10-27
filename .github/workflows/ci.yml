@@ -186,6 +186,8 @@ jobs:
   android:
     name: Package Android APKs
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')) || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     needs: [build, unit-tests]
     steps:
@@ -254,6 +256,7 @@ jobs:
           found=0
           for flavour in mobile tv; do
             for apk in $(find client/android/app/build/outputs/apk/"$flavour" -name "app-${flavour}-*.apk" 2>/dev/null); do
+              cp "$apk" "dist-apk/tuner-daemon-${flavour}-v${version}.apk"
               cp "$apk" "dist-apk/tuner-daemon-${flavour}-v${version}-${short_sha}.apk"
               found=$((found + 1))
             done
@@ -271,3 +274,35 @@ jobs:
           name: android-apks
           path: dist-apk/*.apk
           retention-days: 30
+
+      - name: Attach APKs to GitHub Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          tag="v${version}"
+          commit_msg=$(git log -1 --pretty=%B)
+
+          if echo "$commit_msg" | grep -qE "^chore(\(main\))?: release"; then
+            echo "Release commit detected for version $version. Checking for GitHub release $tag..."
+            for i in $(seq 1 12); do
+              if gh release view "$tag" >/dev/null 2>&1; then
+                echo "Release $tag is ready. Uploading APKs..."
+                gh release upload "$tag" dist-apk/*.apk --clobber
+                exit 0
+              fi
+              echo "Waiting for Release $tag to appear (attempt $i/12)..."
+              sleep 5
+            done
+            echo "Notice: Release $tag was not found after 60s."
+          else
+            tag_sha=$(gh api repos/${{ github.repository }}/git/ref/tags/${tag} --jq .object.sha 2>/dev/null || true)
+            if [ -n "$tag_sha" ] && [ "$tag_sha" = "${{ github.sha }}" ]; then
+              echo "Current commit matches release tag $tag; uploading APKs..."
+              gh release upload "$tag" dist-apk/*.apk --clobber
+            else
+              echo "Not a release commit; skipping release asset upload."
+            fi
+          fi

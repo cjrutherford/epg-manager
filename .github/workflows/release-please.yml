@@ -13,6 +13,11 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     if: github.repository == 'cjrutherford/epg-manager'
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
     steps:
       - uses: google-github-actions/release-please-action@v4
         id: release
@@ -21,6 +26,102 @@ jobs:
           config-file: .release-please-config.json
           manifest-file: .release-please-manifest.json
 
-      # Release-please opened/updated a PR – no further action
-      # When the release PR is merged, it will have created a tag like v0.4.0
-      # That tag push then triggers `release.yml` which builds & publishes GHCR + APKs
+  release-apk:
+    name: Build & Attach Android APKs
+    runs-on: ubuntu-24.04
+    needs: release-please
+    if: ${{ needs.release-please.outputs.releases_created == 'true' || needs.release-please.outputs.release_created == 'true' }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+
+      - run: npm ci
+
+      - name: Install client dependencies
+        run: npm ci
+        working-directory: client
+
+      - name: Build mobile bundle and sync Capacitor
+        run: |
+          cd client
+          npx ng build --configuration mobile
+          npx cap sync android
+
+      - name: Build debug APKs
+        if: env.KEYSTORE == ''
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          cd client/android
+          ./gradlew assembleMobileDebug assembleTvDebug --no-daemon
+
+      - name: Build signed release APKs
+        if: env.KEYSTORE != ''
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          cd client/android
+          echo "$KEYSTORE" | base64 -d > release.keystore
+          ./gradlew assembleMobileRelease assembleTvRelease --no-daemon \
+            -Pandroid.injected.signing.store.file="$PWD/release.keystore" \
+            -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+          rm -f release.keystore
+
+      - name: Package APKs
+        run: |
+          set -euo pipefail
+          mkdir -p dist-apk
+          tag="${{ needs.release-please.outputs.tag_name }}"
+          short_sha=$(git rev-parse --short HEAD)
+          found=0
+          for flavour in mobile tv; do
+            for apk in $(find client/android/app/build/outputs/apk/"$flavour" -name "app-${flavour}-*.apk" 2>/dev/null); do
+              cp "$apk" "dist-apk/tuner-daemon-${flavour}-${tag}.apk"
+              cp "$apk" "dist-apk/tuner-daemon-${flavour}-${tag}-${short_sha}.apk"
+              found=$((found + 1))
+            done
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "No APKs were produced." >&2
+            find client/android/app/build/outputs -name '*.apk' >&2 || true
+            exit 1
+          fi
+          ls -la dist-apk
+
+      - name: Upload Android APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-android-apks
+          path: dist-apk/*.apk
+          retention-days: 30
+
+      - name: Attach APKs to GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ needs.release-please.outputs.tag_name }}" dist-apk/*.apk --clobber
