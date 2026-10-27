@@ -16,7 +16,7 @@ env:
 jobs:
   verify:
     name: Verify the tag and the tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -80,7 +80,7 @@ jobs:
 
   docker:
     name: Publish the image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: verify
     steps:
       - uses: actions/checkout@v4
@@ -125,7 +125,7 @@ jobs:
 
   android:
     name: Build the installers
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: verify
     steps:
       - uses: actions/checkout@v4
@@ -221,7 +221,7 @@ jobs:
 
   publish:
     name: Publish the release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [verify, docker, android]
     steps:
       - uses: actions/checkout@v4

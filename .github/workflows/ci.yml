@@ -16,7 +16,7 @@ concurrency:
 jobs:
   build:
     name: Build server and client
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -58,7 +58,7 @@ jobs:
 
   unit-tests:
     name: Unit tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -85,7 +85,7 @@ jobs:
 
   e2e-tests:
     name: End-to-end tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: build
     steps:
       - uses: actions/checkout@v4
@@ -139,7 +139,7 @@ jobs:
 
   docker:
     name: Docker image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [unit-tests, e2e-tests]
     steps:
       - uses: actions/checkout@v4
@@ -185,7 +185,7 @@ jobs:
 
   android:
     name: Package Android APKs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')) || github.event_name == 'workflow_dispatch'
     needs: [build, unit-tests]
     steps:
