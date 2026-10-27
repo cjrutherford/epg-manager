@@ -308,5 +308,13 @@ describe('epg service', () => {
     it('preserves newlines', () => {
       expect(getText('line1\nline2')).toBe('line1\nline2');
     });
+
+    it('strips illegal XML 1.0 control characters', () => {
+      expect(getText("Hello\x00World\x08\x0B\x0C\x1F!")).toBe("HelloWorld!");
+    });
+
+    it('retains valid XML whitespace characters (tab, newline, carriage return)', () => {
+      expect(getText("A\tB\r\nC")).toBe("A\tB\r\nC");
+    });
   });
 });

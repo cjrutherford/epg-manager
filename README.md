@@ -198,6 +198,7 @@ did.
 | :--- | :---: | :--- |
 | `/playlist.m3u` | GET | Download processed, re-numbered M3U playlist |
 | `/epg.xml` | GET | Download merged XMLTV EPG guide with TVMaze metadata |
+| `/epg.xml.gz` | GET | Download gzipped XMLTV EPG guide (also served via `/guide.xml.gz`) |
 | `/files/streams/*` | GET | HLS segments for an active live stream |
 | `/files/recordings/*` | GET | Completed DVR recording files |
 | `/files/iptv-org-playlists/*` | GET | Cached iptv-org playlists (admin only) |

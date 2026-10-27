@@ -27,6 +27,7 @@ import { classifySchedule, parseWindow } from './services/dvr-lifecycle';
 import { StreamManager, setMaxActiveStreams } from './services/stream';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as zlib from 'zlib';
 import * as crypto from 'crypto';
 import { tui } from './services/tui';
 import { formatMemorySnapshot } from './services/memory';
@@ -130,7 +131,8 @@ app.use('/files/iptv-org-playlists', requireAuth, express.static(path.join(DB_DI
 const servePlaylistM3u = async (req: express.Request, res: express.Response) => {
     const m3uPath = path.join(DB_DIR, 'playlist.m3u');
     if (fs.existsSync(m3uPath)) {
-        res.header('Content-Type', 'audio/x-mpegurl');
+        setOpenCorsHeaders(req, res);
+        res.header('Content-Type', 'audio/x-mpegurl; charset=utf-8');
         res.sendFile(m3uPath);
     } else {
         res.status(404).send("Not generated yet");
@@ -139,16 +141,46 @@ const servePlaylistM3u = async (req: express.Request, res: express.Response) => 
 
 const serveEpgXml = async (req: express.Request, res: express.Response) => {
     const epgPath = path.join(DB_DIR, 'epg.xml');
-    if (fs.existsSync(epgPath)) {
-        res.header('Content-Type', 'text/xml');
-        res.sendFile(epgPath);
-    } else {
-        res.status(404).send("Not generated yet");
+    const gzPath = path.join(DB_DIR, 'epg.xml.gz');
+    if (!fs.existsSync(epgPath)) {
+        return res.status(404).send("Not generated yet");
     }
+
+    setOpenCorsHeaders(req, res);
+    const acceptEncoding = req.headers['accept-encoding'] || '';
+    if (typeof acceptEncoding === 'string' && acceptEncoding.includes('gzip') && fs.existsSync(gzPath)) {
+        res.header('Content-Type', 'application/xml; charset=utf-8');
+        res.header('Content-Encoding', 'gzip');
+        return res.sendFile(gzPath);
+    }
+
+    res.header('Content-Type', 'application/xml; charset=utf-8');
+    return res.sendFile(epgPath);
+};
+
+const serveEpgXmlGz = async (req: express.Request, res: express.Response) => {
+    const gzPath = path.join(DB_DIR, 'epg.xml.gz');
+    setOpenCorsHeaders(req, res);
+    if (fs.existsSync(gzPath)) {
+        res.header('Content-Type', 'application/gzip');
+        res.header('Content-Disposition', 'inline; filename="epg.xml.gz"');
+        return res.sendFile(gzPath);
+    }
+
+    const epgPath = path.join(DB_DIR, 'epg.xml');
+    if (fs.existsSync(epgPath)) {
+        res.header('Content-Type', 'application/gzip');
+        res.header('Content-Disposition', 'inline; filename="epg.xml.gz"');
+        const gzip = zlib.createGzip({ level: 6 });
+        return fs.createReadStream(epgPath).pipe(gzip).pipe(res);
+    }
+
+    res.status(404).send("Not generated yet");
 };
 
 app.get(['/playlist.m3u', '/channels.m3u', '/files/playlist.m3u', '/files/channels.m3u'], servePlaylistM3u);
 app.get(['/epg.xml', '/guide.xml', '/files/epg.xml', '/files/guide.xml'], serveEpgXml);
+app.get(['/epg.xml.gz', '/guide.xml.gz', '/files/epg.xml.gz', '/files/guide.xml.gz'], serveEpgXmlGz);
 
 // Anything else under /files is not public data.
 app.use('/files', (req: any, res: any) => {
@@ -413,7 +445,7 @@ export async function runFullSync() {
             programsProcessed: result.epgPrograms,
             channelsMatched: result.playlistCount,
             totalChannels: Number(totalChannels.rows[0].c),
-            filesGenerated: ['playlist.m3u', 'epg.xml'],
+            filesGenerated: ['playlist.m3u', 'epg.xml', 'epg.xml.gz'],
             customGrabCount: matchedCount
         };
         if (enrichmentStats) {
