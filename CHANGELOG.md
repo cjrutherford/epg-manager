@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0](https://github.com/cjrutherford/epg-manager/compare/v0.4.1...v0.5.0) (2026-10-27)
+
+
+### Features
+
+* **ci:** automatically build and attach android apks to releases ([#8](https://github.com/cjrutherford/epg-manager/issues/8)) ([a35dc80](https://github.com/cjrutherford/epg-manager/commit/a35dc8002a41f4557165cbbda63ac6cdb0c6f654))
+
 ## [0.4.1](https://github.com/cjrutherford/epg-manager/compare/v0.4.0...v0.4.1) (2026-10-27)
 
 
