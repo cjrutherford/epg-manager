@@ -42,7 +42,8 @@ import { rankEpgSources } from './services/epg-sources';
 import { redactUrl } from './services/sources/descriptor';
 import { getBuiltInCatalog, getFastSources } from './services/sources/catalog';
 import { createAdapterContext, createProbeContext, getAdapter, registerBuiltInAdapters } from './services/sources';
-import { addSource, exportSources, importSources, listSources, recordSourceSync, removeSource, setSourceEnabled, setSourcePriority, syncPlaylistSources } from './services/sources/registry';
+import { persistProgrammes } from './services/sources/adapters/xmltv';
+import { addSource, exportSources, getSourceDescriptor, importSources, listSources, recordSourceSync, removeSource, setSourceEnabled, setSourcePriority, syncPlaylistSources } from './services/sources/registry';
 import { normalizeDescriptor, validateDescriptor } from './services/sources/descriptor';
 import { checkScopeCoverage, isResetScope, planReset } from './services/reset-scopes';
 import {
@@ -336,6 +337,79 @@ export let activePipeline: PipelineQueue | null = null;
  * 4. Custom grab missing guide data
  * 5. Generate final M3U and XML files
  */
+/**
+ * Pull programmes from every enabled guide source.
+ *
+ * Guide descriptors were accepted and stored, but the full pipeline never
+ * called the adapters' `fetchGuide`, so a configured XMLTV source contributed
+ * channels and no programmes. Whole-feed kinds share one fetch between
+ * `syncCatalog` and `fetchGuide` through the adapter context, so this is one
+ * network request per source.
+ */
+async function syncGuideSources(days: number): Promise<{ sources: number; programmes: number }> {
+    const sources = (await listSources()).filter(source => source.enabled && source.provides.includes('guide'));
+    let importedSources = 0;
+    let importedProgrammes = 0;
+
+    for (const source of sources) {
+        const descriptor = await getSourceDescriptor(source.key);
+        if (!descriptor) continue;
+        const adapter = getAdapter(descriptor.kind);
+        if (!adapter?.fetchGuide) {
+            await recordSourceSync(source.key, {
+                status: 'failed',
+                error: `The ${descriptor.kind} adapter cannot fetch guide data`
+            });
+            emitLog(`${source.label}: adapter cannot fetch guide data`, 'warning');
+            continue;
+        }
+
+        try {
+            const ctx = createAdapterContext(source.key);
+            let channels: Array<{ id: string; displayName: string; icon: string }> = [];
+            if (adapter.syncCatalog) {
+                const catalog = await adapter.syncCatalog(descriptor, ctx);
+                channels = catalog.rows.map(row => ({
+                    id: row.xmltvId,
+                    displayName: row.name,
+                    icon: ''
+                }));
+            }
+
+            const programmes = [];
+            for await (const programme of adapter.fetchGuide(descriptor, [], { days }, ctx)) {
+                programmes.push(programme);
+            }
+
+            if (ctx.lastFetchNotModified) {
+                await recordSourceSync(source.key, { status: 'success' });
+                emitLog(`${source.label}: guide unchanged since the last fetch`, 'info');
+                continue;
+            }
+
+            if (channels.length === 0) {
+                const ids = [...new Set(programmes.map(programme => programme.channelId))];
+                channels = ids.map(id => ({ id, displayName: id, icon: '' }));
+            }
+
+            const stored = await persistProgrammes(source.key, channels, programmes);
+            importedSources++;
+            importedProgrammes += stored.programmes;
+            await recordSourceSync(source.key, {
+                rows: stored.programmes,
+                status: stored.programmes > 0 ? 'success' : 'empty'
+            });
+            emitLog(`${source.label}: imported ${stored.programmes} programme(s) from ${stored.channels} channel(s)`, 'info');
+        } catch (e: any) {
+            await recordSourceSync(source.key, { status: 'failed', error: e.message });
+            emitLog(`${source.label}: guide import failed — ${e.message}`, 'warning');
+        }
+    }
+
+    emitProgressComplete('grab', `Imported ${importedProgrammes} programme(s) from ${importedSources} guide source(s)`, importedSources);
+    return { sources: importedSources, programmes: importedProgrammes };
+}
+
 export async function runFullSync() {
     await startJob('full_sync');
     try {
@@ -397,6 +471,12 @@ export async function runFullSync() {
         if (getJobStatus().cancelRequested) throw new Error("Sync cancelled by user");
         const daysResult = await db.execute("SELECT value FROM settings WHERE key = 'epg_days'");
         const epgDays = daysResult.rows.length > 0 ? String(daysResult.rows[0].value) : '2';
+
+        // Direct guide sources (XMLTV and similar) are independent of the
+        // scraper matching that follows; import them before matching so the
+        // first sync produces programmes as well as channels.
+        emitLog('Importing configured guide sources...', 'info');
+        await syncGuideSources(Number(epgDays) || 2);
 
         // Initialize our streaming pipeline queue
         const pipeline = new PipelineQueue(epgDays);
