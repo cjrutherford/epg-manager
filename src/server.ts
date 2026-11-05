@@ -2995,15 +2995,22 @@ app.get('/api/stats', async (req, res) => {
 // No auth required so the dashboard can show the empty-state prompt before login.
 app.get('/api/has-data', async (req, res) => {
     try {
-        const [ch, prog, playlistUrls] = await Promise.all([
+        const [ch, prog, playlistUrls, grabTs, sourceTs] = await Promise.all([
             db.execute("SELECT COUNT(*) as c FROM channels"),
             db.execute("SELECT COUNT(*) as c FROM epg_programs"),
-            getConfiguredPlaylistUrls()
+            getConfiguredPlaylistUrls(),
+            db.execute("SELECT MAX(timestamp) as ts FROM grab_logs WHERE success = 1"),
+            db.execute("SELECT MAX(last_sync_at) as ts FROM sources WHERE enabled = 1 AND provides LIKE '%guide%' AND last_sync_status IN ('success', 'empty')")
         ]);
+        const lastGuideAt = Math.max(
+            Number(grabTs.rows[0]?.ts || 0),
+            Number(sourceTs.rows[0]?.ts || 0)
+        ) || null;
         res.json({
             hasChannels: Number(ch.rows[0].c) > 0,
             hasPrograms: Number(prog.rows[0].c) > 0,
             hasPlaylist: playlistUrls.length > 0,
+            lastGuideAt,
             isEmpty: Number(ch.rows[0].c) === 0 && Number(prog.rows[0].c) === 0
         });
     } catch (e: any) {

@@ -238,3 +238,38 @@
 .sidebar-theme-picker {
     position: relative;
 }
+
+/* Runtime RTL: the drawer enters from the right and the active marker moves to
+   the inline-start edge. */
+[dir="rtl"] .sidebar {
+    border-right: 0;
+    border-left: 1px solid var(--border-subtle);
+}
+
+[dir="rtl"] .nav-item {
+    text-align: right;
+}
+
+[dir="rtl"] .nav-item.active {
+    box-shadow: inset -3px 0 0 var(--color-primary);
+}
+
+.login-card app-language-menu {
+    margin-top: var(--space-lg);
+}
+
+.sidebar-footer app-language-menu {
+    margin-bottom: var(--space-sm);
+}
+
+@media (max-width: 768px) {
+    [dir="rtl"] .sidebar {
+        left: auto;
+        right: 0;
+        transform: translateX(100%);
+    }
+
+    [dir="rtl"] .sidebar.open {
+        transform: translateX(0);
+    }
+}

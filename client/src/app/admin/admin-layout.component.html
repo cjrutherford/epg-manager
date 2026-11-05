@@ -5,16 +5,17 @@
         <div class="login-logo">
             <img src="assets/tuner-daemon-icon.png" alt="Tuner Daemon" class="mascot-brand-img" style="width: 64px; height: 64px; border-radius: 12px; margin-bottom: 8px;">
             <h1>Tuner Daemon</h1>
-            <p>Automated guide & live TV engine</p>
+            <p>{{ 'login.tagline' | t }}</p>
         </div>
         <form (ngSubmit)="login()" class="login-form">
-            <input type="password" [(ngModel)]="password" name="password" placeholder="Enter password"
-                class="themed-input w-full" aria-label="Password" required autofocus>
+            <input type="password" [(ngModel)]="password" name="password" [placeholder]="'login.password' | t"
+                class="themed-input w-full" [attr.aria-label]="'login.passwordLabel' | t" required autofocus>
             @if (loginError) {
             <div class="login-error">{{ loginError }}</div>
             }
-            <button type="submit" class="btn btn-primary w-full">Sign In</button>
+            <button type="submit" class="btn btn-primary w-full">{{ 'login.signIn' | t }}</button>
         </form>
+        <app-language-menu></app-language-menu>
     </div>
 </main>
 } @else {
@@ -32,27 +33,27 @@
         <nav class="sidebar-nav">
             <a routerLink="dashboard" routerLinkActive="active" class="nav-item">
                 <lucide-icon name="layout-dashboard" class="icon icon--lg"></lucide-icon>
-                <span>Dashboard</span>
+                <span>{{ 'nav.dashboard' | t }}</span>
             </a>
             <a routerLink="channels" routerLinkActive="active" class="nav-item">
                 <lucide-icon name="video" class="icon icon--lg"></lucide-icon>
-                <span>Channels</span>
+                <span>{{ 'nav.channels' | t }}</span>
             </a>
             <a routerLink="sources" routerLinkActive="active" class="nav-item">
                 <lucide-icon name="server" class="icon icon--lg"></lucide-icon>
-                <span>Sources</span>
+                <span>{{ 'nav.sources' | t }}</span>
             </a>
             <a routerLink="dvr" routerLinkActive="active" class="nav-item">
                 <lucide-icon name="clapperboard" class="icon icon--lg"></lucide-icon>
-                <span>Recordings</span>
+                <span>{{ 'nav.recordings' | t }}</span>
             </a>
             <a routerLink="diagnostics" routerLinkActive="active" class="nav-item">
                 <lucide-icon name="calendar-days" class="icon icon--lg"></lucide-icon>
-                <span>Guide &amp; matching</span>
+                <span>{{ 'nav.diagnostics' | t }}</span>
             </a>
             <a routerLink="settings" routerLinkActive="active" class="nav-item">
                 <lucide-icon name="settings" class="icon icon--lg"></lucide-icon>
-                <span>Settings</span>
+                <span>{{ 'nav.settings' | t }}</span>
             </a>
         </nav>
 
@@ -62,7 +63,7 @@
                 <button class="nav-item" (click)="toggleThemePicker()" [attr.aria-expanded]="themePickerOpen"
                     aria-haspopup="true">
                     <lucide-icon name="palette" class="icon icon--lg"></lucide-icon>
-                    <span>Theme</span>
+                    <span>{{ 'nav.theme' | t }}</span>
                 </button>
                 @if (themePickerOpen) {
                 <app-theme-menu align="left" placement="up" (selected)="themePickerOpen = false" (closed)="themePickerOpen = false"
@@ -70,13 +71,15 @@
                 }
             </div>
 
+            <app-language-menu></app-language-menu>
+
             <a routerLink="/watch" class="nav-item nav-item-watch">
                 <lucide-icon name="play" class="icon icon--lg"></lucide-icon>
-                <span>Watch TV</span>
+                <span>{{ 'nav.watch' | t }}</span>
             </a>
             <button class="nav-item danger" (click)="logout()">
                 <lucide-icon name="log-out" class="icon icon--lg"></lucide-icon>
-                <span>Logout</span>
+                <span>{{ 'nav.logout' | t }}</span>
             </button>
         </div>
     </aside>
@@ -85,7 +88,7 @@
     <div class="main-content">
         <!-- Mobile Header -->
         <div class="mobile-header">
-            <button class="hamburger" (click)="toggleSidebar()" aria-label="Open navigation">
+            <button class="hamburger" (click)="toggleSidebar()" [attr.aria-label]="'nav.open' | t">
                 <lucide-icon name="menu" class="icon icon--lg"></lucide-icon>
             </button>
             <span class="mobile-title" style="display: flex; align-items: center; gap: 8px;">

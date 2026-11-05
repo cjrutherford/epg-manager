@@ -10,11 +10,14 @@ import { Subscription } from 'rxjs';
 
 import { LucideAngularModule } from 'lucide-angular';
 import { ThemeMenuComponent } from '../shared/theme-menu.component';
+import { LanguageMenuComponent } from '../shared/language-menu.component';
+import { I18nService } from '../i18n/i18n.service';
+import { TranslatePipe } from '../i18n/translate.pipe';
 
 @Component({
     selector: 'app-admin-layout',
     standalone: true,
-    imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive, FormsModule, LucideAngularModule, ThemeMenuComponent],
+    imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive, FormsModule, LucideAngularModule, ThemeMenuComponent, LanguageMenuComponent, TranslatePipe],
     templateUrl: './admin-layout.component.html',
     styleUrl: './admin-layout.component.css'
 })
@@ -40,6 +43,7 @@ export class AdminLayoutComponent implements OnInit, OnDestroy, AfterViewChecked
         private sse: SseService,
         public toast: ToastService,
         private cdr: ChangeDetectorRef,
+        public i18n: I18nService,
         @Inject(PLATFORM_ID) platformId: Object
     ) {
         this.isBrowser = isPlatformBrowser(platformId);
@@ -63,7 +67,7 @@ export class AdminLayoutComponent implements OnInit, OnDestroy, AfterViewChecked
                     this.sse.connect();
                 } else if (!ok) {
                     if (this.auth.sessionExpiredNotice) {
-                        this.loginError = 'Your session expired — please sign in again';
+                        this.loginError = this.i18n.t('login.expired');
                     }
                     if (wasAuthenticated && this.isBrowser) {
                         this.sse.disconnect();
@@ -98,12 +102,12 @@ export class AdminLayoutComponent implements OnInit, OnDestroy, AfterViewChecked
                         this.password = '';
                         this.sse.connect();
                     } else {
-                        this.loginError = 'Invalid password';
+                        this.loginError = this.i18n.t('login.invalid');
                     }
                     this.cdr.detectChanges();
                 },
                 error: (err) => {
-                    this.loginError = err?.error?.error || 'Authentication failed';
+                    this.loginError = err?.error?.error || this.i18n.t('login.failed');
                     this.cdr.detectChanges();
                 }
             })

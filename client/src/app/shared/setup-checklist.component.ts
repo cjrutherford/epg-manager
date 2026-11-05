@@ -1,5 +1,6 @@
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { TranslatePipe } from '../i18n/translate.pipe';
 import { LucideAngularModule } from 'lucide-angular';
 
 /**
@@ -13,17 +14,17 @@ import { LucideAngularModule } from 'lucide-angular';
 @Component({
     selector: 'app-setup-checklist',
     standalone: true,
-    imports: [RouterLink, LucideAngularModule],
+    imports: [RouterLink, LucideAngularModule, TranslatePipe],
     template: `
         @if (!hasWatched) {
         <section class="setup glass-card" aria-labelledby="setup-title">
             <div class="setup__head">
                 <div>
-                    <div class="setup__eyebrow">Get started</div>
-                    <h2 id="setup-title">{{ allDone ? "You're ready to watch" : 'Three steps to live TV' }}</h2>
-                    <p>{{ allDone ? 'Your guide is populated. Open Watch to tune the first channel.' : 'Add a source, pull the guide, then open Watch. You can come back to this list at any time.' }}</p>
+                    <div class="setup__eyebrow">{{ 'setup.eyebrow' | t }}</div>
+                    <h2 id="setup-title">{{ (allDone ? 'setup.readyTitle' : 'setup.title') | t }}</h2>
+                    <p>{{ (allDone ? 'setup.readyIntro' : 'setup.intro') | t }}</p>
                 </div>
-                <span class="setup__count">{{ doneCount }} of 3 done</span>
+                <span class="setup__count">{{ 'setup.doneCount' | t: { done: doneCount } }}</span>
             </div>
 
             <ol class="setup__steps">
@@ -32,11 +33,11 @@ import { LucideAngularModule } from 'lucide-angular';
                         <lucide-icon [name]="hasSource ? 'check' : 'server'" class="icon"></lucide-icon>
                     </span>
                     <div class="setup__body">
-                        <h3>Add a playlist or guide feed</h3>
-                        <p>Paste an M3U or XMLTV URL, or pick a free channel catalogue.</p>
+                        <h3>{{ 'setup.sourceTitle' | t }}</h3>
+                        <p>{{ 'setup.sourceBody' | t }}</p>
                     </div>
                     @if (!hasSource) {
-                    <a class="btn btn-secondary small-btn" routerLink="/admin/sources">Add a source</a>
+                    <a class="btn btn-secondary small-btn" routerLink="/admin/sources">{{ 'setup.sourceAction' | t }}</a>
                     }
                 </li>
 
@@ -45,14 +46,14 @@ import { LucideAngularModule } from 'lucide-angular';
                         <lucide-icon [name]="hasChannels && hasPrograms ? 'check' : 'refresh-cw'" class="icon"></lucide-icon>
                     </span>
                     <div class="setup__body">
-                        <h3>Run a sync</h3>
-                        <p>Import channels, match them to the guide and fetch programme data.</p>
+                        <h3>{{ 'setup.syncTitle' | t }}</h3>
+                        <p>{{ 'setup.syncBody' | t }}</p>
                     </div>
                     @if (!(hasChannels && hasPrograms)) {
                         @if (hasSource) {
-                        <button type="button" class="btn btn-primary small-btn" (click)="runSync.emit()">Run full sync</button>
+                        <button type="button" class="btn btn-primary small-btn" (click)="runSync.emit()">{{ 'setup.syncAction' | t }}</button>
                         } @else {
-                        <span class="setup__hint">Waiting for a source</span>
+                        <span class="setup__hint">{{ 'setup.waiting' | t }}</span>
                         }
                     }
                 </li>
@@ -62,19 +63,19 @@ import { LucideAngularModule } from 'lucide-angular';
                         <lucide-icon [name]="hasChannels ? 'check' : 'play'" class="icon"></lucide-icon>
                     </span>
                     <div class="setup__body">
-                        <h3>Watch TV</h3>
-                        <p>Open the guide, tune a channel and set up recordings.</p>
+                        <h3>{{ 'setup.watchTitle' | t }}</h3>
+                        <p>{{ 'setup.watchBody' | t }}</p>
                     </div>
                     @if (hasChannels) {
-                    <a class="btn btn-primary small-btn" routerLink="/watch">Open Watch</a>
+                    <a class="btn btn-primary small-btn" routerLink="/watch">{{ 'setup.watchAction' | t }}</a>
                     }
                 </li>
             </ol>
 
             @if (allDone) {
             <div class="setup__ready">
-                <a class="btn btn-primary" routerLink="/watch">Watch your first channel</a>
-                <span>You can adjust sources and guide settings at any time.</span>
+                <a class="btn btn-primary" routerLink="/watch">{{ 'setup.watchCta' | t }}</a>
+                <span>{{ 'setup.watchHint' | t }}</span>
             </div>
             }
         </section>

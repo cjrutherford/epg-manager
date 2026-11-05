@@ -102,7 +102,7 @@ export class ApiService {
         return this.http.get('/api/health');
     }
 
-    getHasData(): Observable<{ hasChannels: boolean; hasPrograms: boolean; hasPlaylist: boolean; isEmpty: boolean }> {
+    getHasData(): Observable<{ hasChannels: boolean; hasPrograms: boolean; hasPlaylist: boolean; lastGuideAt: number | null; isEmpty: boolean }> {
         return this.http.get<any>('/api/has-data');
     }
 

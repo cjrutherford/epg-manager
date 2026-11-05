@@ -1,5 +1,22 @@
 <h1 class="sr-only">Tuner Daemon — Watch live TV</h1>
 
+@if (!isPopoutMode && (isOffline || serverUnreachable || guideIsStale || guideIsMissing)) {
+<div class="watch-notice" [class.watch-notice--warning]="!isOffline && !serverUnreachable" role="status">
+  <lucide-icon [name]="isOffline ? 'wifi-off' : 'triangle-alert'" class="icon"></lucide-icon>
+  @if (isOffline) {
+  <span>You're offline. Playback may stop and the guide may be out of date.</span>
+  } @else if (serverUnreachable) {
+  <span>Can't reach the guide server. Showing the last guide we have.</span>
+  } @else if (guideIsMissing) {
+  <span>Channels are loaded, but no guide data is available.</span>
+  <a routerLink="/admin/dashboard">Run a sync</a>
+  } @else {
+  <span>Guide data is more than a day old.</span>
+  <a routerLink="/admin/dashboard">Run a sync</a>
+  }
+</div>
+}
+
 @if (isPopoutMode) {
   <div class="popout-container" (mousemove)="onUserActivity()">
     <video
@@ -146,6 +163,7 @@
 
       <!-- Config Actions -->
       <div class="topbar-group">
+        <div class="watch-lang"><app-language-menu></app-language-menu></div>
         <button
           class="icon-btn"
           [class.active]="dvrOpen"

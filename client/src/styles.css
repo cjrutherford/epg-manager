@@ -137,6 +137,10 @@
     /* Transitions */
     --ease-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
     --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+    /* Signature interactions: focus and channel changes settle in 160–220ms. */
+    --motion-fast: 160ms;
+    --motion-standard: 220ms;
+    --motion-slow: 320ms;
     
     /* Theme texture (overridden per theme) */
     --theme-texture: none;
@@ -1181,4 +1185,51 @@ tbody tr:hover {
         animation: none !important;
         transition-duration: 0.01ms !important;
     }
+}
+/* ─── RTL shell ─────────────────────────────── */
+/* The UI locale is runtime-switchable. These rules cover the shared shell and
+   the pieces that are genuinely directional; the guide axis stays LTR because
+   time runs left-to-right even in an RTL interface. */
+[dir="rtl"] body {
+    direction: rtl;
+}
+
+[dir="rtl"] h1,
+[dir="rtl"] h2,
+[dir="rtl"] h3,
+[dir="rtl"] h4,
+[dir="rtl"] h5,
+[dir="rtl"] h6,
+[dir="rtl"] .brand-logo,
+[dir="rtl"] .nav-item,
+[dir="rtl"] th,
+[dir="rtl"] .form-group label,
+[dir="rtl"] .badge {
+    letter-spacing: normal;
+}
+
+[dir="rtl"] th,
+[dir="rtl"] td {
+    text-align: start;
+}
+
+[dir="rtl"] .toast-container {
+    right: auto;
+    left: 24px;
+}
+
+[dir="rtl"] .guide-panel {
+    direction: ltr;
+}
+
+[dir="rtl"] .prog-title,
+[dir="rtl"] .guide-channel-name {
+    unicode-bidi: plaintext;
+}
+
+/* Compact language selector; reuses the themed input surface. */
+.lang-select {
+    min-height: 34px;
+    padding: 4px 10px;
+    font-size: var(--font-sm);
 }

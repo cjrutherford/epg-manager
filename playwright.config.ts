@@ -51,6 +51,9 @@ export default defineConfig({
         /docs\//,
         /visual\//,
         /cross-browser\.spec\.ts/,
+        // The TV/remote gate is its own project: it drives focus from the
+        // keyboard at 1080p and is not part of the pointer-oriented e2e run.
+        /tv\.spec\.ts/,
         // Anything that mutates state other specs assert on runs in the
         // destructive project, serially, after these.
         /reset-scopes\.spec\.ts/,
@@ -83,6 +86,19 @@ export default defineConfig({
       name: 'visual',
       testMatch: /visual\/.*\.spec\.ts/,
       use: { channel: 'chrome' },
+      fullyParallel: false,
+    },
+    {
+      // Remote/TV gate. Deliberately independent of the visual and cross-browser
+      // projects: it is a Chrome-only, keyboard-only journey through the guide
+      // at 1080p, and running its focus assertions beside other specs makes the
+      // results depend on stream and scheduler timing.
+      name: 'tv',
+      testMatch: /tv\.spec\.ts/,
+      use: {
+        channel: 'chrome',
+        viewport: { width: 1920, height: 1080 },
+      },
       fullyParallel: false,
     },
     ...crossBrowserProjects,

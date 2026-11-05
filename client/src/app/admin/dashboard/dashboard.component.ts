@@ -50,7 +50,9 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
     get jobRunning(): boolean {
         return this.syncStarted || !!this.jobStatus?.running;
     }
-    dataState: { hasChannels: boolean; hasPrograms: boolean; hasPlaylist: boolean; isEmpty: boolean } | null = null;
+    dataState: { hasChannels: boolean; hasPrograms: boolean; hasPlaylist: boolean; lastGuideAt?: number | null; isEmpty: boolean } | null = null;
+    loadError: string | null = null;
+    liveStatus = 'connected';
     loading = true;
     syncStarted = false;
     progressCollapsed = true;
@@ -193,7 +195,11 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
             this.health = health;
             this.jobStatus = job;
             this.dataState = dataState ?? null;
-        } catch (e) {
+            this.loadError = null;
+        } catch (e: any) {
+            this.loadError = e?.status === 0
+                ? 'Cannot reach the server. Check that the API is running.'
+                : 'Could not load dashboard data.';
             console.error('Failed to load dashboard', e);
         } finally {
             this.loading = false;
@@ -203,6 +209,20 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
 
     get isEmpty(): boolean {
         return this.dataState?.isEmpty === true && !this.syncStarted;
+    }
+
+    get guideIsStale(): boolean {
+        const last = this.dataState?.lastGuideAt;
+        if (!this.dataState?.hasPrograms || !last) return false;
+        return Date.now() - last > 24 * 60 * 60 * 1000;
+    }
+
+    get guideIsMissing(): boolean {
+        return !!this.dataState?.hasChannels && !this.dataState?.hasPrograms;
+    }
+
+    get hasReliabilityNotice(): boolean {
+        return !!this.loadError || this.liveStatus !== 'connected' || this.guideIsStale || this.guideIsMissing;
     }
 
     loadVersionInfo(): void {
@@ -269,6 +289,10 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
                 this.progressCollapsed = false;
 
                 this.applyStageStatus(phase, evt.message || evt.label || '', evt.completed || false);
+                this.cdr.markForCheck();
+            }),
+            this.sse.status.subscribe(status => {
+                this.liveStatus = status;
                 this.cdr.markForCheck();
             }),
             this.sse.reportEvents.subscribe(() => {

@@ -9,6 +9,9 @@
     max-width: 100vw;
     overflow: hidden;
     box-sizing: border-box;
+    /* TV/laptop safe areas; zero on a normal browser. */
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+             env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
 /* ── Popout Standalone Video Mode ─────────── */
@@ -185,7 +188,9 @@ video:fullscreen {
 .channel-controls,
 .volume-bar,
 .channel-info-block {
-    transition: opacity 0.4s ease, transform 0.4s ease, visibility 0.4s;
+    transition: opacity var(--motion-standard) var(--ease-smooth),
+                transform var(--motion-standard) var(--ease-smooth),
+                visibility var(--motion-standard);
 }
 
 .topbar.ui-hidden {
@@ -895,4 +900,56 @@ video {
     display: inline-flex;
     align-items: center;
     gap: var(--space-2xs);
+}
+
+/* 10-foot chrome: larger hit targets and labels on a TV-sized viewport. */
+@media (min-width: 1600px) {
+    .topbar { height: 84px; padding-inline: 28px; }
+    .icon-btn { width: 52px; height: 52px; }
+    .channel-info-block { padding: 16px 28px; }
+    .cib-channel-name { font-size: var(--font-xl); }
+}
+
+/* Connectivity / stale-guide notice. It sits above the player so it is
+   visible without opening a menu, and never covers a control. */
+.watch-notice {
+    position: fixed;
+    top: calc(var(--topbar-height, 56px) + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 260;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    max-width: min(92vw, 680px);
+    padding: var(--space-sm) var(--space-lg);
+    border-radius: var(--radius-pill);
+    border: 1px solid rgba(var(--color-info-rgb), 0.45);
+    background: var(--bg-glass-strong);
+    color: var(--text-primary);
+    font-size: var(--font-sm);
+    box-shadow: var(--shadow-md);
+}
+
+.watch-notice--warning {
+    border-color: rgba(var(--color-warning-rgb), 0.55);
+}
+
+.watch-notice a {
+    color: var(--color-primary);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.watch-lang {
+    width: 118px;
+    align-self: center;
+}
+
+.watch-lang .lang-select {
+    min-height: 34px;
+}
+
+@media (max-width: 860px) {
+    .watch-lang { width: 96px; }
 }

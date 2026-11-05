@@ -1,10 +1,20 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" dir="ltr">
 
 <head>
   <meta charset="utf-8">
   <title>Tuner Daemon — Automated EPG & Live TV</title>
   <base href="/">
+  <script>
+    // Set direction before hydration so an Arabic session never flashes LTR.
+    try {
+      var locale = localStorage.getItem('tuner_daemon_locale');
+      if (locale === 'ar' || locale === 'en') {
+        document.documentElement.lang = locale;
+        document.documentElement.dir = locale === 'ar' ? 'rtl' : 'ltr';
+      }
+    } catch (e) { }
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Tuner Daemon — Automated EPG Ingestion, Channel Matching & Live TV Streaming Engine">
   <link rel="icon" type="image/png" href="favicon.png">

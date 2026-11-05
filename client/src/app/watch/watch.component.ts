@@ -16,6 +16,7 @@ import { ChannelEventsService } from '../services/channel-events.service';
 import { ClientRecording, SystemRecording } from '../services/client-recording.types';
 import { ImageFallbackDirective } from '../shared/image-fallback.directive';
 import { ThemeMenuComponent } from '../shared/theme-menu.component';
+import { LanguageMenuComponent } from '../shared/language-menu.component';
 import { StatusBadgeComponent } from '../shared/status-badge.component';
 
 interface Channel {
@@ -34,7 +35,7 @@ interface Channel {
 @Component({
     selector: 'app-watch',
     standalone: true,
-    imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule, ModalComponent, ImageFallbackDirective, ThemeMenuComponent, StatusBadgeComponent],
+    imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule, ModalComponent, ImageFallbackDirective, ThemeMenuComponent, StatusBadgeComponent, LanguageMenuComponent],
     schemas: [CUSTOM_ELEMENTS_SCHEMA],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './watch.component.html',
@@ -113,7 +114,11 @@ export class WatchComponent implements OnInit, OnDestroy {
     guideLoading = false;
     error = '';
     isDocumentHidden = false;
-    dataState: { hasChannels: boolean; hasPrograms: boolean; hasPlaylist: boolean; isEmpty: boolean } | null = null;
+    dataState: { hasChannels: boolean; hasPrograms: boolean; hasPlaylist: boolean; lastGuideAt?: number | null; isEmpty: boolean } | null = null;
+    isOffline = false;
+    serverUnreachable = false;
+    private onlineHandler = () => { this.isOffline = false; this.cdr.markForCheck(); };
+    private offlineHandler = () => { this.isOffline = true; this.cdr.markForCheck(); };
 
     // Cached active program — updated on channel switch & 10s timer
     activeProgram: any | null = null;
@@ -139,6 +144,16 @@ export class WatchComponent implements OnInit, OnDestroy {
 
     get isEmpty(): boolean {
         return !this.loading && this.channels.length === 0 && this.dataState?.isEmpty === true;
+    }
+
+    get guideIsStale(): boolean {
+        const last = this.dataState?.lastGuideAt;
+        if (!this.dataState?.hasPrograms || !last) return false;
+        return Date.now() - last > 24 * 60 * 60 * 1000;
+    }
+
+    get guideIsMissing(): boolean {
+        return !!this.dataState?.hasChannels && !this.dataState?.hasPrograms;
     }
 
     private hls: any = null;
@@ -261,6 +276,9 @@ export class WatchComponent implements OnInit, OnDestroy {
         // opened once, so the final "watch something" moment is not hidden by
         // the checklist disappearing the instant sync completes.
         localStorage.setItem('tuner_daemon_has_watched', '1');
+        this.isOffline = !navigator.onLine;
+        window.addEventListener('online', this.onlineHandler);
+        window.addEventListener('offline', this.offlineHandler);
 
         const urlParams = new URLSearchParams(window.location.search);
         this.isPopoutMode = urlParams.get('popout') === 'true';
@@ -354,9 +372,13 @@ export class WatchComponent implements OnInit, OnDestroy {
         this.api.getHasData().subscribe({
             next: state => {
                 this.dataState = state;
+                this.serverUnreachable = false;
                 this.cdr.markForCheck();
             },
-            error: () => {}
+            error: (error) => {
+                this.serverUnreachable = error?.status === 0;
+                this.cdr.markForCheck();
+            }
         });
 
         this.loadCategories();
@@ -382,6 +404,10 @@ export class WatchComponent implements OnInit, OnDestroy {
         if (this.recordingsSub) { this.recordingsSub.unsubscribe(); this.recordingsSub = null; }
         if (this.jobStatusSub) { this.jobStatusSub.unsubscribe(); this.jobStatusSub = null; }
         if (this.channelEventsSub) { this.channelEventsSub.unsubscribe(); this.channelEventsSub = null; }
+        if (this.isBrowser) {
+            window.removeEventListener('online', this.onlineHandler);
+            window.removeEventListener('offline', this.offlineHandler);
+        }
         clearTimeout(this.idleTimer);
         clearInterval(this.currentTimeInterval);
         clearInterval(this.diagnosticsInterval);

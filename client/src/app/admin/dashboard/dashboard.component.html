@@ -1,6 +1,26 @@
 <div class="dashboard">
     <app-page-header title="Dashboard" subtitle="System health, and the actions that keep it current."></app-page-header>
 
+    @if (hasReliabilityNotice) {
+    <div class="reliability-notice" [class.reliability-notice--danger]="!!loadError" role="status">
+        <lucide-icon name="triangle-alert" class="icon"></lucide-icon>
+        <div class="reliability-notice__body">
+            @if (loadError) {
+            <strong>{{ loadError }}</strong>
+            <button type="button" class="btn btn-secondary small-btn" (click)="loadData()">Retry</button>
+            } @else if (guideIsMissing) {
+            <strong>Channels are loaded, but no guide data is available.</strong>
+            <button type="button" class="btn btn-secondary small-btn" (click)="runFullSync()">Run full sync</button>
+            } @else if (guideIsStale) {
+            <strong>Guide data is more than a day old.</strong>
+            <button type="button" class="btn btn-secondary small-btn" (click)="runFullSync()">Run full sync</button>
+            } @else {
+            <strong>Live updates paused — reconnecting to the server.</strong>
+            }
+        </div>
+    </div>
+    }
+
     @if (loading) {
     <app-skeleton variant="cards" [rows]="3" label="Loading dashboard"></app-skeleton>
     } @else {

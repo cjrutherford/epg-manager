@@ -504,3 +504,29 @@ button.action-card[disabled]:hover {
     transform: none;
     box-shadow: none;
 }
+
+/* Reliability notice: visible while data is loading or after a failed load. */
+.reliability-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-md);
+    margin-bottom: var(--space-xl);
+    padding: var(--space-lg) var(--space-xl);
+    border: 1px solid rgba(var(--color-warning-rgb), 0.45);
+    border-radius: var(--radius-md);
+    background: rgba(var(--color-warning-rgb), 0.08);
+    color: var(--text-primary);
+}
+
+.reliability-notice--danger {
+    border-color: rgba(var(--color-danger-rgb), 0.5);
+    background: rgba(var(--color-danger-rgb), 0.08);
+}
+
+.reliability-notice__body {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-sm) var(--space-lg);
+    font-size: var(--font-md);
+}

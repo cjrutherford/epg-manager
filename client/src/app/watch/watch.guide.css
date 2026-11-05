@@ -192,15 +192,22 @@
 .guide-row {
     display: flex; height: 44px;
     border-bottom: 1px solid rgba(var(--color-primary-rgb),0.04);
-    transition: background 0.15s; min-width: max-content;
+    transition: background var(--motion-fast) var(--ease-smooth); min-width: max-content;
 }
 .guide-row:hover { background: rgba(var(--color-primary-rgb),0.03); }
+
+.guide-channel,
+.guide-program {
+    transition: background var(--motion-fast) var(--ease-smooth),
+                box-shadow var(--motion-fast) var(--ease-smooth);
+}
 
 .guide-channel:focus-visible,
 .guide-program:focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: -2px;
     z-index: 3;
+    box-shadow: 0 0 18px rgba(var(--color-primary-rgb), 0.18);
 }
 .guide-row.active { background: rgba(var(--color-primary-rgb),0.08); }
 
@@ -257,4 +264,17 @@
 @media (max-width: 860px) {
     .guide-scroll-shell::after { opacity: 0.9; }
     .guide-swipe-hint { display: flex; }
+}
+
+/* 10-foot / TV typography. The guide keeps its dense desktop columns, but
+   rows and channel labels grow so they remain readable from a sofa. */
+@media (min-width: 1600px) {
+    .guide-row { height: 56px; }
+    .guide-channel { width: 260px; gap: 10px; padding: 0 14px; }
+    .timeline-channel-spacer { width: 260px; }
+    .timeline-block { width: 240px; }
+    .guide-channel-logo { width: 36px; height: 36px; }
+    .guide-channel-name { font-size: var(--font-lg); }
+    .guide-channel-number { font-size: var(--font-sm); }
+    .prog-title { font-size: var(--font-md); }
 }
