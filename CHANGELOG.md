@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0](https://github.com/cjrutherford/epg-manager/compare/v0.4.1...v0.5.0) (2026-11-05)
+
+
+### Features
+
+* **a11y:** add Gate 2 keyboard and usability harness ([6c65a65](https://github.com/cjrutherford/epg-manager/commit/6c65a65b28ae3e4bd2e6301f9c93f3c4e4e8cc3c))
+* **ci:** automatically build and attach android apks to releases ([#8](https://github.com/cjrutherford/epg-manager/issues/8)) ([a35dc80](https://github.com/cjrutherford/epg-manager/commit/a35dc8002a41f4557165cbbda63ac6cdb0c6f654))
+* **gate2:** add cross-browser CI, ARIA checks and first-sync benchmark ([4b0fa7f](https://github.com/cjrutherford/epg-manager/commit/4b0fa7f5ff1d339e7ee132b1d24eb357101a951a))
+* **onboarding:** keep the first-run checklist through the first watch ([ad6ef82](https://github.com/cjrutherford/epg-manager/commit/ad6ef82c2163a5d04138ad1177f581f208e59c16))
+* **phase3:** complete TV, performance, reliability and RTL slices ([d387493](https://github.com/cjrutherford/epg-manager/commit/d387493682c8121cb8101e280442bc0402e05c93))
+* **phase4:** add design ops, quality dashboard and UX CI gate ([f4ff70c](https://github.com/cjrutherford/epg-manager/commit/f4ff70cd7d203742ba1caf95a8d1ca902d208ccc))
+* **ux:** close Phase 1 and Gate 1 CSS budget ([507b61d](https://github.com/cjrutherford/epg-manager/commit/507b61de866466727f8dcedb69f59fde5a54ed79))
+
+
+### Bug Fixes
+
+* **ci:** count index.csr.html in the CSS budget ([71393fc](https://github.com/cjrutherford/epg-manager/commit/71393fc493fa97abb811ec4f766845fe228f6f97))
+* **sources:** keep quick preset labels in playlist chips ([bd20650](https://github.com/cjrutherford/epg-manager/commit/bd20650af193369196844e77aec2ccd3a7d70606))
+* **sync:** import enabled guide sources during full sync ([c315d5a](https://github.com/cjrutherford/epg-manager/commit/c315d5a52978d4eb97f157204662325722d72483))
+* **sync:** surface job progress and harden release publishing ([753bfb9](https://github.com/cjrutherford/epg-manager/commit/753bfb9409e65a67f9956d6b418c84544c15a200))
+* **watch:** restore guide loading and remote/touch lower third ([810d335](https://github.com/cjrutherford/epg-manager/commit/810d3359cbf43f057c17ba5280c51bce1fe9aec2))
+
 ## [0.4.1](https://github.com/cjrutherford/epg-manager/compare/v0.4.0...v0.4.1) (2026-10-27)
 
 
