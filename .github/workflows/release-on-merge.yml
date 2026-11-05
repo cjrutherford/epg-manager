@@ -51,6 +51,12 @@ jobs:
         if: steps.next.outputs.version != ''
         run: npx ts-node scripts/set-version.ts "${{ steps.next.outputs.version }}"
 
+      - name: Update release documentation
+        if: steps.next.outputs.version != ''
+        run: |
+          node scripts/update-release-docs.mjs
+          node scripts/ux-quality-dashboard.mjs
+
       - name: Verify every version file agrees
         if: steps.next.outputs.version != ''
         run: npx ts-node scripts/set-version.ts --check "v${{ steps.next.outputs.version }}"
@@ -62,7 +68,8 @@ jobs:
           version="${{ steps.next.outputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json client/package.json client/android/app/build.gradle docker-compose.yml .env.example
+          git add package.json client/package.json client/android/app/build.gradle docker-compose.yml .env.example \
+            README.md docs/quality-evidence.json docs/quality-dashboard.html
           git commit -m "chore(release): v${version} [skip ci]"
           git tag -a "v${version}" -m "Release v${version}"
           git push origin HEAD:main

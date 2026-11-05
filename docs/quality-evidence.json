@@ -1,6 +1,6 @@
 {
   "updated": "2026-11-05",
-  "release": "0.4.1",
+  "release": "0.5.0",
   "metrics": {
     "initialCssReduction": 0.204,
     "duplicateCssRules": 0,
