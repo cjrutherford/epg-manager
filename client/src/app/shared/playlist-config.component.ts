@@ -93,6 +93,25 @@ export class PlaylistConfigComponent implements OnInit {
             const known = this.allPlaylists.find(item => item.url === url)
                 || this.catalogFiles.find(item => item.url === url);
             if (known) return known;
+
+            // Quick presets (Plex, Pluto, …) are in the catalogue but not in
+            // the imported-playlist response until the first sync. Without
+            // this lookup the chip fell back to the URL's filename, which for
+            // every built-in is "all".
+            const preset = this.presets.find(item => item.url === url);
+            if (preset) {
+                return {
+                    url,
+                    name: preset.label,
+                    label: preset.label,
+                    category: preset.category,
+                    host: this.hostFor(url),
+                    pathSummary: url,
+                    channelCountEstimate: preset.channelCountEstimate,
+                    importedCount: 0
+                };
+            }
+
             const label = this.labelFor(url);
             return {
                 url,
@@ -206,7 +225,9 @@ export class PlaylistConfigComponent implements OnInit {
     }
 
     labelFor(url: string): string {
-        const known = this.allPlaylists.find(item => item.url === url) || this.catalogFiles.find(item => item.url === url);
+        const known = this.allPlaylists.find(item => item.url === url)
+            || this.catalogFiles.find(item => item.url === url)
+            || this.presets.find(item => item.url === url);
         if (known?.label) return known.label;
         const file = url.split('/').filter(Boolean).pop() || url;
         return file.replace(/\.(m3u8?|xml|gz)$/i, '') || this.hostFor(url);

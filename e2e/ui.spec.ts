@@ -166,6 +166,13 @@ test.describe('Admin Console Features', () => {
       await addBtn.click();
       await expect(page.locator('.playlist-chip', { hasText: customPlaylistLabel })).toBeVisible();
 
+      // A built-in preset has to keep its label ("Pluto TV"), not collapse to
+      // the URL filename ("all") before the first sync.
+      const pluto = page.locator('.preset-card-btn', { hasText: 'Pluto TV' });
+      await expect(pluto).toBeVisible();
+      await pluto.click();
+      await expect(page.locator('.playlist-chip', { hasText: 'Pluto TV' })).toBeVisible();
+
       await saveBtn.click();
       await expect(page.locator('.toast.success', { hasText: 'Playlists saved' }).first()).toBeVisible();
 
