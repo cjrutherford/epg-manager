@@ -83,8 +83,8 @@ ENV DB_DIR=/app/data
 ENV PORT=3000
 ENV API_PORT=4000
 
-RUN mkdir -p /app/data/recordings && \
-    chown epg:epg /app/data /app/data/recordings
+RUN mkdir -p /app/data/recordings /app/data/streams /app/data/http-cache /app/data/iptv-org-playlists && \
+    chown epg:epg /app/data /app/data/recordings /app/data/streams /app/data/http-cache /app/data/iptv-org-playlists
 
 EXPOSE 3000 4000
 
