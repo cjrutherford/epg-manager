@@ -131,8 +131,14 @@ test.describe('performance guardrails', () => {
         // Generous floor: a normal CI machine should comfortably collect about
         // 120 frames here. These assertions catch a guide that has become
         // pathologically slow, not one that misses the 60fps target.
+        //
+        // p95 alone is a poor guard on a shared runner: with only ~70 samples,
+        // one scheduling hiccup moves it a whole frame interval, and a runner
+        // painting at 20fps reports exactly 50ms. The average is a steadier
+        // signal, and the p95 ceiling only has to catch a slide show.
         expect(summary.frameCount, `frame samples collected during the 2s scroll (${report})`).toBeGreaterThan(30);
-        expect(summary.p95Ms, `p95 frame interval (${report})`).toBeLessThan(50);
+        expect(summary.avgMs, `average frame interval (${report})`).toBeLessThan(50);
+        expect(summary.p95Ms, `p95 frame interval (${report})`).toBeLessThan(100);
     });
 
     test('switching to High Contrast paints inside the CI budget', async ({ page }) => {
