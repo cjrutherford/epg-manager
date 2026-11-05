@@ -195,6 +195,13 @@
     transition: background 0.15s; min-width: max-content;
 }
 .guide-row:hover { background: rgba(var(--color-primary-rgb),0.03); }
+
+.guide-channel:focus-visible,
+.guide-program:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+    z-index: 3;
+}
 .guide-row.active { background: rgba(var(--color-primary-rgb),0.08); }
 
 .guide-channel {

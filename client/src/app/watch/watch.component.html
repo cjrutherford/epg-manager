@@ -1178,7 +1178,11 @@
                     ch.group_title || ch.current_program?.category || ''
                   "
                 >
-                  <div class="guide-channel" (click)="tuneToChannelById(ch.id)">
+                  <div class="guide-channel" role="button" tabindex="-1"
+                    [attr.aria-label]="(ch.channel_number ? ch.channel_number + ' ' : '') + ch.name + '. Tune to channel.'"
+                    (click)="tuneToChannelById(ch.id)"
+                    (keydown.enter)="tuneToChannelById(ch.id)"
+                    (keydown.space)="$event.preventDefault(); tuneToChannelById(ch.id)">
                     <button
                       class="fav-star is-fav"
                       [attr.aria-label]="'Remove ' + ch.name + ' from favorites'"
@@ -1214,9 +1218,14 @@
                         [style.left]="prog._left"
                         [style.width]="prog._width"
                         [title]="prog.title"
+                        role="button"
+                        tabindex="-1"
+                        [attr.aria-label]="prog.title + ', ' + fmtTimeRange(prog.start, prog.stop) + '. Open recording actions.'"
                         (mouseenter)="onProgramHover($event, ch, prog)"
                         (mouseleave)="hideProgramTooltip()"
                         (contextmenu)="onProgramContextMenu($event, ch, prog)"
+                        (keydown.enter)="onProgramKeydown($event, ch, prog)"
+                        (keydown.space)="$event.preventDefault(); onProgramKeydown($event, ch, prog)"
                       >
                         <div class="prog-title">{{ prog.title }}</div>
                         <div class="prog-time">
@@ -1248,7 +1257,11 @@
                   ch.group_title || ch.current_program?.category || ''
                 "
               >
-                <div class="guide-channel" (click)="tuneToChannelById(ch.id)">
+                <div class="guide-channel" role="button" tabindex="-1"
+                  [attr.aria-label]="(ch.channel_number ? ch.channel_number + ' ' : '') + ch.name + '. Tune to channel.'"
+                  (click)="tuneToChannelById(ch.id)"
+                  (keydown.enter)="tuneToChannelById(ch.id)"
+                  (keydown.space)="$event.preventDefault(); tuneToChannelById(ch.id)">
                   <button
                     class="fav-star"
                     [class.is-fav]="isFavorite(ch.id)"
@@ -1304,9 +1317,14 @@
                       [style.left]="prog._left"
                       [style.width]="prog._width"
                       [title]="prog.title"
+                      role="button"
+                      tabindex="-1"
+                      [attr.aria-label]="prog.title + ', ' + fmtTimeRange(prog.start, prog.stop) + '. Open recording actions.'"
                       (mouseenter)="onProgramHover($event, ch, prog)"
                       (mouseleave)="hideProgramTooltip()"
                       (contextmenu)="onProgramContextMenu($event, ch, prog)"
+                      (keydown.enter)="onProgramKeydown($event, ch, prog)"
+                      (keydown.space)="$event.preventDefault(); onProgramKeydown($event, ch, prog)"
                     >
                       <div class="prog-title">{{ prog.title }}</div>
                       <div class="prog-time">

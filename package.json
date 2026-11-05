@@ -40,6 +40,7 @@
     "css:audit": "node scripts/css-budget.mjs",
     "css:check": "node scripts/css-budget.mjs --check",
     "test:visual": "playwright test --project=visual",
+    "test:cross-browser": "CROSS_BROWSER=1 playwright test --project=firefox --project=webkit",
     "version:set": "ts-node scripts/set-version.ts",
     "version:check": "ts-node scripts/set-version.ts --check",
     "build:apk": "sh scripts/build-apk.sh"

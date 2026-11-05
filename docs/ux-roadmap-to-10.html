@@ -321,6 +321,12 @@
               <li><b>Measurement:</b> publish a UX scorecard: SUS, task success, time on task, error recovery, a11y and performance.</li>
             </ul>
             <div class="gate"><b>Gate 2 · 9.0</b>SUS ≥80 and task success ≥85% with no moderator rescue. Screen-reader and D-pad paths complete. Zero serious axe issues. Lighthouse ≥95. No P1/P2. First sync under 2 minutes on clean install.</div>
+            <div class="callout accent" style="margin-top:14px">
+              <h4>Phase 2 status · 5 Nov 2026</h4>
+              <p><b>Engineering floor met:</b> zero serious axe issues; Lighthouse accessibility 100 on Watch and Login; no overflow at 320–1440; all five themes pass contrast. The guide now has a keyboard and D-pad path: channels and programmes are focusable, Enter activates, the programme action menu takes focus, Escape closes the menu and returns focus, and arrows stay inside the guide.</p>
+              <p style="margin-top:8px"><b>Harness added:</b> <code>docs/gate-2-usability-kit.md</code> contains the study protocol, task definitions, SUS form and scorecard; <code>e2e/keyboard.spec.ts</code> covers keyboard, D-pad and large-text/high-contrast paths; <code>npm run test:cross-browser</code> targets Firefox and WebKit.</p>
+              <p style="margin-top:8px"><b>Gate remains open:</b> SUS and task success need 5–8 participants; the screen-reader session needs NVDA/VoiceOver; Android and TV runs need hardware; and this host cannot install Playwright Firefox/WebKit on Ubuntu 26.04. First-sync timing on a clean install is still unmeasured.</p>
+            </div>
           </article>
 
           <article class="phase">

@@ -75,6 +75,7 @@ export class WatchComponent implements OnInit, OnDestroy {
     hiddenChannels = new Set<string>();
 
     guideOpen = false;
+    private spatialNav: any = null;
 
     // UI auto-hide idle state
     userActive = true;
@@ -185,6 +186,7 @@ export class WatchComponent implements OnInit, OnDestroy {
         channel: null as any,
         program: null as any
     };
+    private contextMenuTrigger: HTMLElement | null = null;
 
     // DVR recordings — local watch recordings + read-only system DVR
     recordings: any[] = [];
@@ -273,9 +275,12 @@ export class WatchComponent implements OnInit, OnDestroy {
             const SpatialNavigation = mod.default || mod;
             SpatialNavigation.init();
             SpatialNavigation.add({
-                selector: 'button, .guide-channel, .guide-program, .ch-btn, .vol-btn'
+                selector: 'button, .guide-channel, .guide-program, .ch-btn, .vol-btn',
+                rememberSource: true
             });
             SpatialNavigation.makeFocusable();
+            this.spatialNav = SpatialNavigation;
+            this.updateSpatialScope();
         }).catch(() => {
             // Spatial navigation not available, skip gracefully
         });
@@ -473,7 +478,16 @@ export class WatchComponent implements OnInit, OnDestroy {
             case 'Escape':
                 if (this.shortcutsOpen) this.shortcutsOpen = false;
                 else if (this.serverSettingsOpen) this.serverSettingsOpen = false;
-                else if (this.dvrOpen) this.dvrOpen = false;
+                else if (this.contextMenu.visible) {
+                    this.contextMenu.visible = false;
+                    this.cdr.markForCheck();
+                    setTimeout(() => {
+                        const target = this.contextMenuTrigger?.isConnected
+                            ? this.contextMenuTrigger
+                            : document.querySelector<HTMLElement>('.guide-program');
+                        target?.focus();
+                    }, 100);
+                } else if (this.dvrOpen) this.dvrOpen = false;
                 else if (this.guideOpen) this.toggleGuide();
                 break;
             case 'Enter':
@@ -577,6 +591,24 @@ export class WatchComponent implements OnInit, OnDestroy {
 
     toggleGuide(): void {
         this.guideOpen = !this.guideOpen;
+        // While the guide is open, D-pad focus belongs to the guide. Escape
+        // closes it and restores the player chrome to the navigable set.
+        setTimeout(() => {
+            this.updateSpatialScope();
+            if (this.guideOpen) {
+                document.querySelector<HTMLElement>('.guide-channel')?.focus();
+            }
+        }, 50);
+    }
+
+    private updateSpatialScope(): void {
+        if (!this.spatialNav) return;
+        const selector = this.guideOpen
+            ? '.guide-panel button, .guide-panel .guide-channel, .guide-panel .guide-program, .guide-panel input'
+            : 'button, .guide-channel, .guide-program, .ch-btn, .vol-btn';
+        this.spatialNav.clear();
+        this.spatialNav.add({ selector, rememberSource: true });
+        this.spatialNav.makeFocusable();
     }
 
     async loadRecordings(): Promise<void> {
@@ -774,6 +806,26 @@ export class WatchComponent implements OnInit, OnDestroy {
     }
 
     /** Horizontal guide scrolling: fades the edge and dismisses the swipe hint. */
+    /** Keyboard equivalent of the program context menu (Enter/Space). */
+    onProgramKeydown(event: Event, ch: any, prog: any): void {
+        event.preventDefault();
+        const target = event.target as HTMLElement;
+        const rect = target.getBoundingClientRect();
+        this.contextMenuTrigger = target;
+        this.onProgramContextMenu({
+            preventDefault: () => undefined,
+            stopPropagation: () => undefined,
+            clientX: rect.left + Math.min(24, rect.width / 2),
+            clientY: rect.top + Math.min(24, rect.height / 2)
+        } as MouseEvent, ch, prog);
+        // A keyboard user needs to land on the first action, not on the
+        // element after the program in DOM order.
+        setTimeout(() => {
+            const first = document.querySelector<HTMLElement>('.context-menu button');
+            first?.focus();
+        }, 0);
+    }
+
     onGuideHorizontalScroll(event: Event): void {
         const el = event.target as HTMLElement;
         // Auto-scrolling to "now" must not dismiss the hint; only a real
