@@ -216,17 +216,22 @@ npm run version:set minor     # or patch, major, or an exact 1.4.0
 npm run version:check v1.4.0  # verify every file agrees, without writing
 ```
 
-Cutting a release (fully automatic, GHCR-only):
+Cutting a release (fully automatic):
 
 1. Merge to `main` with conventional commits (`feat:`, `fix:`, `BREAKING CHANGE:`). On push to `main`, **Release Please** (`release-please.yml`) opens/updates a `chore: release X.Y.Z` PR that bumps all version files. Merging that PR creates tag `vX.Y.Z`.
 2. The tag starts the **Release** workflow, which:
    - refuses to continue unless the tag matches every version in the repository
    - runs the unit and end-to-end suites
-   - builds and pushes a pinned multi-arch image to **GHCR only** (`ghcr.io/cjrutherford/epg-manager:X.Y.Z`, `X.Y`, `X`, `latest` if stable)
+   - builds and pushes a pinned image to **GHCR** (`ghcr.io/cjrutherford/epg-manager:X.Y.Z`, `X.Y`, `X`, `latest` if stable), and to **Docker Hub** as `docker.io/<namespace>/epg-manager` when `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` are configured
    - builds the `mobile` and `tv` Android installers
    - publishes a GitHub Release with the installers and pinned `docker-compose.yml` + `.env.example`
 
 Dev branches push `edge`, `branch-<name>`, `branch-<name>-<sha>` and `sha-<short>` via `edge.yml` on every non-`main` push.
+
+GHCR uses the workflow's own `GITHUB_TOKEN`, so it needs no setup. To publish
+releases to Docker Hub as well, add the repository secrets `DOCKERHUB_USERNAME`
+and `DOCKERHUB_TOKEN` (a Docker Hub access token with read/write permission).
+Without them the release publishes to GHCR only.
 
 Android builds are debug-signed by default, which installs by side-load without
 anyone holding a release keystore. Set `ANDROID_KEYSTORE_BASE64`,

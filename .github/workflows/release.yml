@@ -86,6 +86,13 @@ jobs:
     name: Publish the image
     runs-on: ubuntu-24.04
     needs: verify
+    # Docker Hub is optional. With DOCKERHUB_USERNAME and DOCKERHUB_TOKEN set
+    # (a read/write access token, not the account password), the release is also
+    # published there. Without them only GHCR is used, so forks and fresh clones
+    # still publish without configuring anything.
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -101,12 +108,38 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Log in to Docker Hub
+        if: env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
+
+      # Build the image list from what is actually configured: docker.io is
+      # only included when credentials exist, because metadata-action cannot
+      # emit a valid name for an empty namespace.
+      - name: Work out the registries
+        id: registries
+        run: |
+          set -euo pipefail
+          images="${REGISTRY}/${IMAGE_NAME}"
+          if [ -n "${DOCKERHUB_USERNAME:-}" ] && [ -n "${DOCKERHUB_TOKEN:-}" ]; then
+            dockerhub_namespace="${DOCKERHUB_USERNAME,,}"
+            images="${images}"$'\n'"docker.io/${dockerhub_namespace}/${IMAGE_NAME##*/}"
+          else
+            echo "Docker Hub credentials are not configured; publishing to GHCR only." >&2
+          fi
+          {
+            echo "images<<IMAGES"
+            echo "$images"
+            echo "IMAGES"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Work out the tags
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ steps.registries.outputs.images }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -243,8 +276,21 @@ jobs:
           path: dist-apk
 
       - name: Write the install notes
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
           version="${{ needs.verify.outputs.version }}"
+          docker_hub_note=""
+          if [ -n "${DOCKERHUB_USERNAME:-}" ] && [ -n "${DOCKERHUB_TOKEN:-}" ]; then
+            docker_hub_note="
+          Or pull the same image from Docker Hub:
+
+          \`\`\`bash
+          docker pull docker.io/${DOCKERHUB_USERNAME,,}/${IMAGE_NAME##*/}:${version}
+          \`\`\`
+          "
+          fi
           cat > RELEASE_NOTES.md <<NOTES
           ## Install
 
@@ -264,7 +310,7 @@ jobs:
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${version}
           docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:0
           \`\`\`
-
+          ${docker_hub_note}
           Edge (dev branches, also tagged by branch & commit):
 
           \`\`\`bash
