@@ -16,7 +16,7 @@ test.describe.configure({ mode: 'serial' });
 test.describe('DVR lifecycle', () => {
     test.beforeEach(async ({ page }) => {
         await signIn(page);
-        await goToSection(page, 'DVR', 'DVR');
+        await goToSection(page, 'Recordings', 'Recordings');
     });
 
     const cardFor = (page: import('@playwright/test').Page, title: string) =>
@@ -62,17 +62,17 @@ test.describe('DVR lifecycle', () => {
     });
 
     test('recording settings round-trip through the API', async ({ page }) => {
-        await page.getByRole('button', { name: /Recording Settings/ }).click();
+        await page.getByRole('button', { name: /Recording settings/ }).click();
 
         const startPadding = page.getByLabel('Start recording early')
             .or(page.locator('.dvr-setting:has-text("Start recording early") input'));
         await startPadding.first().fill('45');
 
         await page.getByRole('button', { name: 'Save settings' }).click();
-        await expect(page.locator('.toast')).toContainText('DVR settings saved');
+        await expect(page.locator('.toast')).toContainText('Recording settings saved');
 
         await page.reload();
-        await page.getByRole('button', { name: /Recording Settings/ }).click();
+        await page.getByRole('button', { name: /Recording settings/ }).click();
         await expect(startPadding.first()).toHaveValue('45');
     });
 });

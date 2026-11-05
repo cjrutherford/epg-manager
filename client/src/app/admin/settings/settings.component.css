@@ -1,7 +1,4 @@
-.settings-page h1 {
-    margin-bottom: var(--space-3xl);
-    font-size: var(--font-3xl);
-}
+
 
 .settings-card {
     margin-bottom: var(--space-3xl);
@@ -16,14 +13,6 @@
     margin-bottom: var(--space-xl);
 }
 
-.form-group label {
-    display: block;
-    font-size: var(--font-sm);
-    color: var(--text-secondary);
-    margin-bottom: var(--space-xs);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
 
 .checkbox-group label {
     display: flex;
@@ -36,361 +25,6 @@
     cursor: pointer;
 }
 
-/* Selected Playlists Chip List */
-.selected-playlists {
-    padding: var(--space-lg) var(--space-xl);
-    background: rgba(var(--color-primary-rgb), 0.05);
-    border: 1px solid rgba(var(--color-primary-rgb), 0.15);
-    border-radius: var(--radius-md);
-    margin-bottom: var(--space-xl);
-}
-
-.selected-playlists .current-label {
-    display: block;
-    font-size: var(--font-sm);
-    color: var(--text-secondary);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-bottom: var(--space-md);
-}
-
-.playlist-scope-summary {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-md);
-    margin-bottom: var(--space-md);
-    font-size: var(--font-xs);
-    color: var(--text-secondary);
-}
-
-.playlist-warning {
-    margin-bottom: var(--space-lg);
-    padding: var(--space-md) var(--space-lg);
-    border-radius: var(--radius-md);
-    background: rgba(var(--color-warning-rgb), 0.1);
-    border: 1px solid rgba(var(--color-warning-rgb), 0.25);
-    color: var(--color-warning);
-    font-size: var(--font-sm);
-}
-
-.playlist-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-sm);
-}
-
-.playlist-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-sm);
-    padding: var(--space-xs) var(--space-md) var(--space-xs) var(--space-lg);
-    background: rgba(var(--color-primary-rgb), 0.12);
-    border: 1px solid rgba(var(--color-primary-rgb), 0.25);
-    border-radius: var(--radius-lg);
-    font-size: var(--font-sm);
-    color: var(--color-primary);
-    max-width: 300px;
-    transition: all 0.2s;
-}
-
-.chip-meta {
-    font-size: var(--font-2xs);
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.playlist-chip:hover {
-    background: rgba(var(--color-primary-rgb), 0.2);
-    border-color: var(--color-primary);
-}
-
-.chip-label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-family: var(--font-mono);
-    font-size: var(--font-xs);
-}
-
-.chip-remove {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
-    border: none;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 50%;
-    color: rgba(255, 255, 255, 0.6);
-    font-size: var(--font-2xs);
-    cursor: pointer;
-    flex-shrink: 0;
-    transition: all 0.2s;
-    padding: 0;
-    line-height: 1;
-}
-
-.chip-remove:hover {
-    /* Was a hardcoded #ff5050, which bypassed the theme entirely — on the light
-       theme it sat at poor contrast against a near-white surface. */
-    background: rgba(var(--color-danger-rgb), 0.3);
-    color: var(--color-danger);
-}
-
-/* Custom URL Row */
-.custom-url-row {
-    display: flex;
-    gap: var(--space-sm);
-    align-items: center;
-}
-
-.custom-url-input {
-    flex: 1;
-}
-
-/* iptv-org Browser */
-.iptv-org-browser {
-    margin-top: var(--space-lg);
-}
-
-.iptv-org-browser .themed-input {
-    margin-bottom: var(--space-lg);
-}
-
-.iptv-org-controls {
-    display: grid;
-    grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(140px, 1fr));
-    gap: var(--space-md);
-    margin-bottom: var(--space-lg);
-}
-
-.iptv-org-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: var(--space-sm);
-    max-height: 300px;
-    overflow-y: auto;
-    padding: var(--space-2xs);
-}
-
-.iptv-org-item {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    padding: var(--space-md) var(--space-lg);
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-md);
-    color: rgba(255, 255, 255, 0.8);
-    cursor: pointer;
-    font-size: var(--font-sm);
-    font-weight: 600;
-    transition: all 0.2s;
-    text-align: left;
-}
-
-.iptv-org-item:hover {
-    background: rgba(var(--color-primary-rgb), 0.1);
-    border-color: rgba(var(--color-primary-rgb), 0.3);
-    /* Was #fff. The hover surface is a 10% tint of the page background, so on
-       the light theme this put white text on near-white. */
-    color: var(--text-primary);
-}
-
-.iptv-org-item.selected {
-    background: rgba(var(--color-primary-rgb), 0.15);
-    border-color: var(--color-primary);
-    color: var(--color-primary);
-}
-
-.iptv-org-name {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.iptv-org-main {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2xs);
-    min-width: 0;
-}
-
-.iptv-org-meta {
-    font-size: var(--font-xs);
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-}
-
-.iptv-org-meta.secondary {
-    text-transform: none;
-    letter-spacing: 0;
-}
-
-.iptv-org-stats {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-sm);
-    font-size: var(--font-xs);
-    color: rgba(255, 255, 255, 0.72);
-}
-
-.iptv-org-check {
-    color: var(--color-success);
-    font-weight: 700;
-    flex-shrink: 0;
-}
-
-.iptv-org-footnote {
-    margin-top: var(--space-md);
-    font-size: var(--font-xs);
-    color: var(--text-secondary);
-}
-
-/* Output File Links */
-.file-links {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-lg);
-}
-
-.file-link-row {
-    display: flex;
-    align-items: center;
-    gap: var(--space-xl);
-    padding: var(--space-lg) var(--space-xl);
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: var(--radius-md);
-}
-
-.file-link-row span {
-    font-weight: 600;
-    min-width: 120px;
-}
-
-.file-link-row code {
-    flex: 1;
-    font-family: var(--font-mono);
-    font-size: var(--font-md);
-    color: var(--color-primary);
-}
-
-.action-row {
-    display: flex;
-    gap: var(--space-lg);
-    flex-wrap: wrap;
-}
-
-.metadata-section {
-    border-top: 1px solid var(--border-subtle);
-    padding-top: var(--space-xl);
-    margin-top: var(--space-xl);
-}
-
-@media (max-width: 768px) {
-    .file-link-row {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: var(--space-sm);
-    }
-
-    .action-row {
-        flex-direction: column;
-    }
-
-    .iptv-org-controls {
-        grid-template-columns: 1fr;
-    }
-
-    .iptv-org-grid {
-        grid-template-columns: 1fr;
-    }
-}
-
-/* FAST Platform Presets Grid */
-.fast-presets-container {
-    margin-bottom: var(--space-2xl);
-    padding: var(--space-xl);
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: var(--radius-md);
-}
-
-.presets-header {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2xs);
-    margin-bottom: var(--space-lg);
-}
-
-.presets-title {
-    font-size: var(--font-md);
-    font-weight: 700;
-    color: var(--text-primary);
-}
-
-.presets-desc {
-    font-size: var(--font-xs);
-    color: var(--text-secondary);
-}
-
-.preset-buttons-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: var(--space-md);
-}
-
-.preset-card-btn {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--space-2xs);
-    padding: var(--space-md) var(--space-lg);
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: var(--radius-md);
-    color: var(--text-primary);
-    cursor: pointer;
-    transition: all 0.2s ease;
-    text-align: left;
-}
-
-.preset-card-btn:hover {
-    background: rgba(var(--color-primary-rgb), 0.12);
-    border-color: rgba(var(--color-primary-rgb), 0.3);
-    transform: translateY(-1px);
-}
-
-.preset-card-btn.added {
-    background: rgba(var(--color-success-rgb), 0.12);
-    border-color: rgba(var(--color-success-rgb), 0.4);
-}
-
-.preset-card-btn .preset-name {
-    font-size: var(--font-md);
-    font-weight: 600;
-}
-
-.preset-card-btn .preset-count {
-    font-size: var(--font-xs);
-    color: var(--text-secondary);
-}
-
-.preset-card-btn .preset-status {
-    font-size: var(--font-xs);
-    font-weight: 700;
-    color: var(--color-primary);
-    margin-top: var(--space-3xs);
-}
-
-.preset-card-btn.added .preset-status {
-    color: var(--color-success);
-}
-
 /* Field-level validation, so a rejected save points at what is wrong. */
 .field-error {
     margin-top: var(--space-xs);
@@ -401,4 +35,99 @@
 
 .field-invalid {
     border-color: var(--color-danger) !important;
+}
+
+/* Section navigation and sticky save. The page is shorter now that playlists
+   live in Sources, but the remaining controls still deserve a map. */
+.settings-nav {
+    position: sticky;
+    top: 0;
+    z-index: 8;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2xs);
+    padding: var(--space-sm) 0;
+    margin-bottom: var(--space-lg);
+    background: var(--bg-deep);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-nav a {
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+    text-decoration: none;
+    padding: var(--space-2xs) var(--space-md);
+    border-radius: var(--radius-pill);
+}
+
+.settings-nav a:hover {
+    color: var(--color-primary);
+    background: var(--bg-surface-hover);
+    text-decoration: none;
+}
+
+.settings-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--space-xl);
+    margin-bottom: var(--space-xl);
+}
+
+.settings-card-head h2 {
+    margin-bottom: var(--space-2xs);
+}
+
+.settings-field-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-xl);
+}
+
+.settings-field-full { grid-column: 1 / -1; }
+
+.field-hint {
+    margin: var(--space-2xs) 0 0;
+    color: var(--text-muted);
+    font-size: var(--font-xs);
+}
+
+.range-row {
+    display: flex;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-sm);
+}
+
+.range-number { width: 120px; }
+
+.settings-save-bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 9;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-xl);
+    margin-top: var(--space-xl);
+    padding: var(--space-md) var(--space-xl);
+    background: var(--bg-glass-strong);
+    border: 1px solid var(--border-glass);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+}
+
+.settings-save-state {
+    font-size: var(--font-sm);
+    color: var(--text-muted);
+}
+
+@media (max-width: 768px) {
+    .settings-card-head { flex-direction: column; }
+    .settings-field-grid { grid-template-columns: 1fr; }
+    .settings-save-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--space-sm);
+    }
+    .settings-save-bar .btn { width: 100%; }
 }

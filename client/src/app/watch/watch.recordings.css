@@ -1,0 +1,276 @@
+/* ── Recordings Library ─────────────────────── */
+.recordings-library {
+    position: absolute;
+    top: calc(var(--topbar-height, 56px) + 12px);
+    right: 18px;
+    bottom: 18px;
+    width: min(520px, calc(100vw - 24px));
+    z-index: 160;
+    display: flex;
+    flex-direction: column;
+    padding: 18px;
+    overflow: hidden;
+    background: var(--bg-glass);
+    border: 1px solid rgba(var(--color-primary-rgb), 0.22);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+}
+
+.recordings-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 14px;
+}
+
+.recordings-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.recordings-kicker {
+    color: var(--color-primary);
+    font-size: var(--font-xs);
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.recordings-head h2 {
+    margin: 2px 0 0;
+    color: var(--text-primary);
+    font-family: var(--font-heading);
+}
+
+.recording-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.recording-tabs button {
+    border: 1px solid rgba(var(--color-primary-rgb), 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-secondary);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    cursor: pointer;
+    font-weight: 700;
+}
+
+.recording-tabs button.active {
+    color: var(--text-primary);
+    background: rgba(var(--color-primary-rgb), 0.18);
+    border-color: rgba(var(--color-primary-rgb), 0.45);
+}
+
+.recording-tabs span {
+    display: inline-flex;
+    min-width: 22px;
+    height: 22px;
+    align-items: center;
+    justify-content: center;
+    margin-left: 8px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.28);
+}
+
+.recording-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.recording-card {
+    display: grid;
+    grid-template-columns: 132px 1fr;
+    gap: 14px;
+    padding: 12px;
+    border: 1px solid rgba(var(--color-primary-rgb), 0.14);
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.recording-card.recording-active {
+    border-color: rgba(var(--color-danger-rgb), 0.55);
+    box-shadow: 0 0 0 1px rgba(var(--color-danger-rgb), 0.18);
+}
+
+.recording-thumb {
+    position: relative;
+    min-height: 96px;
+    overflow: hidden;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(135deg, rgba(var(--color-primary-rgb), 0.22), rgba(255, 255, 255, 0.04));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+
+.recording-source {
+    position: absolute;
+    left: 8px;
+    bottom: 8px;
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.65);
+    color: var(--text-primary);
+    font-size: var(--font-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.recording-fallback-icon,
+.empty-line-icon {
+    color: rgba(var(--color-primary-rgb), 0.7);
+}
+
+.recording-body {
+    min-width: 0;
+}
+
+.recording-row,
+.recording-foot,
+.recording-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.recording-row {
+    margin-bottom: 5px;
+}
+
+/* On a completed recording the message explains why it is short. */
+.recording-error.recording-note {
+    color: var(--text-secondary);
+}
+
+.recording-risk {
+    color: var(--color-warning);
+    font-size: var(--font-xs);
+}
+
+.recording-body h3 {
+    margin: 0 0 4px;
+    color: var(--text-primary);
+    font-size: var(--font-lg);
+    line-height: 1.2;
+}
+
+.recording-channel,
+.recording-episode,
+.recording-time,
+.recording-error,
+.recording-foot,
+.recording-readonly {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: var(--font-md);
+}
+
+.link-button {
+    border: 0;
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.schedule-program-list {
+    max-height: 170px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-right: 4px;
+}
+
+.schedule-program-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    width: 100%;
+    border: 1px solid rgba(var(--color-primary-rgb), 0.12);
+    background: rgba(255, 255, 255, 0.035);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    color: var(--text-primary);
+    text-align: left;
+    cursor: pointer;
+}
+
+.schedule-program-row.selected {
+    border-color: rgba(var(--color-primary-rgb), 0.5);
+    background: rgba(var(--color-primary-rgb), 0.16);
+}
+
+.schedule-program-row small,
+.schedule-program-row em {
+    display: block;
+    color: var(--text-muted);
+    font-size: var(--font-xs);
+    font-style: normal;
+}
+
+.schedule-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-secondary);
+    font-size: 0.86rem;
+}
+
+.schedule-time-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.recording-error {
+    color: var(--color-danger);
+    margin-top: 6px;
+}
+
+.recording-foot {
+    justify-content: space-between;
+    margin-top: 8px;
+}
+
+.recording-actions {
+    margin-top: 10px;
+}
+
+.recording-actions .danger {
+    color: var(--color-danger);
+}
+
+.recording-empty {
+    display: flex;
+    min-height: 240px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.recording-empty h3 {
+    margin: 0;
+    color: var(--text-primary);
+}

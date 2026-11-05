@@ -1,0 +1,75 @@
+name: Release on merge
+
+# Release Please used to open a version PR and wait for a human to approve it.
+# A GITHUB_TOKEN-created PR cannot trigger CI, so that loop needed a personal
+# token and manual approval just to cut a version. This workflow waits for CI
+# to pass on main, commits the version, tags it and dispatches the release
+# workflow explicitly. No release PR, no approval step.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  version:
+    name: Bump and tag
+    if: github.event.workflow_run.conclusion == 'success' && github.repository == 'cjrutherford/epg-manager'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.next.outputs.version }}
+      kind: ${{ steps.next.outputs.kind }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          # The release commit is pushed with the workflow token. The tag and
+          # the explicit dispatch below still run the release pipeline.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Work out the next version
+        id: next
+        run: node scripts/next-version.mjs --github-output
+
+      - name: Stop when there is nothing to release
+        if: steps.next.outputs.version == ''
+        run: echo "No releasable commits since the last tag."
+
+      - name: Write the version everywhere
+        if: steps.next.outputs.version != ''
+        run: npx ts-node scripts/set-version.ts "${{ steps.next.outputs.version }}"
+
+      - name: Verify every version file agrees
+        if: steps.next.outputs.version != ''
+        run: npx ts-node scripts/set-version.ts --check "v${{ steps.next.outputs.version }}"
+
+      - name: Commit and tag
+        if: steps.next.outputs.version != ''
+        run: |
+          set -euo pipefail
+          version="${{ steps.next.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json client/package.json client/android/app/build.gradle docker-compose.yml .env.example
+          git commit -m "chore(release): v${version} [skip ci]"
+          git tag -a "v${version}" -m "Release v${version}"
+          git push origin HEAD:main
+          git push origin "v${version}"
+
+      - name: Dispatch the release workflow for the new tag
+        if: steps.next.outputs.version != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run release.yml --ref "v${{ steps.next.outputs.version }}"

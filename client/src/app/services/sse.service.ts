@@ -54,7 +54,11 @@ export class SseService {
                     if (this.connectionStatus$.value !== 'connected') {
                         this.connectionStatus$.next('connected');
                     }
-                    try { this.logs$.next(JSON.parse(event.data)); } catch { }
+                    try {
+                        const raw = JSON.parse(event.data);
+                        // The server emits `type`; older clients expected `level`.
+                        this.logs$.next({ message: raw.message ?? '', level: raw.level ?? raw.type ?? 'info' });
+                    } catch { }
                 });
             });
 

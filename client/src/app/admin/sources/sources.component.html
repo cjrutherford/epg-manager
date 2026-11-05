@@ -1,59 +1,53 @@
 <div class="sources-page">
-    <header class="page-header">
-        <div class="page-header__text">
-            <h1>Sources</h1>
-            <p class="page-sub">Where channels and guide data come from.</p>
-        </div>
-        <div class="page-header__actions">
-            <button class="btn btn-secondary" (click)="exportAll()">Export / import</button>
-            <button class="btn btn-primary" (click)="openAdd()">+ Add source</button>
-        </div>
-    </header>
+    <app-page-header title="Sources" subtitle="Health and sync status for every playlist and guide feed.">
+        <a class="btn btn-secondary" [routerLink]="['/admin/diagnostics']" [queryParams]="{ tab: 'sources' }">Source reliability</a>
+        <button type="button" class="btn btn-secondary" [class.active]="playlistsOpen"
+            [attr.aria-expanded]="playlistsOpen" (click)="playlistsOpen = !playlistsOpen">Manage playlists</button>
+        <button class="btn btn-secondary" (click)="exportAll()">Export / import</button>
+        <button class="btn btn-primary" (click)="openAdd()">+ Add source</button>
+    </app-page-header>
+
+    @if (playlistsOpen) {
+    <div class="glass-card playlist-panel">
+        <app-playlist-config (saved)="onPlaylistsSaved()"></app-playlist-config>
+    </div>
+    }
 
     @if (loading) {
-    <div class="loading-container"><div class="spinner"></div></div>
+    <app-skeleton [rows]="5" label="Loading sources"></app-skeleton>
     } @else if (loadError) {
-<div class="glass-card state state--error">
-        <lucide-icon name="circle-alert" class="icon icon--xl state__icon"></lucide-icon>
-        <h2 class="state__title">Could not load your sources</h2>
-        <p class="state__message">{{ loadError }}</p>
+<app-state tone="error" title="Could not load your sources" [message]="loadError">
         <button class="btn btn-secondary" (click)="load()">Try again</button>
-    </div>
+    </app-state>
     } @else {
 
     <!-- The same statistic component as Dashboard and Diagnostics; here the
          first three are also filters, which is what button.stat is for. -->
     <div class="stat-grid">
-        <button type="button" class="stat" [class.is-active]="family === 'all'"
-            [attr.aria-pressed]="family === 'all'" (click)="family = 'all'">
-            <span class="stat__value">{{ sources.length }}</span>
-            <span class="stat__label">All sources</span>
-        </button>
-        <button type="button" class="stat" [class.is-active]="family === 'channels'"
-            [attr.aria-pressed]="family === 'channels'" (click)="family = 'channels'">
-            <span class="stat__value">{{ channelSourceCount }}</span>
-            <span class="stat__label">Channel sources</span>
-        </button>
-        <button type="button" class="stat" [class.is-active]="family === 'guide'"
-            [attr.aria-pressed]="family === 'guide'" (click)="family = 'guide'">
-            <span class="stat__value">{{ guideSourceCount }}</span>
-            <span class="stat__label">Guide sources</span>
-        </button>
-        <div class="stat" [class.stat--danger]="failingCount > 0">
-            <span class="stat__value">{{ failingCount }}</span>
-            <span class="stat__label">Failing</span>
-        </div>
+        <app-stat [interactive]="true" [pressed]="family === 'all'" [active]="family === 'all'"
+            (pressedChange)="family = 'all'" [value]="sources.length" label="All sources"></app-stat>
+        <app-stat [interactive]="true" [pressed]="family === 'channels'" [active]="family === 'channels'"
+            (pressedChange)="family = 'channels'" [value]="channelSourceCount" label="Channel sources"></app-stat>
+        <app-stat [interactive]="true" [pressed]="family === 'guide'" [active]="family === 'guide'"
+            (pressedChange)="family = 'guide'" [value]="guideSourceCount" label="Guide sources"></app-stat>
+        <app-stat [interactive]="true" [pressed]="family === 'failing'" [active]="family === 'failing'"
+            (pressedChange)="family = 'failing'" [tone]="failingCount > 0 ? 'danger' : 'neutral'"
+            [value]="failingCount" label="Failing"></app-stat>
     </div>
 
     @if (visibleSources.length === 0) {
     <div class="glass-card empty-sources">
+        @if (family === 'failing') {
+        <p>No failing sources. Every source is either working or has not synced yet.</p>
+        } @else {
         <p>No sources here yet. Add a playlist URL or a guide feed to get started.</p>
         <button class="btn btn-primary" (click)="openAdd()">+ Add source</button>
+        }
     </div>
     } @else {
     <div class="glass-card table-wrapper">
         <div class="table-container">
-            <table>
+            <table class="data-table">
                 <thead>
                     <tr>
                         <th>Source</th>
@@ -67,7 +61,7 @@
                 <tbody>
                     @for (source of visibleSources; track source.key) {
                     <tr [class.is-disabled]="!source.enabled">
-                        <td>
+                        <td data-label="Source">
                             <div class="source-cell">
                                 <strong class="source-label">{{ source.label }}</strong>
                                 <span class="source-meta">
@@ -80,20 +74,20 @@
                                 }
                             </div>
                         </td>
-                        <td>
+                        <td data-label="Provides">
                             @for (capability of source.provides; track capability) {
                             <span class="cap cap-{{ capability }}">{{ capability }}</span>
                             }
                         </td>
-                        <td>
+                        <td data-label="Health">
                             <span class="health health-{{ healthOf(source) }}">{{ healthLabel(source) }}</span>
                             @if (source.lastError) {
                             <div class="health-reason" [title]="source.lastError">{{ source.lastError }}</div>
                             }
                         </td>
-                        <td class="num-col">{{ source.importedRows | number }}</td>
-                        <td class="muted">{{ lastSyncLabel(source) }}</td>
-                        <td>
+                        <td class="num-col" data-label="Channels">{{ source.importedRows | number }}</td>
+                        <td class="muted" data-label="Last sync">{{ lastSyncLabel(source) }}</td>
+                        <td data-label="Actions">
                             <div class="row-actions">
                                 <button class="btn btn-secondary small-btn" (click)="toggle(source)">
                                     {{ source.enabled ? 'Disable' : 'Enable' }}
@@ -114,14 +108,7 @@
 
     <!-- Add source: probe before anything is written -->
     @if (showAddModal) {
-    <div class="modal-backdrop" (click)="closeAdd()">
-        <div class="modal-content source-modal" appModalFocus (dismiss)="closeAdd()" aria-labelledby="add-source-title"
-            (click)="$event.stopPropagation()">
-            <div class="modal-header">
-                <h2 id="add-source-title">Add a source</h2>
-                <button class="close-modal-btn" (click)="closeAdd()" aria-label="Close"><lucide-icon name="x" class="icon"></lucide-icon></button>
-            </div>
-
+    <app-modal title="Add a source" titleId="add-source-title" panelClass="source-modal" (closed)="closeAdd()">
             <p class="modal-intro">
                 Paste a playlist or guide URL. Nothing is saved until you have seen what it contains.
             </p>
@@ -195,20 +182,12 @@
                     {{ adding ? 'Adding…' : 'Add source' }}
                 </button>
             </div>
-        </div>
-    </div>
+    </app-modal>
     }
 
     <!-- Export / import -->
     @if (showExportModal) {
-    <div class="modal-backdrop" (click)="closeExport()">
-        <div class="modal-content source-modal" appModalFocus (dismiss)="closeExport()" aria-labelledby="export-title"
-            (click)="$event.stopPropagation()">
-            <div class="modal-header">
-                <h2 id="export-title">Export / import sources</h2>
-                <button class="close-modal-btn" (click)="closeExport()" aria-label="Close"><lucide-icon name="x" class="icon"></lucide-icon></button>
-            </div>
-
+    <app-modal title="Export / import sources" titleId="export-title" panelClass="source-modal" (closed)="closeExport()">
             <p class="modal-intro">
                 Descriptors are portable — hand this to another install, or keep it to restore your setup.
                 Credentials are never included.
@@ -228,7 +207,6 @@
                 <button class="btn btn-secondary" (click)="closeExport()">Close</button>
                 <button class="btn btn-primary" (click)="runImport()" [disabled]="!importJson.trim()">Import</button>
             </div>
-        </div>
-    </div>
+    </app-modal>
     }
 </div>

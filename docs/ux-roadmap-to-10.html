@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tuner Daemon — Roadmap to 10</title>
+<style>
+  :root{
+    --paper:#f8f5ef; --paper-2:#fffdf8; --ink:#1c1812; --ink-2:#3b342b;
+    --muted:#6f6558; --faint:#9b9184; --line:#e5ddd0; --line-2:#d7cdbd;
+    --amber:#a9651c; --amber-soft:#f0e1c9; --red:#a9342e; --red-soft:#f7e2df;
+    --green:#3e7a4e; --green-soft:#e4efe6; --blue:#33657f; --blue-soft:#e2edf3;
+    --dark:#14110d;
+    --radius:12px; --radius-sm:8px;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
+  a{color:var(--amber);text-decoration:none} a:hover{text-decoration:underline}
+  code{font-family:var(--mono);font-size:.86em;background:#efe9de;border:1px solid var(--line);border-radius:4px;padding:.08em .35em;color:#4a3d2c}
+  .layout{display:grid;grid-template-columns:238px minmax(0,1fr);max-width:1540px;margin:0 auto}
+  .rail{position:sticky;top:0;align-self:start;height:100vh;padding:34px 22px 40px 30px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:22px;background:linear-gradient(180deg,#fbf8f2,#f6f1e8)}
+  .rail-brand{font-family:var(--serif);font-size:19px;line-height:1.15}
+  .rail-brand span{display:block;font-family:var(--sans);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-top:7px;font-weight:700}
+  .rail nav{display:flex;flex-direction:column;gap:2px;font-size:13px}
+  .rail nav a{color:var(--ink-2);padding:7px 10px;border-radius:6px;display:flex;gap:10px;align-items:baseline}
+  .rail nav a span{color:var(--faint);font-family:var(--mono);font-size:10px;width:18px}
+  .rail nav a:hover{background:#efe8db;text-decoration:none}
+  .rail-foot{margin-top:auto;font-size:11px;color:var(--muted);line-height:1.5;border-top:1px solid var(--line);padding-top:16px}
+  .rail-foot strong{display:block;color:var(--ink);font-size:12px;margin-bottom:4px}
+  main{min-width:0;padding:0 48px 90px}
+  .wrap{max-width:1080px;margin:0 auto}
+
+  .hero{margin:0 -48px;padding:62px 48px 52px;background:
+    radial-gradient(1100px 520px at 18% -10%,rgba(169,101,28,.22),transparent 60%),
+    radial-gradient(800px 400px at 100% 0,rgba(70,52,28,.28),transparent 55%),
+    linear-gradient(160deg,#17130e 0%,#0f0d0a 75%);
+    color:#f4ede1;border-bottom:1px solid #2b241b}
+  .hero .wrap{display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center}
+  .kicker{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:#c9a06a;font-weight:700;margin-bottom:16px}
+  .hero h1{font-family:var(--serif);font-weight:500;font-size:clamp(38px,4.3vw,58px);line-height:1.03;letter-spacing:-.025em;margin:0 0 18px;color:#fbf6ec}
+  .hero h1 em{font-style:italic;color:#e8b574}
+  .hero p.lede{font-size:17px;line-height:1.55;color:#c9c0b1;margin:0 0 24px;max-width:54ch}
+  .hero-meta{display:flex;flex-wrap:wrap;gap:10px 22px;font-size:12px;color:#a89c8b;border-top:1px solid #342b20;padding-top:18px}
+  .hero-meta b{color:#e8ddca}
+  .chart{background:rgba(255,255,255,.03);border:1px solid #3b3022;border-radius:12px;padding:18px 16px 10px;box-shadow:0 30px 70px rgba(0,0,0,.35)}
+  .chart h3{font-family:var(--sans);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#a89c8b;margin:0 0 4px;font-weight:700}
+  .chart svg{width:100%;height:auto;display:block}
+  .chart figcaption{font-size:10.5px;color:#9c8f7c;margin-top:6px;line-height:1.4}
+
+  section{padding-top:62px}
+  .eyebrow{display:flex;align-items:center;gap:12px;font-size:11px;letter-spacing:.2em;text-transform:uppercase;font-weight:700;color:var(--amber);margin-bottom:12px}
+  .eyebrow i{display:block;width:26px;height:1px;background:var(--amber);opacity:.6}
+  h2{font-family:var(--serif);font-size:clamp(28px,3vw,38px);line-height:1.08;letter-spacing:-.02em;font-weight:500;margin:0 0 14px}
+  h3{font-family:var(--serif);font-size:23px;line-height:1.2;font-weight:500;margin:30px 0 10px}
+  h4{font-size:14px;margin:20px 0 8px}
+  .section-intro{font-size:16px;color:var(--ink-2);max-width:72ch;margin:0 0 24px}
+  .small{font-size:12px;color:var(--muted)}
+
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .def{border:1px solid var(--line);background:var(--paper-2);border-radius:var(--radius);padding:20px 22px}
+  .def .score{font-family:var(--serif);font-size:42px;line-height:1;color:var(--amber);margin-bottom:8px}
+  .def h3{margin:0 0 6px;font-size:20px}
+  .def p{margin:0 0 8px;font-size:13.5px;color:var(--ink-2)}
+  .def ul{margin:8px 0 0;padding-left:18px;font-size:13px;color:var(--ink-2)}
+
+  .callout{border:1px solid var(--line);background:var(--paper-2);border-radius:var(--radius);padding:20px 22px;margin:22px 0}
+  .callout.accent{border-left:4px solid var(--amber);background:#fdf8ef}
+  .callout.good{border-left:4px solid var(--green);background:#f5faf5}
+  .callout h4{margin:0 0 6px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .callout p{margin:0;font-size:14px}
+
+  .table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--paper-2);margin:18px 0}
+  table{border-collapse:collapse;width:100%;font-size:13px;min-width:680px}
+  th,td{text-align:left;padding:11px 13px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);background:#f4eee4;font-weight:700;white-space:nowrap}
+  tr:last-child td{border-bottom:0}
+  td b{font-weight:600}
+  .pill{display:inline-block;font-family:var(--mono);font-size:10px;padding:2px 6px;border-radius:4px;background:#eee7db;color:#594c3c;white-space:nowrap}
+  .pill.green{background:var(--green-soft);color:var(--green)}
+  .pill.red{background:var(--red-soft);color:var(--red)}
+  .pill.amber{background:var(--amber-soft);color:var(--amber)}
+  .pill.blue{background:var(--blue-soft);color:var(--blue)}
+
+  .phases{position:relative;margin:24px 0 0;padding-left:28px}
+  .phases:before{content:"";position:absolute;left:8px;top:10px;bottom:10px;width:1px;background:var(--line-2)}
+  .phase{position:relative;margin-bottom:28px}
+  .phase:before{content:"";position:absolute;left:-27px;top:6px;width:13px;height:13px;border-radius:50%;background:var(--paper);border:3px solid var(--amber)}
+  .phase-head{display:flex;flex-wrap:wrap;gap:10px;align-items:baseline;margin-bottom:2px}
+  .phase-head h3{margin:0;font-size:23px}
+  .phase-head .when{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:#efe8dc;border-radius:99px;padding:3px 9px}
+  .phase .goal{font-size:13px;color:var(--amber);font-weight:600;margin-bottom:9px}
+  .phase ul{margin:6px 0 10px;padding-left:18px;font-size:13.5px}
+  .phase li{margin:3px 0}
+  .gate{font-size:12.5px;background:#f3f7f1;border:1px solid #dbe6d8;border-radius:8px;padding:10px 13px;color:#33523a}
+  .gate b{font-size:10px;letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:2px;color:#2a4631}
+
+  .bars{display:grid;gap:10px;margin:20px 0}
+  .bar-row{display:grid;grid-template-columns:190px 1fr 52px;gap:12px;align-items:center}
+  .bar-row .label{font-size:12.5px;color:var(--ink-2)}
+  .bar{height:8px;background:#eae2d5;border-radius:99px;overflow:hidden}
+  .bar i{display:block;height:100%;border-radius:99px;background:var(--amber)}
+  .bar-row .val{font-family:var(--mono);font-size:11px;color:var(--muted);text-align:right}
+
+  .risk{border-left:3px solid var(--line-2);padding:2px 0 2px 14px;margin:14px 0}
+  .risk h4{margin:0 0 3px;font-size:14px}
+  .risk p{margin:0;font-size:13px;color:var(--muted)}
+
+  footer{margin-top:60px;border-top:1px solid var(--line);padding-top:18px;font-size:11.5px;color:var(--muted);display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  @media(max-width:1000px){
+    .layout{grid-template-columns:1fr}.rail{position:relative;height:auto;border-right:0;border-bottom:1px solid var(--line);flex-direction:row;flex-wrap:wrap;align-items:center;padding:16px 24px}
+    .rail nav{flex-direction:row;flex-wrap:wrap}.rail nav a span{display:none}.rail-foot{display:none}
+    main{padding:0 24px 70px}.hero{margin:0 -24px;padding:46px 24px}.hero .wrap{grid-template-columns:1fr}
+    .two{grid-template-columns:1fr}.bar-row{grid-template-columns:120px 1fr 44px}
+  }
+  @media print{.rail{display:none}.layout{display:block}main{padding:0}.hero{margin:0}.phase{break-inside:avoid}}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="rail">
+    <div class="rail-brand">Tuner Daemon<span>Roadmap to 10</span></div>
+    <nav>
+      <a href="#thesis"><span>01</span> The thesis</a>
+      <a href="#definitions"><span>02</span> What 9 and 10 mean</a>
+      <a href="#ladder"><span>03</span> Score ladder</a>
+      <a href="#workstreams"><span>04</span> Workstreams</a>
+      <a href="#phases"><span>05</span> Phases &amp; gates</a>
+      <a href="#backlog"><span>06</span> Backlog</a>
+      <a href="#measurement"><span>07</span> Measurement</a>
+      <a href="#operating"><span>08</span> Operating model</a>
+      <a href="#risks"><span>09</span> Risks</a>
+    </nav>
+    <div class="rail-foot">
+      <strong>Starting point</strong>
+      Post-implementation score: 7.7 / 10.<br><br>
+      <strong>Destination</strong>
+      9.0 in ~6 weeks. 10 after ~16 weeks and two clean releases.
+    </div>
+  </aside>
+
+  <main>
+    <header class="hero">
+      <div class="wrap">
+        <div>
+          <div class="kicker">Product design roadmap · November 2026</div>
+          <h1>From 7.7<br>to <em>reference quality.</em></h1>
+          <p class="lede">The redesign is done. This plan is about the two things a redesign cannot buy: proof that the experience works for real people, and the operating discipline that keeps it at that level.</p>
+          <div class="hero-meta">
+            <span><b>6 weeks</b> to a defensible 9</span>
+            <span><b>16 weeks</b> to a 10 candidate</span>
+            <span><b>1 + 0.5 + QA</b> core team</span>
+            <span><b>4 gates</b> with hard evidence</span>
+          </div>
+        </div>
+        <figure class="chart">
+          <h3>Score trajectory</h3>
+          <svg viewBox="0 0 460 220" role="img" aria-label="Score rises from 7.7 today to 8.4 after cleanup, 9.0 after validation, 9.5 after elevation, and 10 after sustained releases">
+            <defs>
+              <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#e8a854" stop-opacity=".28"/>
+                <stop offset="1" stop-color="#e8a854" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <g stroke="#3b3022" stroke-width="1">
+              <line x1="38" y1="176" x2="436" y2="176"/>
+              <line x1="38" y1="136" x2="436" y2="136" stroke-dasharray="3 5" opacity=".5"/>
+              <line x1="38" y1="96" x2="436" y2="96" stroke-dasharray="3 5" opacity=".5"/>
+              <line x1="38" y1="56" x2="436" y2="56" stroke-dasharray="3 5" opacity=".5"/>
+            </g>
+            <path d="M58 152 L160 122 L258 96 L355 72 L426 48 L426 176 L58 176 Z" fill="url(#fill)"/>
+            <polyline points="58,152 160,122 258,96 355,72 426,48" fill="none" stroke="#e8a854" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            <g fill="#e8a854">
+              <circle cx="58" cy="152" r="5"/><circle cx="160" cy="122" r="5"/><circle cx="258" cy="96" r="5"/><circle cx="355" cy="72" r="5"/><circle cx="426" cy="48" r="5"/>
+            </g>
+            <g fill="#f4ede1" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11" text-anchor="middle">
+              <text x="58" y="140">7.7</text><text x="160" y="110">8.4</text><text x="258" y="84">9.0</text><text x="355" y="60">9.5</text><text x="426" y="36">10</text>
+            </g>
+            <g fill="#a89c8b" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="9" text-anchor="middle">
+              <text x="58" y="194">TODAY</text><text x="160" y="194">FINISH</text><text x="258" y="194">VALIDATE</text><text x="355" y="194">ELEVATE</text><text x="426" y="194">SUSTAIN</text>
+            </g>
+            <g fill="#7d705f" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="8.5" text-anchor="middle">
+              <text x="160" y="207">weeks 1–3</text><text x="258" y="207">weeks 3–6</text><text x="355" y="207">weeks 6–12</text><text x="426" y="207">weeks 12–16+</text>
+            </g>
+          </svg>
+          <figcaption>The scores are internal planning gates, not a substitute for user evidence. A 10 is defined by the gates below, not by the number alone.</figcaption>
+        </figure>
+      </div>
+    </header>
+
+    <div class="wrap">
+
+      <section id="thesis">
+        <div class="eyebrow"><i></i>01 · The thesis</div>
+        <h2>The last mile is evidence, not decoration.</h2>
+        <p class="section-intro">The product has already crossed the hard structural line: Watch and Admin now share a system, mobile works, failures are visible, and the build is guarded by 59 end-to-end tests. What remains is to close the known exceptions, prove the result with users, and make quality repeatable.</p>
+
+        <p>The shortest path to a 9 is not another visual pass. It is three things: finish the one remaining information-architecture split, split the Watch stylesheet and remove the last duplicate patterns, and put accessibility and usability on a measured footing. A 10 then requires the product to keep those qualities while adding the things users remember: a guided first run, a fast and remote-friendly TV experience, designed failure states, and a design system that cannot quietly drift.</p>
+
+        <div class="callout accent">
+          <h4>The rule for this roadmap</h4>
+          <p>No phase starts before the previous gate is met. A feature that cannot be explained, tested, and measured does not enter the plan. The brand, navigation model and component vocabulary are frozen unless a gate explicitly reopens them.</p>
+        </div>
+      </section>
+
+      <section id="definitions">
+        <div class="eyebrow"><i></i>02 · What 9 and 10 mean</div>
+        <h2>Two different finish lines</h2>
+        <div class="two">
+          <div class="def">
+            <div class="score">9.0</div>
+            <h3>Exceptional and proven</h3>
+            <p>No known material friction. Every screen, state and device has been reviewed. Accessibility and usability are measured, not assumed.</p>
+            <ul>
+              <li>Zero open P1/P2 findings</li>
+              <li>axe-core serious/critical: 0</li>
+              <li>Lighthouse accessibility: ≥95</li>
+              <li>SUS ≥80 · task success ≥85%</li>
+              <li>WCAG AA on every supported theme</li>
+              <li>320px–4K, browser and Android shell</li>
+              <li>Watch CSS within budget</li>
+              <li>First sync under 2 minutes</li>
+            </ul>
+          </div>
+          <div class="def">
+            <div class="score">10.0</div>
+            <h3>Reference quality, sustained</h3>
+            <p>A product other self-hosted tools are compared to. It anticipates failures, feels authored on every device, and has the process to stay that way.</p>
+            <ul>
+              <li>Everything in 9, held for two clean releases</li>
+              <li>SUS ≥85 · task success ≥95%</li>
+              <li>WCAG AA fully; AAA where feasible</li>
+              <li>Screen-reader and remote-first parity</li>
+              <li>60fps guide at 1,000+ channels</li>
+              <li>Guided first run to first channel</li>
+              <li>Localized and RTL-ready</li>
+              <li>Design system enforced by CI</li>
+              <li>Public quality dashboard</li>
+              <li>Continuous user research</li>
+            </ul>
+          </div>
+        </div>
+        <p class="small" style="margin-top:14px">A 10 is a judgement about category leadership, not a mathematical certainty. These criteria make the judgement explicit and auditable.</p>
+      </section>
+
+      <section id="ladder">
+        <div class="eyebrow"><i></i>03 · Score ladder</div>
+        <h2>Where the remaining points come from</h2>
+        <div class="bars">
+          <div class="bar-row"><span class="label">Brand &amp; visual language</span><div class="bar"><i style="width:85%"></i></div><span class="val">8.5 → 9.5</span></div>
+          <div class="bar-row"><span class="label">Layout &amp; hierarchy</span><div class="bar"><i style="width:80%"></i></div><span class="val">8.0 → 9.5</span></div>
+          <div class="bar-row"><span class="label">Consistency &amp; system</span><div class="bar"><i style="width:80%"></i></div><span class="val">8.0 → 9.5</span></div>
+          <div class="bar-row"><span class="label">Navigation &amp; IA</span><div class="bar"><i style="width:70%"></i></div><span class="val">7.0 → 9.0</span></div>
+          <div class="bar-row"><span class="label">Language &amp; content</span><div class="bar"><i style="width:80%"></i></div><span class="val">8.0 → 9.5</span></div>
+          <div class="bar-row"><span class="label">Feedback &amp; states</span><div class="bar"><i style="width:80%"></i></div><span class="val">8.0 → 9.5</span></div>
+          <div class="bar-row"><span class="label">Accessibility</span><div class="bar"><i style="width:70%"></i></div><span class="val">7.0 → 9.5</span></div>
+          <div class="bar-row"><span class="label">Responsive &amp; mobile</span><div class="bar"><i style="width:80%"></i></div><span class="val">8.0 → 9.5</span></div>
+          <div class="bar-row"><span class="label">Watch / TV experience</span><div class="bar"><i style="width:75%"></i></div><span class="val">7.5 → 9.5</span></div>
+          <div class="bar-row"><span class="label">Admin efficiency</span><div class="bar"><i style="width:80%"></i></div><span class="val">8.0 → 9.5</span></div>
+        </div>
+        <p class="small">The 10 is not ten perfect tens. It is the point where every dimension is at least 9.5 and the whole product is measured as better than its category.</p>
+      </section>
+
+      <section id="workstreams">
+        <div class="eyebrow"><i></i>04 · Workstreams</div>
+        <h2>What actually moves the score</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Workstream</th><th>To 9</th><th>To 10</th></tr></thead>
+            <tbody>
+              <tr><td><b>IA &amp; navigation</b></td><td>Move playlist configuration into Sources via a shared component; add Settings section rail and sticky save; define one owner for every setting.</td><td>Task-based entry points and saved views; a guided path from source to guide to recording without dead ends.</td></tr>
+              <tr><td><b>Design system</b></td><td>Split Watch CSS; collapse duplicate tokens; curate supported themes; publish component contracts; visual regression baseline.</td><td>Component gallery and CI adoption gates; every state documented; no one-off variants without review.</td></tr>
+              <tr><td><b>Accessibility</b></td><td>axe-core and Lighthouse in CI; screen-reader pass; keyboard/D-pad guide; high-contrast and large-text checks.</td><td>AAA where feasible; announcements for playback/guide changes; accessibility ownership in every release.</td></tr>
+              <tr><td><b>Responsive &amp; TV</b></td><td>320–4K matrix; mobile guide affordance; Android shell and safe areas; full remote focus model.</td><td>Browser/PWA/Android parity; 10-foot UI tested on a TV; cast, PiP and low-bandwidth fallbacks.</td></tr>
+              <tr><td><b>Reliability UX</b></td><td>Failure taxonomy and recovery actions for stream, source, guide, disk and network; retries and diagnostics.</td><td>Anticipatory states: degradation warnings, stale guide notices, rate-limit explanations, offline mode.</td></tr>
+              <tr><td><b>Content &amp; onboarding</b></td><td>Guided first-run path; glossary enforced; every empty state has a next step; no internal identifiers.</td><td>Editorial voice, contextual help, localized core flows and RTL layout.</td></tr>
+              <tr><td><b>Performance</b></td><td>CSS/JS budgets; guide virtualisation at 1,000+ channels; no layout shift; measurement in CI.</td><td>60fps guide, fast theme switching, bounded memory, measured INP/CLS on reference hardware.</td></tr>
+              <tr><td><b>Research</b></td><td>Five–eight participants; three core tasks; SUS and task-success baseline; findings into the backlog.</td><td>Standing user panel, quarterly benchmark, public quality dashboard, continuous discovery.</td></tr>
+              <tr><td><b>Design ops</b></td><td>Visual regression on supported themes; contribution guide; UX release checklist.</td><td>Deprecation policy, design-system versioning, design review cadence, quality budgets enforced in CI.</td></tr>
+              <tr><td><b>Signature craft</b></td><td>Restrained motion, refined player/guide transitions, one curated palette per role.</td><td>Recognisable moments: first run, channel switch, guide focus, lower third, theme preview — all fast and accessible.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="phases">
+        <div class="eyebrow"><i></i>05 · Phases &amp; gates</div>
+        <h2>Four phases, four hard gates</h2>
+        <p class="section-intro">Assumes one senior front-end engineer, a half-time product designer, QA/accessibility support, and a backend engineer available for failure-state and performance work. Every gate is evidence-based and must be signed off before the next phase begins.</p>
+
+        <div class="phases">
+          <article class="phase">
+            <div class="phase-head"><h3>Phase 1 — Finish the known gap</h3><span class="when">Weeks 1–3 · 7.7 → 8.4</span></div>
+            <div class="goal">Close every issue the post-implementation review already names.</div>
+            <ul>
+              <li><b>IA:</b> extract <code>PlaylistConfigComponent</code>; render it from Sources; finish Settings rail and sticky save; assign one owner per setting.</li>
+              <li><b>Watch debt:</b> split the stylesheet into player, guide, recordings and overlays; meet the 32 kB budget.</li>
+              <li><b>Tokens:</b> collapse <code>--font-2xs</code>/<code>--font-xs</code>; curate themes to five or fewer; remove duplicate component variants.</li>
+              <li><b>System proof:</b> component contract page, visual regression baseline for all supported themes, axe-core and Lighthouse CI.</li>
+              <li><b>Craft:</b> mobile guide scroll affordance; Settings density; remaining hover/focus/motion exceptions.</li>
+            </ul>
+            <div class="gate"><b>Gate 1 · Release candidate</b>No open P1/P2. Watch CSS ≤32 kB and total CSS down 20%. Zero duplicate patterns. axe serious/critical 0. Lighthouse accessibility ≥95. No overflow at 320/390/768/1024/1440. All supported themes pass contrast.</div>
+            <div class="callout accent" style="margin-top:14px">
+              <h4>Phase 1 status · 5 Nov 2026</h4>
+              <p><b>Met:</b> playlist ownership moved to Sources; Settings rail and sticky save; Watch CSS split into four scoped files, each under the 32 kB budget; five themes; <code>--font-2xs</code> collapsed; mobile guide fade and swipe hint; component contracts page; axe serious/critical 0; Lighthouse accessibility 100; no page overflow at 320/390/768/1024/1440; all five themes pass the WCAG AA contrast test.</p>
+              <p style="margin-top:8px"><b>CSS gate:</b> initial CSS across the eight public and admin routes fell from 480,864 to 363,303 bytes — <b>24.4% down</b>, against the 20% target. Exact duplicate rules are at zero. The font pipeline now ships three variable families (six faces) from a cacheable stylesheet instead of 30 static faces inlined into every prerendered page, and Sources/Diagnostics share one table contract. Visual baselines cover all five themes on the login screen plus Settings (`npm run test:visual`, opt-in project).</p>
+              <p style="margin-top:8px"><b>Source trend (informational):</b> the raw/minified source is 156.5 kB / 110.6 kB, 8.4% and 11.2% down rather than 20%. The remaining reduction needs a broader design-system rewrite, not dead-code removal.</p>
+            </div>          </article>
+
+          <article class="phase">
+            <div class="phase-head"><h3>Phase 2 — Prove it</h3><span class="when">Weeks 3–6 · 8.4 → 9.0</span></div>
+            <div class="goal">Replace internal confidence with user evidence.</div>
+            <ul>
+              <li><b>Usability:</b> five–eight first-time users; tasks: add a source, find why a channel has no guide, schedule a recording, recover from a failed stream.</li>
+              <li><b>Accessibility:</b> screen-reader pass on guide and player; keyboard-only and D-pad runs; large-text and high-contrast sessions.</li>
+              <li><b>Cross-device:</b> Chrome, Safari, Firefox; Android shell; 320, 390, 768, 1024, 1440 and TV.</li>
+              <li><b>Failure states:</b> every taxonomy path tested against a purpose-built fixture, not production guesses.</li>
+              <li><b>Measurement:</b> publish a UX scorecard: SUS, task success, time on task, error recovery, a11y and performance.</li>
+            </ul>
+            <div class="gate"><b>Gate 2 · 9.0</b>SUS ≥80 and task success ≥85% with no moderator rescue. Screen-reader and D-pad paths complete. Zero serious axe issues. Lighthouse ≥95. No P1/P2. First sync under 2 minutes on clean install.</div>
+            <div class="callout accent" style="margin-top:14px">
+              <h4>Phase 2 status · 5 Nov 2026</h4>
+              <p><b>Engineering floor met:</b> zero serious axe issues; Lighthouse accessibility 100 on Watch and Login; no overflow at 320–1440; all five themes pass contrast. The guide now has a keyboard and D-pad path: channels and programmes are focusable, Enter activates, the programme action menu takes focus, Escape closes the menu and returns focus, and arrows stay inside the guide.</p>
+              <p style="margin-top:8px"><b>Harness added:</b> <code>docs/gate-2-usability-kit.md</code> contains the study protocol, task definitions, SUS form and scorecard; <code>e2e/keyboard.spec.ts</code> covers keyboard, D-pad and large-text/high-contrast paths; <code>e2e/aria.spec.ts</code> covers the ARIA contract; <code>npm run bench:first-sync</code> measures a clean-install sync. The synthetic run imported 60 channels and <b>360 programmes</b> in <b>32.5 s</b>, with all 60 channels matched.</p>
+              <p style="margin-top:8px"><b>Decisions:</b> user testing is deferred; automated ARIA is accepted as interim evidence; Firefox/WebKit runs in the new GitHub Actions <code>cross-browser</code> job; first sync reports synthetic, built-in and user-source modes separately; Android and Google TV hardware is available; the product owner signs the scorecard and the agent triages P1/P2.</p>
+              <p style="margin-top:8px"><b>Gate remains open:</b> SUS/task success and the manual screen-reader pass are deferred; built-in and user-source first-sync runs are pending; Android/TV capture is pending. The guide-source P1 is resolved: <code>syncGuideSources</code> now imports every enabled guide source before matching; the synthetic cold run produced 60 channels and 360 programmes.</p>
+            </div>
+          </article>
+
+          <article class="phase">
+            <div class="phase-head"><h3>Phase 3 — Elevate</h3><span class="when">Weeks 6–12 · 9.0 → 9.5</span></div>
+            <div class="goal">Add the things users remember, without breaking the measured floor.</div>
+            <ul>
+              <li><b>First run:</b> guided source → preview → sync → first channel, with a real “watch something” moment.</li>
+              <li><b>TV/remote:</b> full spatial focus, D-pad shortcuts, 10-foot typography, safe areas, cast/PiP, remote help.</li>
+              <li><b>Signature interactions:</b> channel switch, guide focus, lower third, theme preview — each with a 150–250 ms motion spec.</li>
+              <li><b>Reliability:</b> degradation warnings, stale guide notices, rate-limit explanations and offline behavior.</li>
+              <li><b>Content:</b> editorial copy, contextual help, localized strings and RTL layout for the core flows.</li>
+              <li><b>Performance:</b> 60fps guide at 1,000+ channels; theme switch under 150 ms; memory and INP budgets in CI.</li>
+            </ul>
+            <div class="gate"><b>Gate 3 · 9.5</b>Guided first run reaches a live channel without help. Remote-only test passes. 60fps guide at 1,000+ channels. Core flows localized and RTL-safe. Two consecutive releases with no P1/P2 regression.</div>
+            <div class="callout accent" style="margin-top:14px">
+              <h4>Phase 3 kickoff · 5 Nov 2026</h4>
+              <p><b>First run:</b> the checklist's “Add a source” action now points at Sources (it still pointed at Settings after the Phase 1 move), and the card stays on the dashboard until Watch has been opened once. When source, channels and programmes are all present it becomes “You're ready to watch” with a primary <b>Watch your first channel</b> action, so the final step does not disappear the moment sync completes.</p>
+              <p style="margin-top:8px"><b>Blocker cleared:</b> the guide-source P1 is fixed. A cold synthetic run now imports 60 channels and 360 programmes in 32.5 s, matches all 60, and writes the guide.</p>
+              <p style="margin-top:8px"><b>Built this pass:</b> a 1920×1080 remote-only project (`e2e/tv.spec.ts`, `--project=tv`) passes the guide journey without a mouse; motion tokens (160 ms / 220 ms) cover guide focus and channel chrome with reduced-motion respected; offline and stale-guide notices are visible and tested; and a 1,000+ channel performance guard reports 115 frames, p95 16.8 ms, theme switch 17 ms on this host.</p>
+              <p style="margin-top:8px"><b>Localization slice:</b> runtime English/Arabic catalogues now cover login, navigation, the first-run checklist and the language switch; Arabic mirrors the shell, persists across reloads, and keeps the guide time axis LTR. Sources, Settings and Watch body copy plus the full RTL logical-property sweep remain.</p>
+              <p style="margin-top:8px"><b>Gate 3 remains open:</b> full core-flow localization/RTL, 60 fps certification on reference hardware rather than a CI guard, and two consecutive releases with no P1/P2 regression.</p>
+            </div>
+          </article>
+
+          <article class="phase">
+            <div class="phase-head"><h3>Phase 4 — Sustain and lead</h3><span class="when">Weeks 12–16+ · 9.5 → 10</span></div>
+            <div class="goal">Make excellence institutional rather than heroic.</div>
+            <ul>
+              <li><b>Design ops:</b> contribution guide, component versioning, deprecation policy, design review cadence.</li>
+              <li><b>Research:</b> standing five-user panel, quarterly benchmark, findings triaged into the roadmap.</li>
+              <li><b>Quality dashboard:</b> public or internal view of SUS, task success, a11y, performance, error recovery and open findings.</li>
+              <li><b>Release discipline:</b> every release runs the full UX gate; visual regression on all supported themes; no silent scope creep.</li>
+              <li><b>Category leadership:</b> publish the design system and accessibility notes; test against two comparable self-hosted tools; close any credible gap they expose.</li>
+            </ul>
+            <div class="gate"><b>Gate 4 · 10</b>All 9.5 criteria hold for two clean releases. SUS ≥85 and task success ≥95%. Zero serious/critical axe issues and a completed manual SR audit. Localized and RTL core flows. Design system adoption enforced in CI. Quality dashboard live. No regression across two consecutive releases.</div>
+            <div class="callout accent" style="margin-top:14px">
+              <h4>Phase 4 status · 5 Nov 2026</h4>
+              <p><b>Institutionalised:</b> <code>docs/design-ops.md</code> defines contribution, component versioning, deprecation, review cadence and release discipline. <code>docs/quality-dashboard.html</code> is generated from <code>docs/quality-evidence.json</code> (<code>npm run quality:dashboard</code>) and uploaded by CI. The CI UX gate now includes the CSS budget, design-token/contrast unit tests, axe/UX/keyboard/RTL/reliability specs, the TV remote project and the cross-browser smoke path.</p>
+              <p style="margin-top:8px"><b>Category read:</b> <code>docs/competitive-ux-notes.md</code> compares Jellyfin Live TV and Threadfin/xTeVe. The credible gaps are one guided add-live-TV pass, programme detail without hover/right-click, a visible player deck, channel overrides/bulk edit, import filters and capacity/conflict visibility. HDHomeRun emulation, native TV apps and media-server breadth are explicitly out of scope.</p>
+              <p style="margin-top:8px"><b>Android:</b> the static build's root redirect document left the WebView on “Redirecting to /watch”. The APK build now installs the prerendered Watch shell as the SPA entry; on the API 36.1 emulator the Watch screen, lower third and guide all load after pointing the app at the host API.</p>
+              <p style="margin-top:8px"><b>Gate 4 remains open:</b> the standing five-user panel/quarterly benchmark and SUS ≥85 are not run; manual screen-reader audit, full core-flow localization/RTL, a genuinely live dashboard feed and two consecutive clean releases remain.</p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="backlog">
+        <div class="eyebrow"><i></i>06 · Backlog</div>
+        <h2>The first twenty tickets, in order</h2>
+        <p class="section-intro">Sized for a single senior engineer. S ≤ 1 day, M = 2–3 days, L = 4–5 days. A ticket is not done until its state, responsive and accessibility requirements are included.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>#</th><th>Ticket</th><th>Phase</th><th>Size</th><th>Why</th></tr></thead>
+            <tbody>
+              <tr><td>1</td><td>Extract <code>PlaylistConfigComponent</code></td><td>1</td><td>L</td><td>Finish the Sources/Settings split.</td></tr>
+              <tr><td>2</td><td>Settings section rail and sticky save</td><td>1</td><td>M</td><td>Shorter path through configuration.</td></tr>
+              <tr><td>3</td><td>Split Watch CSS into player/guide/recordings/overlays</td><td>1</td><td>L</td><td>Meet budget; reduce regression surface.</td></tr>
+              <tr><td>4</td><td>Collapse duplicate type tokens; curate themes</td><td>1</td><td>S</td><td>One scale, fewer test surfaces.</td></tr>
+              <tr><td>5</td><td>Component gallery and visual regression</td><td>1</td><td>M</td><td>Make the system visible and enforced.</td></tr>
+              <tr><td>6</td><td>axe-core and Lighthouse CI gates</td><td>1</td><td>M</td><td>Replace custom-only accessibility confidence.</td></tr>
+              <tr><td>7</td><td>Mobile guide scroll affordance and category scroller</td><td>1</td><td>S</td><td>Finish the last responsive rough edge.</td></tr>
+              <tr><td>8</td><td>Failure taxonomy and recovery actions</td><td>2</td><td>L</td><td>Every failure has a diagnosis and next step.</td></tr>
+              <tr><td>9</td><td>Screen-reader pass: guide and player</td><td>2</td><td>M</td><td>Proof, not assumption.</td></tr>
+              <tr><td>10</td><td>D-pad and keyboard focus model</td><td>2</td><td>L</td><td>TV and keyboard parity.</td></tr>
+              <tr><td>11</td><td>Cross-browser and Android shell matrix</td><td>2</td><td>M</td><td>Same product on every device.</td></tr>
+              <tr><td>12</td><td>Five-user usability round and findings</td><td>2</td><td>M+</td><td>The evidence for 9.</td></tr>
+              <tr><td>13</td><td>Guided first-run wizard</td><td>3</td><td>L</td><td>Turn setup into a confident path.</td></tr>
+              <tr><td>14</td><td>Signature guide/player motion spec</td><td>3</td><td>M</td><td>Make Watch feel authored.</td></tr>
+              <tr><td>15</td><td>Localization and RTL foundation</td><td>3</td><td>L</td><td>Reach beyond English.</td></tr>
+              <tr><td>16</td><td>Guide performance: 60fps at 1,000+ channels</td><td>3</td><td>L</td><td>Performance is part of quality.</td></tr>
+              <tr><td>17</td><td>Quality dashboard (SUS, tasks, a11y, perf)</td><td>3</td><td>M</td><td>Make quality visible.</td></tr>
+              <tr><td>18</td><td>Contribution and deprecation guide</td><td>4</td><td>S</td><td>Prevent system drift.</td></tr>
+              <tr><td>19</td><td>Quarterly research panel and benchmark</td><td>4</td><td>M+</td><td>Continuous discovery.</td></tr>
+              <tr><td>20</td><td>Two-release regression audit</td><td>4</td><td>M</td><td>The evidence for 10.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="measurement">
+        <div class="eyebrow"><i></i>07 · Measurement</div>
+        <h2>The numbers that decide the gates</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Signal</th><th>9.0 target</th><th>10 target</th><th>How</th></tr></thead>
+            <tbody>
+              <tr><td>SUS</td><td>≥80</td><td>≥85</td><td>Post-task questionnaire, 5–8 users per round.</td></tr>
+              <tr><td>Task success</td><td>≥85%</td><td>≥95%</td><td>Four core tasks; no moderator rescue.</td></tr>
+              <tr><td>Time to first sync</td><td>&lt;2 min</td><td>&lt;90 s</td><td>Clean install, reference network.</td></tr>
+              <tr><td>Stream failure recovery</td><td>≤15 s to visible state</td><td>≤8 s, auto-retry with diagnosis</td><td>Synthetic failed-stream fixture.</td></tr>
+              <tr><td>axe serious/critical</td><td>0</td><td>0</td><td>Playwright + axe-core CI.</td></tr>
+              <tr><td>Lighthouse accessibility</td><td>≥95</td><td>100</td><td>Dashboard + Watch, desktop and mobile.</td></tr>
+              <tr><td>Keyboard/SR coverage</td><td>Core flows</td><td>All flows</td><td>Manual scripted audit.</td></tr>
+              <tr><td>Guide frame rate</td><td>≥50 fps</td><td>60 fps at 1,000+ channels</td><td>Chrome performance trace.</td></tr>
+              <tr><td>Watch CSS</td><td>≤32 kB</td><td>≤24 kB</td><td>Build budget.</td></tr>
+              <tr><td>Responsive overflow</td><td>0 at 320–1440</td><td>0 at 320–4K</td><td>Playwright matrix.</td></tr>
+              <tr><td>P1/P2 findings</td><td>0</td><td>0 for two releases</td><td>Review log.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="operating">
+        <div class="eyebrow"><i></i>08 · Operating model</div>
+        <h2>How the team works to keep the score</h2>
+        <div class="two">
+          <div>
+            <h3>Core team</h3>
+            <ul class="small">
+              <li><b>Senior front-end engineer</b> — implementation, component system, performance.</li>
+              <li><b>Product designer</b> (0.5) — interaction design, content, usability scripts.</li>
+              <li><b>QA / accessibility</b> (0.25–0.5) — device matrix, screen reader, release gate.</li>
+              <li><b>Backend engineer</b> (0.25) — failure taxonomy, performance, telemetry.</li>
+              <li><b>Research participants</b> — five to eight per round, recruited from self-hosters.</li>
+            </ul>
+          </div>
+          <div>
+            <h3>Cadence</h3>
+            <ul class="small">
+              <li>Weekly design review: one screen, one state, one decision.</li>
+              <li>Biweekly UX gate: run the full guardrail suite and visual diff.</li>
+              <li>Monthly scorecard: SUS, tasks, a11y, performance, open findings.</li>
+              <li>Quarterly research round and theme/component deprecation review.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="callout good">
+          <h4>Definition of done, per ticket</h4>
+          <p>Desktop and mobile states, empty/loading/error paths, keyboard and screen-reader labels, token-only styling, a visual regression snapshot for every supported theme, and one sentence explaining the user problem it solves.</p>
+        </div>
+      </section>
+
+      <section id="risks">
+        <div class="eyebrow"><i></i>09 · Risks</div>
+        <h2>What could keep us at 8</h2>
+        <div class="risk"><h4>“10” turns into scope</h4><p><b>Mitigation:</b> the backlog is capped at the twenty tickets above. New ideas go to a parking lot and need a gate-level justification.</p></div>
+        <div class="risk"><h4>Visual polish hides structural debt</h4><p><b>Mitigation:</b> Phase 1 closes the CSS and IA debt before any signature work. No new theme or component until Gate 1.</p></div>
+        <div class="risk"><h4>Testing on a single machine</h4><p><b>Mitigation:</b> browser/Android/TV matrix in Phase 2; isolated fixture per worker; a real 10-foot test in Phase 3.</p></div>
+        <div class="risk"><h4>Accessibility treated as a checklist</h4><p><b>Mitigation:</b> automated axe, manual screen-reader script, and a D-pad-only pass. A green CI is necessary, not sufficient.</p></div>
+        <div class="risk"><h4>Research findings arrive too late</h4><p><b>Mitigation:</b> usability runs at the end of Phase 1, before signature work. Findings can reshape Phase 3, not invalidate it.</p></div>
+        <div class="risk"><h4>Quality drifts after the roadmap</h4><p><b>Mitigation:</b> visual regression, UX release checklist, scorecard review and a named design-system owner.</p></div>
+
+        <div class="callout accent">
+          <h4>What we will not do</h4>
+          <p>No rebrand. No more themes. No native rewrite. No new feature work during Phase 1. No “10” claim without a second release proving it.</p>
+        </div>
+      </section>
+
+      <footer>
+        <span>Tuner Daemon · Roadmap to 10 · November 2026</span>
+        <span>Scores are internal gates. The destination is measured, not declared.</span>
+      </footer>
+    </div>
+  </main>
+</div>
+</body>
+</html>

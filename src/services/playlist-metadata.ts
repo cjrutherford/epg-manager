@@ -71,7 +71,10 @@ function parseIptvOrgUrl(url: string): { category: string; slug: string; localPa
 export function describePlaylist(url: string, importedCount = 0): PlaylistMetadata & { importedCount: number; active?: boolean } {
   const iptvOrg = parseIptvOrgUrl(url);
   if (iptvOrg) {
-    const label = titleizeSlug(iptvOrg.slug);
+    // Two-letter country slugs are ISO codes, not words: US, GB, DE.
+    const label = iptvOrg.category === 'countries' && /^[a-z]{2}$/i.test(iptvOrg.slug)
+      ? iptvOrg.slug.toUpperCase()
+      : titleizeSlug(iptvOrg.slug);
     return {
       url,
       name: `${label} (${iptvOrg.category})`,

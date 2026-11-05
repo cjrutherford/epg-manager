@@ -1,6 +1,6 @@
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef, HostListener, CUSTOM_ELEMENTS_SCHEMA, Inject, PLATFORM_ID, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
 import { ConfirmService } from '../services/confirm.service';
-import { ModalFocusDirective } from '../services/modal-focus.directive';
+import { ModalComponent } from '../shared/modal.component';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -8,13 +8,16 @@ import { Subscription } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { StorageService } from '../services/storage.service';
 import { CastService } from '../services/cast.service';
-import { ThemeService, Theme } from '../services/theme.service';
 import { LucideAngularModule } from 'lucide-angular';
 import { ToastService } from '../services/toast.service';
 import { ClientRecordingService } from '../services/client-recording.service';
 import { DvrService } from '../services/dvr.service';
 import { ChannelEventsService } from '../services/channel-events.service';
 import { ClientRecording, SystemRecording } from '../services/client-recording.types';
+import { ImageFallbackDirective } from '../shared/image-fallback.directive';
+import { ThemeMenuComponent } from '../shared/theme-menu.component';
+import { LanguageMenuComponent } from '../shared/language-menu.component';
+import { StatusBadgeComponent } from '../shared/status-badge.component';
 
 interface Channel {
     id: string;
@@ -32,11 +35,11 @@ interface Channel {
 @Component({
     selector: 'app-watch',
     standalone: true,
-    imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule, ModalFocusDirective],
+    imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule, ModalComponent, ImageFallbackDirective, ThemeMenuComponent, StatusBadgeComponent, LanguageMenuComponent],
     schemas: [CUSTOM_ELEMENTS_SCHEMA],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './watch.component.html',
-    styleUrl: './watch.component.css'
+    styleUrls: ['./watch.component.css', './watch.guide.css', './watch.overlays.css', './watch.recordings.css']
 })
 export class WatchComponent implements OnInit, OnDestroy {
     @ViewChild('videoPlayer', { static: false }) videoRef!: ElementRef<HTMLVideoElement>;
@@ -53,10 +56,13 @@ export class WatchComponent implements OnInit, OnDestroy {
     virtualPaddingTop = 0;
     virtualPaddingBottom = 0;
     currentScrollTop = 0;
+    guideScrolledX = false;
+    guideAtEndX = false;
     rowHeight = 44;
 
     // Server settings state
     serverSettingsOpen = false;
+    shortcutsOpen = false;
     serverUrl = '';
     discovering = false;
     discoveryMessage = '';
@@ -70,6 +76,7 @@ export class WatchComponent implements OnInit, OnDestroy {
     hiddenChannels = new Set<string>();
 
     guideOpen = false;
+    private spatialNav: any = null;
 
     // UI auto-hide idle state
     userActive = true;
@@ -103,12 +110,15 @@ export class WatchComponent implements OnInit, OnDestroy {
     muted = false;
 
     loading = false;
+    /** Guide fetch state, kept separate from player start-up state. */
+    guideLoading = false;
     error = '';
     isDocumentHidden = false;
-    showInfoOverlay = false;
-    showOsd = false;
-    osdChannel: Channel | null = null;
-    dataState: { hasChannels: boolean; hasPrograms: boolean; hasPlaylist: boolean; isEmpty: boolean } | null = null;
+    dataState: { hasChannels: boolean; hasPrograms: boolean; hasPlaylist: boolean; lastGuideAt?: number | null; isEmpty: boolean } | null = null;
+    isOffline = false;
+    serverUnreachable = false;
+    private onlineHandler = () => { this.isOffline = false; this.cdr.markForCheck(); };
+    private offlineHandler = () => { this.isOffline = true; this.cdr.markForCheck(); };
 
     // Cached active program — updated on channel switch & 10s timer
     activeProgram: any | null = null;
@@ -120,12 +130,6 @@ export class WatchComponent implements OnInit, OnDestroy {
     toggleThemePicker(event: MouseEvent): void {
         event.stopPropagation();
         this.themePickerOpen = !this.themePickerOpen;
-    }
-
-    selectTheme(key: string): void {
-        this.themeService.setTheme(key);
-        this.currentThemeKey = key;
-        this.themePickerOpen = false;
     }
 
     get guideLayoutIcon(): string {
@@ -142,13 +146,21 @@ export class WatchComponent implements OnInit, OnDestroy {
         return !this.loading && this.channels.length === 0 && this.dataState?.isEmpty === true;
     }
 
+    get guideIsStale(): boolean {
+        const last = this.dataState?.lastGuideAt;
+        if (!this.dataState?.hasPrograms || !last) return false;
+        return Date.now() - last > 24 * 60 * 60 * 1000;
+    }
+
+    get guideIsMissing(): boolean {
+        return !!this.dataState?.hasChannels && !this.dataState?.hasPrograms;
+    }
+
     private hls: any = null;
     private Hls: any = null;
-    private overlayTimer: any;
-    private osdTimer: any;
-    private infoTimer: any;
     private watchdogInterval: any = null;
     private keepAliveInterval: any = null;
+    private streamStartTimer: any = null;
     reconnecting = false;
     reconnectAttempt = 0;
     maxReconnectAttempts = 3;
@@ -189,6 +201,7 @@ export class WatchComponent implements OnInit, OnDestroy {
         channel: null as any,
         program: null as any
     };
+    private contextMenuTrigger: HTMLElement | null = null;
 
     // DVR recordings — local watch recordings + read-only system DVR
     recordings: any[] = [];
@@ -215,9 +228,6 @@ export class WatchComponent implements OnInit, OnDestroy {
             return start <= now && end > now && r.status === 'recording';
         }) || null;
     }
-
-    themes: Theme[] = [];
-    currentThemeKey = 'cinematic-noir';
     themePickerOpen = false;
 
     diagnosticsOpen = false;
@@ -245,7 +255,6 @@ export class WatchComponent implements OnInit, OnDestroy {
         private api: ApiService,
         private storage: StorageService,
         public castService: CastService,
-        private themeService: ThemeService,
         private toast: ToastService,
         private clientRecordings: ClientRecordingService,
         private dvr: DvrService,
@@ -258,21 +267,33 @@ export class WatchComponent implements OnInit, OnDestroy {
     }
 
     ngOnInit(): void {
-        this.themes = this.themeService.getThemes();
-        this.currentThemeKey = this.themeService.getCurrentThemeKey();
-
         if (!this.isBrowser) {
             this.loading = false;
             return;
         }
+
+        // The first-run checklist stays on the dashboard until Watch has been
+        // opened once, so the final "watch something" moment is not hidden by
+        // the checklist disappearing the instant sync completes.
+        localStorage.setItem('tuner_daemon_has_watched', '1');
+        this.isOffline = !navigator.onLine;
+        window.addEventListener('online', this.onlineHandler);
+        window.addEventListener('offline', this.offlineHandler);
 
         const urlParams = new URLSearchParams(window.location.search);
         this.isPopoutMode = urlParams.get('popout') === 'true';
 
         // Idle detection: hide UI controls after inactivity
         this.boundOnUserActivity = this.onUserActivity.bind(this);
+        // Remote and keyboard users never generate a mousemove. Without these
+        // listeners the lower third stayed hidden after the idle timeout, so
+        // the guide button was unreachable except by the `g` shortcut.
         document.addEventListener('mousemove', this.boundOnUserActivity);
         document.addEventListener('click', this.boundOnUserActivity);
+        document.addEventListener('pointerdown', this.boundOnUserActivity);
+        document.addEventListener('touchstart', this.boundOnUserActivity, { passive: true });
+        document.addEventListener('keydown', this.boundOnUserActivity);
+        document.addEventListener('focusin', this.boundOnUserActivity);
         this.resetIdleTimer();
 
         this.isMobile = window.innerWidth < 768;
@@ -284,9 +305,12 @@ export class WatchComponent implements OnInit, OnDestroy {
             const SpatialNavigation = mod.default || mod;
             SpatialNavigation.init();
             SpatialNavigation.add({
-                selector: 'button, .guide-channel, .guide-program, .ch-btn, .vol-btn'
+                selector: 'button, .guide-channel, .guide-program, .ch-btn, .vol-btn',
+                rememberSource: true
             });
             SpatialNavigation.makeFocusable();
+            this.spatialNav = SpatialNavigation;
+            this.updateSpatialScope();
         }).catch(() => {
             // Spatial navigation not available, skip gracefully
         });
@@ -350,6 +374,20 @@ export class WatchComponent implements OnInit, OnDestroy {
         };
         window.addEventListener('storage', this.storageListener);
 
+        // The Watch empty state needs to know whether a source exists, not just
+        // whether the guide came back empty.
+        this.api.getHasData().subscribe({
+            next: state => {
+                this.dataState = state;
+                this.serverUnreachable = false;
+                this.cdr.markForCheck();
+            },
+            error: (error) => {
+                this.serverUnreachable = error?.status === 0;
+                this.cdr.markForCheck();
+            }
+        });
+
         this.loadCategories();
         this.loadGuide();
         this.loadRecordings();
@@ -373,13 +411,21 @@ export class WatchComponent implements OnInit, OnDestroy {
         if (this.recordingsSub) { this.recordingsSub.unsubscribe(); this.recordingsSub = null; }
         if (this.jobStatusSub) { this.jobStatusSub.unsubscribe(); this.jobStatusSub = null; }
         if (this.channelEventsSub) { this.channelEventsSub.unsubscribe(); this.channelEventsSub = null; }
-        clearTimeout(this.overlayTimer);
-        clearTimeout(this.osdTimer);
+        if (this.isBrowser) {
+            window.removeEventListener('online', this.onlineHandler);
+            window.removeEventListener('offline', this.offlineHandler);
+            document.removeEventListener('mousemove', this.boundOnUserActivity);
+            document.removeEventListener('click', this.boundOnUserActivity);
+            document.removeEventListener('pointerdown', this.boundOnUserActivity);
+            document.removeEventListener('touchstart', this.boundOnUserActivity);
+            document.removeEventListener('keydown', this.boundOnUserActivity);
+            document.removeEventListener('focusin', this.boundOnUserActivity);
+        }
         clearTimeout(this.idleTimer);
-        clearInterval(this.infoTimer);
         clearInterval(this.currentTimeInterval);
         clearInterval(this.diagnosticsInterval);
         clearInterval(this.watchdogInterval);
+        this.clearStreamStartWatchdog();
         if (this.isBrowser) {
             document.removeEventListener('mousemove', this.boundDragMove);
             document.removeEventListener('mouseup', this.boundDragEnd);
@@ -467,9 +513,23 @@ export class WatchComponent implements OnInit, OnDestroy {
             case 'm': case 'M': this.toggleMute(); break;
             case 'f': case 'F': this.toggleFullscreen(); break;
             case 'p': case 'P': this.togglePictureInPicture(); break;
+            case '?':
+                this.shortcutsOpen = !this.shortcutsOpen;
+                event.preventDefault();
+                break;
             case 'Escape':
-                if (this.serverSettingsOpen) this.serverSettingsOpen = false;
-                else if (this.dvrOpen) this.dvrOpen = false;
+                if (this.shortcutsOpen) this.shortcutsOpen = false;
+                else if (this.serverSettingsOpen) this.serverSettingsOpen = false;
+                else if (this.contextMenu.visible) {
+                    this.contextMenu.visible = false;
+                    this.cdr.markForCheck();
+                    setTimeout(() => {
+                        const target = this.contextMenuTrigger?.isConnected
+                            ? this.contextMenuTrigger
+                            : document.querySelector<HTMLElement>('.guide-program');
+                        target?.focus();
+                    }, 100);
+                } else if (this.dvrOpen) this.dvrOpen = false;
                 else if (this.guideOpen) this.toggleGuide();
                 break;
             case 'Enter':
@@ -482,7 +542,7 @@ export class WatchComponent implements OnInit, OnDestroy {
 
     // ── Guide ───────────────────────────────────
     async loadGuide(): Promise<void> {
-        this.loading = true;
+        this.guideLoading = true;
         try {
             const startDate = this.guideStart || new Date();
             const data = await this.api.getGuide({
@@ -542,7 +602,7 @@ export class WatchComponent implements OnInit, OnDestroy {
         } catch (e) {
             console.error('Failed to load guide', e);
         } finally {
-            this.loading = false;
+            this.guideLoading = false;
             this.cdr.detectChanges();
         }
     }
@@ -573,6 +633,24 @@ export class WatchComponent implements OnInit, OnDestroy {
 
     toggleGuide(): void {
         this.guideOpen = !this.guideOpen;
+        // While the guide is open, D-pad focus belongs to the guide. Escape
+        // closes it and restores the player chrome to the navigable set.
+        setTimeout(() => {
+            this.updateSpatialScope();
+            if (this.guideOpen) {
+                document.querySelector<HTMLElement>('.guide-channel')?.focus();
+            }
+        }, 50);
+    }
+
+    private updateSpatialScope(): void {
+        if (!this.spatialNav) return;
+        const selector = this.guideOpen
+            ? '.guide-panel button, .guide-panel .guide-channel, .guide-panel .guide-program, .guide-panel input'
+            : 'button, .guide-channel, .guide-program, .ch-btn, .vol-btn';
+        this.spatialNav.clear();
+        this.spatialNav.add({ selector, rememberSource: true });
+        this.spatialNav.makeFocusable();
     }
 
     async loadRecordings(): Promise<void> {
@@ -769,6 +847,34 @@ export class WatchComponent implements OnInit, OnDestroy {
         return filled;
     }
 
+    /** Horizontal guide scrolling: fades the edge and dismisses the swipe hint. */
+    /** Keyboard equivalent of the program context menu (Enter/Space). */
+    onProgramKeydown(event: Event, ch: any, prog: any): void {
+        event.preventDefault();
+        const target = event.target as HTMLElement;
+        const rect = target.getBoundingClientRect();
+        this.contextMenuTrigger = target;
+        this.onProgramContextMenu({
+            preventDefault: () => undefined,
+            stopPropagation: () => undefined,
+            clientX: rect.left + Math.min(24, rect.width / 2),
+            clientY: rect.top + Math.min(24, rect.height / 2)
+        } as MouseEvent, ch, prog);
+        // A keyboard user needs to land on the first action, not on the
+        // element after the program in DOM order.
+        setTimeout(() => {
+            const first = document.querySelector<HTMLElement>('.context-menu button');
+            first?.focus();
+        }, 0);
+    }
+
+    onGuideHorizontalScroll(event: Event): void {
+        const el = event.target as HTMLElement;
+        // Auto-scrolling to "now" must not dismiss the hint; only a real
+        // touch/pointer gesture does that.
+        this.guideAtEndX = el.scrollLeft + el.clientWidth >= el.scrollWidth - 8;
+    }
+
     onGuideScroll(event: Event): void {
         this.currentScrollTop = (event.target as HTMLElement).scrollTop;
         this.updateVirtualScroll();
@@ -839,8 +945,6 @@ export class WatchComponent implements OnInit, OnDestroy {
         if (this.isBrowser) {
             this.playStream(ch.stream_url);
         }
-        this.showOsdBriefly(ch);
-        this.showInfoBriefly(ch);
         this.storage.setLastChannel(String(ch.id));
     }
 
@@ -889,12 +993,48 @@ export class WatchComponent implements OnInit, OnDestroy {
     }
 
     // ── Player ──────────────────────────────────
+    /**
+     * A stream that never produces a manifest leaves the player black forever:
+     * the guide request has already finished, so `loading` has nothing to
+     * override it. This timer turns that silence into a recoverable state.
+     */
+    private armStreamStartWatchdog(): void {
+        this.clearStreamStartWatchdog();
+        this.streamStartTimer = setTimeout(() => {
+            if (!this.loading) return;
+            const video = this.videoRef?.nativeElement;
+            if (video && !video.paused && video.readyState >= 2) return;
+
+            this.error = 'This channel is not responding. It may be offline, or the stream may have moved.';
+            this.loading = false;
+            this.reconnecting = false;
+            this.reconnectAttempt = 0;
+            if (this.hls) {
+                this.hls.destroy();
+                this.hls = null;
+            }
+            if (this.watchdogInterval) {
+                clearInterval(this.watchdogInterval);
+                this.watchdogInterval = null;
+            }
+            this.cdr.detectChanges();
+        }, 12000);
+    }
+
+    private clearStreamStartWatchdog(): void {
+        if (this.streamStartTimer) {
+            clearTimeout(this.streamStartTimer);
+            this.streamStartTimer = null;
+        }
+    }
+
     private playStream(url: string, forceCast = false): void {
         if (!this.isBrowser) {
             this.loading = false;
             return;
         }
 
+        this.clearStreamStartWatchdog();
         this.loading = !!url && !this.isCasting;
         this.error = '';
         this.reconnecting = false;
@@ -923,9 +1063,13 @@ export class WatchComponent implements OnInit, OnDestroy {
             return;
         }
 
+        this.armStreamStartWatchdog();
+
         const resolvedUrl = this.resolveUrl(url);
 
         if (this.isCasting || forceCast) {
+            this.clearStreamStartWatchdog();
+            this.loading = false;
             const ch = this.currentChannel;
             if (ch) {
                 this.castService.loadMedia(
@@ -952,6 +1096,7 @@ export class WatchComponent implements OnInit, OnDestroy {
                 this.setupHlsPlayback(resolvedUrl, video);
             }).catch(() => {
                 if (gen !== this.streamGeneration) return;
+                this.clearStreamStartWatchdog();
                 this.error = 'HLS player not available';
                 this.loading = false;
             });
@@ -1017,6 +1162,7 @@ export class WatchComponent implements OnInit, OnDestroy {
             hls.attachMedia(video);
 
             const resetLoadingState = () => {
+                this.clearStreamStartWatchdog();
                 this.loading = false;
                 this.reconnecting = false;
                 this.reconnectAttempt = 0;
@@ -1088,6 +1234,7 @@ export class WatchComponent implements OnInit, OnDestroy {
                             }
                         }
                     } else {
+                        this.clearStreamStartWatchdog();
                         this.error = 'Stream playback failed';
                         this.loading = false;
                         this.reconnecting = false;
@@ -1163,6 +1310,7 @@ export class WatchComponent implements OnInit, OnDestroy {
             }
 
             video.addEventListener('loadedmetadata', () => { 
+                this.clearStreamStartWatchdog();
                 this.loading = false; 
                 this.reconnecting = false;
                 this.reconnectAttempt = 0;
@@ -1190,6 +1338,7 @@ export class WatchComponent implements OnInit, OnDestroy {
                     this.error = 'Playback failed';
                     this.loading = false;
                     this.reconnecting = false;
+                    this.clearStreamStartWatchdog();
                     this.cdr.detectChanges();
                 }
             };
@@ -1331,7 +1480,7 @@ export class WatchComponent implements OnInit, OnDestroy {
     async deleteLocalRecording(rec: ClientRecording): Promise<void> {
         const confirmed = await this.confirm.ask({
             title: 'Delete this recording?',
-            message: `'${rec.programTitle}' will be removed from My Recordings.`,
+            message: `'${rec.programTitle}' will be removed from this browser.`,
             detail: 'It is stored in this browser only, so this cannot be undone.',
             confirmLabel: 'Delete',
             destructive: true
@@ -1462,10 +1611,6 @@ export class WatchComponent implements OnInit, OnDestroy {
         return this.dvr.failureReason(rec);
     }
 
-    recordingStatusLabel(status: string): string {
-        return this.dvr.statusLabel(status);
-    }
-
     recordingChannel(rec: ClientRecording | SystemRecording): string {
         return 'channelName' in rec ? rec.channelName : rec.channel_name;
     }
@@ -1542,22 +1687,6 @@ export class WatchComponent implements OnInit, OnDestroy {
     async toggleHidden(channelId: string): Promise<void> {
         this.hiddenChannels = await this.storage.toggleHidden(channelId);
         this.applyFilters();
-    }
-
-    // ── OSD & Info ──────────────────────────────
-    private showOsdBriefly(ch: Channel): void {
-        this.osdChannel = ch;
-        this.showOsd = true;
-        clearTimeout(this.osdTimer);
-        this.osdTimer = setTimeout(() => { this.showOsd = false; }, 3000);
-    }
-
-    private showInfoBriefly(ch: Channel): void {
-        this.showInfoOverlay = true;
-        clearTimeout(this.overlayTimer);
-        if (!this.guideOpen) {
-            this.overlayTimer = setTimeout(() => { this.showInfoOverlay = false; }, 5000);
-        }
     }
 
     // ── Program Helpers ─────────────────────────
@@ -1937,7 +2066,7 @@ export class WatchComponent implements OnInit, OnDestroy {
         if (toCancel.length > 0) {
             const rec = toCancel[0];
             if (rec.source === 'system') {
-                this.toast.show('System recordings are managed from the admin DVR page', 'info');
+                this.toast.show('Server recordings are managed from the Recordings page', 'info');
                 return;
             }
             const inFlight = rec.status === 'queued' || rec.status === 'recording';

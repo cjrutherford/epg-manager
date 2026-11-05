@@ -1,46 +1,46 @@
 <div class="dashboard">
-    <header class="page-header">
-        <div class="page-header__text">
-            <h1>Dashboard</h1>
-            <p class="page-sub">System health, and the actions that keep it current.</p>
-        </div>
-    </header>
+    <app-page-header title="Dashboard" subtitle="System health, and the actions that keep it current."></app-page-header>
 
-    @if (loading) {
-    <div class="loading-container">
-        <div class="spinner"></div>
-    </div>
-    } @else {
-
-    <!-- ── Empty-state banner ─────────────────────────────────────────── -->
-    @if (isEmpty) {
-    <div class="empty-state-banner glass-card">
-        <lucide-icon name="rocket" class="icon icon--xl empty-state-icon"></lucide-icon>
-        <div class="empty-state-body">
-            <h2 class="empty-state-title">No data yet — ready to go!</h2>
-            <p class="empty-state-desc">
-                The system has no channels or guide data. Run a full sync to download your playlist,
-                match channels to the IPTV-ORG guide, grab EPG data, and generate your M3U&nbsp;/&nbsp;XML files.
-            </p>
-            @if (!dataState?.hasPlaylist) {
-            <p class="empty-state-warn"><lucide-icon name="alert-triangle" class="icon"></lucide-icon> No playlist URL is configured yet. Head to
-                <strong>Settings</strong> first and add a playlist URL, then come back here to sync.
-            </p>
-            }
-        </div>
-        <button
-            id="btn-initial-sync"
-            class="btn-sync-now"
-            [disabled]="syncStarted || !dataState?.hasPlaylist"
-            (click)="triggerInitialSync()">
-            @if (syncStarted) {
-            <span class="spinner-sm"></span> Sync running…
+    @if (hasReliabilityNotice) {
+    <div class="reliability-notice" [class.reliability-notice--danger]="!!loadError" role="status">
+        <lucide-icon name="triangle-alert" class="icon"></lucide-icon>
+        <div class="reliability-notice__body">
+            @if (loadError) {
+            <strong>{{ loadError }}</strong>
+            <button type="button" class="btn btn-secondary small-btn" (click)="loadData()">Retry</button>
+            } @else if (guideIsMissing) {
+            <strong>Channels are loaded, but no guide data is available.</strong>
+            <button type="button" class="btn btn-secondary small-btn" (click)="runFullSync()">Run full sync</button>
+            } @else if (guideIsStale) {
+            <strong>Guide data is more than a day old.</strong>
+            <button type="button" class="btn btn-secondary small-btn" (click)="runFullSync()">Run full sync</button>
             } @else {
-            <lucide-icon name="play" class="icon"></lucide-icon> Run initial sync
+            <strong>Live updates paused — reconnecting to the server.</strong>
             }
-        </button>
+        </div>
     </div>
     }
+
+    @if (lastJobError) {
+    <div class="reliability-notice reliability-notice--danger" role="status">
+        <lucide-icon name="triangle-alert" class="icon"></lucide-icon>
+        <div class="reliability-notice__body">
+            <strong>Last sync: {{ lastJobError }}</strong>
+            <button type="button" class="btn btn-secondary small-btn" (click)="runFullSync()">Try again</button>
+        </div>
+    </div>
+    }
+
+    @if (loading) {
+    <app-skeleton variant="cards" [rows]="3" label="Loading dashboard"></app-skeleton>
+    } @else {
+
+    <app-setup-checklist
+        [hasSource]="!!dataState?.hasPlaylist || !!dataState?.hasChannels"
+        [hasChannels]="!!dataState?.hasChannels"
+        [hasPrograms]="!!dataState?.hasPrograms"
+        [hasWatched]="hasWatched"
+        (runSync)="runFullSync()"></app-setup-checklist>
 
     <!-- Version & Update -->
     <div class="glass-card" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:24px;padding:16px 20px;">
@@ -70,21 +70,12 @@
 
     <!-- Stats -->
     <div class="stat-grid">
-        <div class="stat stat--primary">
-            <span class="stat__value">{{ stats?.channels?.enabled || 0 }}</span>
-            <span class="stat__label">Enabled channels</span>
-            <span class="stat__detail">{{ stats?.channels?.total || 0 }} total · {{ stats?.channels?.matched || 0 }} matched</span>
-        </div>
-        <div class="stat stat--success">
-            <span class="stat__value">{{ stats?.programs?.total || 0 }}</span>
-            <span class="stat__label">Guide programmes</span>
-            <span class="stat__detail">{{ stats?.programs?.channels || 0 }} channels · {{ stats?.programs?.enriched || 0 }} enriched</span>
-        </div>
-        <div class="stat stat--warning">
-            <span class="stat__value">{{ health?.status || 'unknown' }}</span>
-            <span class="stat__label">System status</span>
-            <span class="stat__detail">Uptime: {{ formatUptime(health?.uptime || 0) }}</span>
-        </div>
+        <app-stat tone="primary" [value]="stats?.channels?.enabled || 0" label="Enabled channels"
+            [detail]="(stats?.channels?.total || 0) + ' total · ' + (stats?.channels?.matched || 0) + ' matched'"></app-stat>
+        <app-stat tone="success" [value]="stats?.programs?.total || 0" label="Guide programmes"
+            [detail]="(stats?.programs?.channels || 0) + ' channels · ' + (stats?.programs?.enriched || 0) + ' enriched'"></app-stat>
+        <app-stat [tone]="healthTone" [value]="health?.status || 'unknown'" label="System status"
+            [detail]="'Uptime: ' + formatUptime(health?.uptime || 0)"></app-stat>
     </div>    <!-- Actions -->
     <div class="actions-section">
         <h2>Actions</h2>
@@ -94,27 +85,33 @@
                  being refused, so they say so instead of looking broken. Reset
                  is genuinely refused mid-sync, so it is disabled and explains
                  itself rather than failing with a 409 after the fact. -->
-            <button type="button" class="glass-card action-card" (click)="runFullSync()">
+            <button type="button" class="glass-card action-card" (click)="runFullSync()" [disabled]="jobRunning"
+                [disabled]="!hasSourceConfigured">
                 <lucide-icon name="refresh-cw" class="icon icon--lg action-icon" aria-hidden="true"></lucide-icon>
                 <div class="action-title">Run full sync</div>
                 <div class="action-desc">
-                    @if (jobRunning) { Will queue behind the running job }
-                    @else { Playlist → Match → Grab → Enrich → Rebuild }
+                    @if (!hasSourceConfigured) { Add a source first }
+                    @else if (jobRunning) { Will queue behind the running job }
+                    @else { Playlist → Match → Fetch guide → Enrich → Publish }
                 </div>
             </button>
-            <button type="button" class="glass-card action-card" (click)="grabMissing()">
+            <button type="button" class="glass-card action-card" (click)="grabMissing()" [disabled]="jobRunning"
+                [disabled]="!hasChannels">
                 <lucide-icon name="satellite" class="icon icon--lg action-icon" aria-hidden="true"></lucide-icon>
-                <div class="action-title">Grab EPG data</div>
+                <div class="action-title">Fetch guide data</div>
                 <div class="action-desc">
-                    @if (jobRunning) { Will queue behind the running job }
-                    @else { Fetch EPG data for matched channels }
+                    @if (!hasChannels) { Sync channels first }
+                    @else if (jobRunning) { Will queue behind the running job }
+                    @else { Fetch guide data for matched channels }
                 </div>
             </button>
-            <button type="button" class="glass-card action-card" (click)="rebuildFiles()">
+            <button type="button" class="glass-card action-card" (click)="rebuildFiles()" [disabled]="jobRunning"
+                [disabled]="!hasChannels">
                 <lucide-icon name="package" class="icon icon--lg action-icon" aria-hidden="true"></lucide-icon>
-                <div class="action-title">Rebuild files</div>
+                <div class="action-title">Rebuild output files</div>
                 <div class="action-desc">
-                    @if (jobRunning) { Will queue behind the running job }
+                    @if (!hasChannels) { Sync channels first }
+                    @else if (jobRunning) { Will queue behind the running job }
                     @else { Regenerate M3U and XMLTV files }
                 </div>
             </button>
@@ -138,7 +135,7 @@
         <h3>Scheduled Jobs</h3>
         @if (jobStatus.daily) {
         <div class="stat-row">
-            <span>Daily EPG Update</span>
+            <span>Daily guide update</span>
             <span class="text-secondary">{{ jobStatus.daily }}</span>
         </div>
         }
@@ -153,7 +150,8 @@
         <div class="progress-collapsible">
             <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap;">
                 <button class="btn-collapse" (click)="toggleProgressCollapse()" style="margin-bottom: 0; flex: 1; min-width: 200px;">
-                    <span>{{ progressCollapsed ? '▶ Show Sync Progress & Logs' : '▼ Hide Sync Progress & Logs' }}</span>
+                    <lucide-icon [name]="progressCollapsed ? 'chevron-right' : 'chevron-down'" class="icon"></lucide-icon>
+                    <span>{{ progressCollapsed ? 'Show sync progress and logs' : 'Hide sync progress and logs' }}</span>
                 </button>
                 @if (syncStarted) {
                 <button class="btn-cancel-sync" (click)="cancelSync()">
@@ -164,6 +162,11 @@
             
             <div class="collapsible-content" [class.collapsed]="progressCollapsed">
                 @if (syncStarted) {
+                <div class="sync-summary">
+                    <span>Running for <strong>{{ syncElapsed }}</strong></span>
+                    <span><strong>{{ overallProgress }}%</strong> overall</span>
+                    <span>{{ currentStageLabel }}</span>
+                </div>
                 <div class="pipeline-flow">
                     @for (stage of stages; track stage.id) {
                     <div class="pipeline-stage" [class]="getStageClass(stage)">
@@ -173,7 +176,7 @@
                             } @else if (stage.status === 'done') {
                             <lucide-icon name="check" class="icon stage-check"></lucide-icon>
                             } @else {
-                            <span class="stage-icon">{{ stage.icon }}</span>
+                            <lucide-icon [name]="stage.icon" class="icon stage-icon"></lucide-icon>
                             }
                         </div>
                         <div class="stage-label">{{ stage.label }}</div>
@@ -230,14 +233,7 @@
 
     <!-- Reset scope picker -->
     @if (showResetModal) {
-    <div class="modal-backdrop" (click)="closeResetModal()">
-        <div class="modal-content reset-modal" appModalFocus (dismiss)="closeResetModal()" aria-labelledby="reset-title"
-            (click)="$event.stopPropagation()">
-            <div class="modal-header">
-                <h2 id="reset-title">Reset data</h2>
-                <button class="close-modal-btn" (click)="closeResetModal()" aria-label="Close"><lucide-icon name="x" class="icon"></lucide-icon></button>
-            </div>
-
+    <app-modal title="Reset data" titleId="reset-title" panelClass="reset-modal" (closed)="closeResetModal()">
             <p class="reset-intro">
                 Pick what to clear. Downloaded source catalogues and learned source reliability are kept
                 unless you explicitly choose to rebuild them — that keeps the next sync fast.
@@ -293,8 +289,7 @@
                     {{ resetScopeOptions[0] ? 'Clear ' + resetScopeLabel(resetScope) : 'Clear' }}
                 </button>
             </div>
-        </div>
-    </div>
+    </app-modal>
     }
     }
 </div>

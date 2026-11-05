@@ -20,6 +20,16 @@ const FIXTURE_DIR = path.resolve(process.cwd(), '.e2e-fixture');
 const API_PORT = 45210;
 const WEB_PORT = 45211;
 
+// Playwright cannot install Firefox/WebKit on every host (Ubuntu 26.04 is not
+// supported at the time of writing). Keep the projects available without
+// making an ordinary test run fail on an unsupported machine.
+const crossBrowserProjects = process.env.CROSS_BROWSER === '1'
+    ? [
+        { name: 'firefox', testMatch: /cross-browser\.spec\.ts/, use: { browserName: 'firefox' as const } },
+        { name: 'webkit', testMatch: /cross-browser\.spec\.ts/, use: { browserName: 'webkit' as const } },
+    ]
+    : [];
+
 export default defineConfig({
   testDir: './e2e',
   globalSetup: './e2e/fixture/global-setup.ts',
@@ -36,8 +46,14 @@ export default defineConfig({
   projects: [
     {
       name: 'e2e',
+      use: { channel: 'chrome' },
       testIgnore: [
         /docs\//,
+        /visual\//,
+        /cross-browser\.spec\.ts/,
+        // The TV/remote gate is its own project: it drives focus from the
+        // keyboard at 1080p and is not part of the pointer-oriented e2e run.
+        /tv\.spec\.ts/,
         // Anything that mutates state other specs assert on runs in the
         // destructive project, serially, after these.
         /reset-scopes\.spec\.ts/,
@@ -49,6 +65,7 @@ export default defineConfig({
     {
       name: 'e2e-destructive',
       testMatch: /(series-rules|dvr-lifecycle|job-queue)\.spec\.ts/,
+      use: { channel: 'chrome' },
       dependencies: ['e2e'],
       fullyParallel: false,
     },
@@ -59,12 +76,36 @@ export default defineConfig({
       // one that passes only when the scheduler happens to order it last.
       name: 'e2e-reset',
       testMatch: /reset-scopes\.spec\.ts/,
+      use: { channel: 'chrome' },
       dependencies: ['e2e-destructive'],
       fullyParallel: false,
     },
     {
+      // Screenshot baselines are opt-in: antialiasing differs between machines,
+      // so they run as their own project after the functional suite.
+      name: 'visual',
+      testMatch: /visual\/.*\.spec\.ts/,
+      use: { channel: 'chrome' },
+      fullyParallel: false,
+    },
+    {
+      // Remote/TV gate. Deliberately independent of the visual and cross-browser
+      // projects: it is a Chrome-only, keyboard-only journey through the guide
+      // at 1080p, and running its focus assertions beside other specs makes the
+      // results depend on stream and scheduler timing.
+      name: 'tv',
+      testMatch: /tv\.spec\.ts/,
+      use: {
+        channel: 'chrome',
+        viewport: { width: 1920, height: 1080 },
+      },
+      fullyParallel: false,
+    },
+    ...crossBrowserProjects,
+    {
       name: 'docs',
       testMatch: /docs\/.*\.spec\.ts/,
+      use: { channel: 'chrome' },
     },
   ],
 
@@ -72,7 +113,6 @@ export default defineConfig({
 
   use: {
     baseURL: `http://localhost:${WEB_PORT}`,
-    channel: 'chrome',
     trace: 'on-first-retry',
     headless: true,
     // Video is kept for failures so a red run can be watched rather than

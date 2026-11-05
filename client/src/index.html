@@ -1,16 +1,33 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" dir="ltr">
 
 <head>
   <meta charset="utf-8">
   <title>Tuner Daemon — Automated EPG & Live TV</title>
   <base href="/">
+  <script>
+    // Set direction before hydration so an Arabic session never flashes LTR.
+    try {
+      var locale = localStorage.getItem('tuner_daemon_locale');
+      if (locale === 'ar' || locale === 'en') {
+        document.documentElement.lang = locale;
+        document.documentElement.dir = locale === 'ar' ? 'rtl' : 'ltr';
+      }
+    } catch (e) { }
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Tuner Daemon — Automated EPG Ingestion, Channel Matching & Live TV Streaming Engine">
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16x16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
+  <!-- Fonts are a separate, cacheable asset. Importing them into styles.css
+       made Angular inline 7 kB of @font-face rules into every prerendered page. -->
+  <link rel="stylesheet" href="assets/fonts.css">
+  <link rel="preload" as="font" type="font/woff2"
+    href="assets/fonts/libre-franklin-variable-latin.woff2" crossorigin>
+  <link rel="preload" as="font" type="font/woff2"
+    href="assets/fonts/syne-variable-latin.woff2" crossorigin>
   <!-- Fonts are self-hosted from /assets/fonts; see client/src/assets/fonts.css.
        The UI must render with no external network access. -->
   <!-- Cast support is optional and loaded lazily: if gstatic is unreachable the

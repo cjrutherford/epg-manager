@@ -1,7 +1,4 @@
-.channel-manager h1 {
-    margin-bottom: var(--space-3xl);
-    font-size: var(--font-3xl);
-}
+
 
 .toolbar {
     margin-bottom: var(--space-2xl);
@@ -21,7 +18,7 @@
     white-space: nowrap;
 }
 .sortable:hover { color: var(--color-primary); }
-.sort-arrow { font-size: var(--font-2xs); margin-left: var(--space-2xs); color: var(--color-primary); }
+.sort-arrow { font-size: var(--font-xs); margin-left: var(--space-2xs); color: var(--color-primary); }
 
 /* ── Filter pills ────────────────────────────── */
 .filter-pills {
@@ -105,7 +102,7 @@
 }
 
 .channel-group {
-    font-size: 0.8em;
+    font-size: var(--font-xs);
     color: var(--text-secondary);
 }
 
@@ -114,12 +111,12 @@
 }
 
 .program-sub {
-    font-size: 0.8em;
+    font-size: var(--font-xs);
     color: var(--text-secondary);
 }
 
 .epg-id-display {
-    font-size: 0.7em;
+    font-size: var(--font-xs);
     color: var(--text-secondary);
     max-width: 120px;
     overflow: hidden;
@@ -196,6 +193,102 @@
 }
 
 @media (max-width: 768px) {
+    /* The channel table keeps its columns on desktop, where density is an
+       advantage. At phone width the same columns were clipped, hiding the
+       match badge and the only row action. Reflow each row into a card while
+       keeping the table's semantics and virtual window. */
+    .channel-scroll {
+        max-height: 58vh;
+        overflow-x: hidden;
+    }
+
+    .channel-scroll table,
+    .channel-scroll tbody {
+        display: block;
+    }
+
+    .channel-scroll thead {
+        display: none;
+    }
+
+    .channel-scroll tbody tr:not(.expanded-row):not(.virtual-spacer) {
+        display: grid;
+        grid-template-columns: 24px minmax(0, 1fr) auto;
+        grid-template-areas:
+            "check channel number"
+            "check now now"
+            "check match action";
+        grid-template-rows: auto auto 1fr;
+        gap: var(--space-2xs) var(--space-sm);
+        height: 132px;
+        padding: var(--space-md) var(--space-lg);
+        box-sizing: border-box;
+        border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .channel-scroll tbody tr:not(.expanded-row):not(.virtual-spacer) td {
+        display: block;
+        padding: 0;
+        border: 0;
+        min-width: 0;
+    }
+
+    .channel-scroll tbody tr td:nth-child(1) { grid-area: check; align-self: start; }
+    .channel-scroll tbody tr td:nth-child(2) { grid-area: channel; }
+    .channel-scroll tbody tr td:nth-child(3) { grid-area: number; text-align: right; }
+    .channel-scroll tbody tr td:nth-child(4) { grid-area: now; }
+    .channel-scroll tbody tr td:nth-child(5) { grid-area: match; align-self: end; }
+    .channel-scroll tbody tr td:nth-child(6) { grid-area: action; align-self: end; justify-self: end; }
+
+    .channel-cell {
+        gap: var(--space-sm);
+    }
+
+    .channel-logo {
+        width: 32px;
+        height: 32px;
+    }
+
+    .channel-name {
+        font-size: var(--font-md);
+        line-height: 1.2;
+    }
+
+    .channel-group {
+        font-size: var(--font-xs);
+    }
+
+    .program-now {
+        font-size: var(--font-sm);
+        color: var(--text-secondary);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .program-sub,
+    .epg-id-display {
+        display: none;
+    }
+
+    .channel-num {
+        font-size: var(--font-sm);
+    }
+
+    .channel-scroll tbody tr td:nth-child(6) .btn {
+        padding: var(--space-2xs) var(--space-lg);
+    }
+
+    .channel-scroll tbody tr.expanded-row {
+        display: block;
+        height: auto;
+        padding: 0;
+    }
+
+    .channel-scroll tbody tr.expanded-row td {
+        display: block;
+    }
+
     .toolbar-row {
         flex-direction: column;
     }

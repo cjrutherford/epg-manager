@@ -1,21 +1,13 @@
 <div class="dvr-page" [class.dvr-overlay]="isOverlay">
-    <header class="page-header">
-        <div class="page-header__text">
-            <h1>DVR</h1>
-            <p class="page-sub">Scheduled, recording and completed programmes.</p>
-        </div>
-        <div class="page-header__actions">
-            @if (isOverlay) {
-                <button class="btn btn-secondary close-btn" (click)="close.emit()">Close</button>
-            }
-            <button class="btn btn-primary" (click)="openScheduleModal()">+ Schedule recording</button>
-        </div>
-    </header>
+    <app-page-header title="Recordings" subtitle="Scheduled, recording and completed programmes on the server or in this browser.">
+        @if (isOverlay) {
+            <button class="btn btn-secondary close-btn" (click)="close.emit()">Close</button>
+        }
+        <button class="btn btn-primary" (click)="openScheduleModal()">+ Schedule recording</button>
+    </app-page-header>
 
     @if (loading) {
-    <div class="loading-container">
-        <div class="spinner"></div>
-    </div>
+    <app-skeleton variant="cards" [rows]="4" label="Loading recordings"></app-skeleton>
     } @else if (loadError) {
 <div class="glass-card state state--error">
         <lucide-icon name="circle-alert" class="icon icon--xl state__icon"></lucide-icon>
@@ -26,11 +18,11 @@
     } @else {
     <div class="dvr-tabs">
         <button [class.active]="recordingsTab === 'system'" (click)="recordingsTab = 'system'">
-            Server Recordings
+            Server recordings
             <span>{{ recordings.length }}</span>
         </button>
         <button [class.active]="recordingsTab === 'my'" (click)="recordingsTab = 'my'">
-            My Recordings
+            On this device
             <span>{{ localRecordings.length }}</span>
         </button>
     </div>
@@ -61,7 +53,7 @@
         <!-- Recording rules: what the recorder does around and after a programme -->
         <div class="glass-card series-rules-card">
             <button class="series-rules-header" (click)="toggleDvrSettings()">
-                <span class="series-rules-title">Recording Settings</span>
+                <span class="series-rules-title">Recording settings</span>
                 <span class="series-rules-chevron">{{ showDvrSettings ? '▾' : '▸' }}</span>
             </button>
 
@@ -142,7 +134,7 @@
         <div class="glass-card series-rules-card">
             <button class="series-rules-header" (click)="toggleSeriesRules()">
                 <span class="series-rules-title">
-                    Series Recordings
+                    Series recordings
                     <span class="series-rules-count">{{ seriesRules.length }}</span>
                 </span>
                 <span class="series-rules-chevron">{{ showSeriesRules ? '▾' : '▸' }}</span>
@@ -187,7 +179,7 @@
         @if (recordings.length === 0) {
         <div class="glass-card empty-state">
             <lucide-icon name="file-video" class="icon icon--xl empty-icon"></lucide-icon>
-            <h3>No Server Recordings</h3>
+            <h3>No server recordings</h3>
             <p>Schedule a server recording to get started.</p>
         </div>
         } @else {
@@ -196,7 +188,7 @@
             <article class="recording-card glass-card" [class.recording-active]="rec.status === 'recording'">
                 <div class="recording-thumb">
                     @if (rec.thumbnail) {
-                    <img [src]="rec.thumbnail" [alt]="rec.program_title">
+                    <img [src]="rec.thumbnail" [appImageFallback]="rec.program_title" [alt]="rec.program_title">
                     } @else {
                     <div class="recording-fallback">DVR</div>
                     }
@@ -204,7 +196,7 @@
                 </div>
                 <div class="recording-body">
                     <div class="recording-row">
-                        <span class="badge" [class]="getStatusClass(rec.status)">{{ statusLabel(rec.status) }}</span>
+                        <app-status-badge [status]="rec.status"></app-status-badge>
                         <span class="recording-size">{{ recordingSize(rec) }}</span>
                     </div>
                     <h3>{{ rec.program_title }}</h3>
@@ -254,7 +246,7 @@
             <article class="recording-card glass-card" [class.recording-active]="rec.status === 'recording'">
                 <div class="recording-thumb">
                     @if (rec.thumbnail) {
-                    <img [src]="rec.thumbnail" [alt]="rec.programTitle">
+                    <img [src]="rec.thumbnail" [appImageFallback]="rec.programTitle" [alt]="rec.programTitle">
                     } @else {
                     <div class="recording-fallback">LOCAL</div>
                     }
@@ -262,7 +254,7 @@
                 </div>
                 <div class="recording-body">
                     <div class="recording-row">
-                        <span class="badge" [class]="getStatusClass(rec.status)">{{ statusLabel(rec.status) }}</span>
+                        <app-status-badge [status]="rec.status"></app-status-badge>
                         <span class="recording-size">{{ localRecordingSize(rec) }}</span>
                     </div>
                     <h3>{{ rec.programTitle }}</h3>
@@ -297,9 +289,7 @@
 
     <!-- Schedule Modal -->
     @if (showScheduleModal) {
-    <div class="modal-backdrop" (click)="showScheduleModal = false">
-        <div class="modal-content" appModalFocus (dismiss)="showScheduleModal = false" aria-labelledby="schedule-recording-title" (click)="$event.stopPropagation()">
-            <h2 id="schedule-recording-title">Schedule a recording</h2>
+    <app-modal title="Schedule a recording" titleId="schedule-recording-title" (closed)="showScheduleModal = false">
             <div class="form-grid">
                 <div class="form-group">
                     <label for="rec-channel">Channel</label>
@@ -366,20 +356,14 @@
                 <button class="btn btn-secondary" (click)="showScheduleModal = false">Cancel</button>
                 <button class="btn btn-primary" (click)="submitSchedule()">Schedule</button>
             </div>
-        </div>
-    </div>
+    </app-modal>
     }
 </div>
 
 <!-- Server Recording Playback Modal -->
 @if (playingServerRec) {
-<div class="modal-backdrop" (click)="closeVideoModal()">
-    <div class="modal-content" appModalFocus (dismiss)="closeVideoModal()" aria-labelledby="play-recording-title" (click)="$event.stopPropagation()" style="max-width: 800px; width: 90%; padding: 20px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <h3 id="play-recording-title" style="margin: 0; font-size: 1.1rem; color: var(--text-primary);">{{ playingServerRec.program_title }}</h3>
-            <button class="btn btn-secondary small-btn" (click)="closeVideoModal()"><lucide-icon name="x" class="icon"></lucide-icon> Close</button>
-        </div>
-        <video [src]="'/api/dvr/stream/' + playingServerRec.filename" controls autoplay style="width: 100%; max-height: 70vh; border-radius: var(--radius-md); background: #000;"></video>
-    </div>
-</div>
+<app-modal [title]="playingServerRec.program_title" heading="h3" titleId="play-recording-title" [maxWidth]="'800px'"
+    (closed)="closeVideoModal()">
+    <video [src]="'/api/dvr/stream/' + playingServerRec.filename" controls autoplay style="width: 100%; max-height: 70vh; border-radius: var(--radius-md); background: #000;"></video>
+</app-modal>
 }

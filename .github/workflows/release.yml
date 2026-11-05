@@ -4,6 +4,10 @@ on:
   push:
     tags:
       - "v*"
+  # release-on-merge dispatches this workflow on the version tag. It cannot rely
+  # on the tag push event because events created by GITHUB_TOKEN do not start
+  # another workflow run.
+  workflow_dispatch:
 
 permissions:
   contents: write   # create the release and upload assets
@@ -163,6 +167,11 @@ jobs:
         run: |
           cd client
           npx ng build --configuration mobile
+          # Capacitor loads the root index; Angular's static build emits a
+          # redirect document for the empty route. Use the Watch shell instead.
+          if [ -f dist/client/browser/watch/index.html ]; then
+            cp dist/client/browser/watch/index.html dist/client/browser/index.html
+          fi
           npx cap sync android
 
       # Debug builds are signed with the standard debug key, which means they

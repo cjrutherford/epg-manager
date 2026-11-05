@@ -42,7 +42,8 @@ import { rankEpgSources } from './services/epg-sources';
 import { redactUrl } from './services/sources/descriptor';
 import { getBuiltInCatalog, getFastSources } from './services/sources/catalog';
 import { createAdapterContext, createProbeContext, getAdapter, registerBuiltInAdapters } from './services/sources';
-import { addSource, exportSources, importSources, listSources, removeSource, setSourceEnabled, setSourcePriority } from './services/sources/registry';
+import { persistProgrammes } from './services/sources/adapters/xmltv';
+import { addSource, exportSources, getSourceDescriptor, importSources, listSources, recordSourceSync, removeSource, setSourceEnabled, setSourcePriority, syncPlaylistSources } from './services/sources/registry';
 import { normalizeDescriptor, validateDescriptor } from './services/sources/descriptor';
 import { checkScopeCoverage, isResetScope, planReset } from './services/reset-scopes';
 import {
@@ -83,6 +84,14 @@ app.use((req: any, res: any, next: any) => {
     }
     next();
 });
+// Bounded server-side job log. The dashboard used to lose every line before
+// the reload, even though the job was still running.
+const recentJobLogs: Array<{ type?: string; message: string; timestamp: number }> = [];
+eventBus.on('log', (entry: any) => {
+    recentJobLogs.push({ type: entry.type, message: entry.message, timestamp: entry.timestamp || Date.now() });
+    if (recentJobLogs.length > 500) recentJobLogs.splice(0, recentJobLogs.length - 500);
+});
+
 app.use(express.json());
 
 // Backend runs purely as an API server
@@ -336,7 +345,81 @@ export let activePipeline: PipelineQueue | null = null;
  * 4. Custom grab missing guide data
  * 5. Generate final M3U and XML files
  */
+/**
+ * Pull programmes from every enabled guide source.
+ *
+ * Guide descriptors were accepted and stored, but the full pipeline never
+ * called the adapters' `fetchGuide`, so a configured XMLTV source contributed
+ * channels and no programmes. Whole-feed kinds share one fetch between
+ * `syncCatalog` and `fetchGuide` through the adapter context, so this is one
+ * network request per source.
+ */
+async function syncGuideSources(days: number): Promise<{ sources: number; programmes: number }> {
+    const sources = (await listSources()).filter(source => source.enabled && source.provides.includes('guide'));
+    let importedSources = 0;
+    let importedProgrammes = 0;
+
+    for (const source of sources) {
+        const descriptor = await getSourceDescriptor(source.key);
+        if (!descriptor) continue;
+        const adapter = getAdapter(descriptor.kind);
+        if (!adapter?.fetchGuide) {
+            await recordSourceSync(source.key, {
+                status: 'failed',
+                error: `The ${descriptor.kind} adapter cannot fetch guide data`
+            });
+            emitLog(`${source.label}: adapter cannot fetch guide data`, 'warning');
+            continue;
+        }
+
+        try {
+            const ctx = createAdapterContext(source.key);
+            let channels: Array<{ id: string; displayName: string; icon: string }> = [];
+            if (adapter.syncCatalog) {
+                const catalog = await adapter.syncCatalog(descriptor, ctx);
+                channels = catalog.rows.map(row => ({
+                    id: row.xmltvId,
+                    displayName: row.name,
+                    icon: ''
+                }));
+            }
+
+            const programmes = [];
+            for await (const programme of adapter.fetchGuide(descriptor, [], { days }, ctx)) {
+                programmes.push(programme);
+            }
+
+            if (ctx.lastFetchNotModified) {
+                await recordSourceSync(source.key, { status: 'success' });
+                emitLog(`${source.label}: guide unchanged since the last fetch`, 'info');
+                continue;
+            }
+
+            if (channels.length === 0) {
+                const ids = [...new Set(programmes.map(programme => programme.channelId))];
+                channels = ids.map(id => ({ id, displayName: id, icon: '' }));
+            }
+
+            const stored = await persistProgrammes(source.key, channels, programmes);
+            importedSources++;
+            importedProgrammes += stored.programmes;
+            await recordSourceSync(source.key, {
+                rows: stored.programmes,
+                status: stored.programmes > 0 ? 'success' : 'empty'
+            });
+            emitLog(`${source.label}: imported ${stored.programmes} programme(s) from ${stored.channels} channel(s)`, 'info');
+        } catch (e: any) {
+            await recordSourceSync(source.key, { status: 'failed', error: e.message });
+            emitLog(`${source.label}: guide import failed — ${e.message}`, 'warning');
+        }
+    }
+
+    emitProgressComplete('grab', `Imported ${importedProgrammes} programme(s) from ${importedSources} guide source(s)`, importedSources);
+    return { sources: importedSources, programmes: importedProgrammes };
+}
+
 export async function runFullSync() {
+    recentJobLogs.length = 0;
     await startJob('full_sync');
     try {
         if (getJobStatus().cancelRequested) throw new Error("Sync cancelled by user");
@@ -397,6 +480,12 @@ export async function runFullSync() {
         if (getJobStatus().cancelRequested) throw new Error("Sync cancelled by user");
         const daysResult = await db.execute("SELECT value FROM settings WHERE key = 'epg_days'");
         const epgDays = daysResult.rows.length > 0 ? String(daysResult.rows[0].value) : '2';
+
+        // Direct guide sources (XMLTV and similar) are independent of the
+        // scraper matching that follows; import them before matching so the
+        // first sync produces programmes as well as channels.
+        emitLog('Importing configured guide sources...', 'info');
+        await syncGuideSources(Number(epgDays) || 2);
 
         // Initialize our streaming pipeline queue
         const pipeline = new PipelineQueue(epgDays);
@@ -547,7 +636,8 @@ app.get('/api/job-status', (req, res) => {
             nextRunAt: next ? next.toISOString() : null
         },
         // Kept for the existing dashboard card, but derived rather than hardcoded.
-        daily: describeCron(expression)
+        daily: describeCron(expression),
+        logs: recentJobLogs.slice(-500)
     });
 });
 
@@ -1157,6 +1247,12 @@ async function verifyResetScopeCoverage() {
 async function startServer() {
     emitLog("Initializing database...", "info");
     await initDb();
+
+    // Older databases register playlists during the schema backfill. Reconcile
+    // labels and add/remove entries from the live configuration on every boot,
+    // so the registry always matches settings.
+    await syncPlaylistSources(await getConfiguredPlaylistUrls());
+
     await loadLastJobStateOnBoot();
 
     // One registration point for everything the queue can run.
@@ -1408,6 +1504,11 @@ const saveConfiguration = async (req: any, res: any) => {
             });
         }
 
+        // Playlists are configuration, but they are also sources. Reconcile the
+        // registry in the same save so a selected playlist appears on Sources
+        // without waiting for a restart.
+        await syncPlaylistSources(await getConfiguredPlaylistUrls());
+
         // The cadence takes effect immediately; nothing here needs a restart.
         if (result.values.sync_cron !== undefined) {
             await applySyncSchedule(String(result.values.sync_cron));
@@ -1453,7 +1554,7 @@ c.*,
         const programsRes = await db.execute({
             sql: `
                 SELECT channel_id, title 
-                FROM epg_programs 
+                FROM epg_programs
                 WHERE start <= ? AND stop > ?
     `,
             args: [nowStr, nowStr]
@@ -2624,6 +2725,7 @@ async function getConfiguredPlaylistUrls(): Promise<string[]> {
 }
 
 async function updatePlaylist(url: string) {
+    const sourceKey = `playlist:${url}`;
     try {
         emitLog(formatMemorySnapshot('playlist import start', process.memoryUsage(), { source: url }), 'info');
 
@@ -2636,7 +2738,6 @@ async function updatePlaylist(url: string) {
             throw new Error('No m3u adapter registered');
         }
 
-        const sourceKey = `playlist:${url}`;
         const ctx = createAdapterContext(sourceKey);
 
         // Cache existing channel state so user settings (enabled, EPG matches,
@@ -2694,22 +2795,30 @@ async function updatePlaylist(url: string) {
                 args: [url]
             });
             const kept = Number(existing.rows[0]?.c || 0);
+            await recordSourceSync(sourceKey, { rows: kept, status: 'success' });
             emitLog(`Playlist unchanged since last fetch; keeping ${kept} channel(s).`, 'info');
             return kept;
         }
 
         const swap = await commitChannelStaging(url);
         if (!swap.swapped) {
+            await recordSourceSync(sourceKey, {
+                rows: swap.previousRows,
+                status: swap.previousRows > 0 ? 'success' : 'empty',
+                error: swap.reason
+            });
             emitLog(`Playlist import kept previous channels: ${swap.reason}`, 'warning');
             return swap.previousRows;
         }
 
+        await recordSourceSync(sourceKey, { rows: count, status: count > 0 ? 'success' : 'empty' });
         emitLog(formatMemorySnapshot('playlist import complete', process.memoryUsage(), { source: url, imported: count }), 'info');
         emitLog(`Updated playlist. Total channels: ${count}`, "success");
         return count;
     } catch (e: any) {
         // The live channel set is untouched — staging is discarded instead.
         await discardChannelStaging(url).catch(() => { /* best effort */ });
+        await recordSourceSync(sourceKey, { status: 'failed', error: e.message }).catch(() => { /* best effort */ });
         console.error("Playlist update failed:", e);
         emitLog(`Playlist update failed: ${e.message}`, "error");
         throw e;
@@ -2896,15 +3005,22 @@ app.get('/api/stats', async (req, res) => {
 // No auth required so the dashboard can show the empty-state prompt before login.
 app.get('/api/has-data', async (req, res) => {
     try {
-        const [ch, prog, pl] = await Promise.all([
+        const [ch, prog, playlistUrls, grabTs, sourceTs] = await Promise.all([
             db.execute("SELECT COUNT(*) as c FROM channels"),
             db.execute("SELECT COUNT(*) as c FROM epg_programs"),
-            db.execute("SELECT value FROM settings WHERE key = 'playlist_url'")
+            getConfiguredPlaylistUrls(),
+            db.execute("SELECT MAX(timestamp) as ts FROM grab_logs WHERE success = 1"),
+            db.execute("SELECT MAX(last_sync_at) as ts FROM sources WHERE enabled = 1 AND provides LIKE '%guide%' AND last_sync_status IN ('success', 'empty')")
         ]);
+        const lastGuideAt = Math.max(
+            Number(grabTs.rows[0]?.ts || 0),
+            Number(sourceTs.rows[0]?.ts || 0)
+        ) || null;
         res.json({
             hasChannels: Number(ch.rows[0].c) > 0,
             hasPrograms: Number(prog.rows[0].c) > 0,
-            hasPlaylist: pl.rows.length > 0 && String(pl.rows[0].value).trim() !== '',
+            hasPlaylist: playlistUrls.length > 0,
+            lastGuideAt,
             isEmpty: Number(ch.rows[0].c) === 0 && Number(prog.rows[0].c) === 0
         });
     } catch (e: any) {
@@ -3010,26 +3126,32 @@ c.id, c.name, c.group_title, c.url, c.tvg_id, c.tvg_logo, c.channel_number,
             .filter(Boolean) as string[];
 
         // Get programs in the time window for all channels
-        let programsMap = new Map<string, any[]>();
+        const programsMap = new Map<string, any[]>();
         if (epgIds.length > 0) {
-            // Batch query - get all programs that overlap with our window
-            const placeholders = epgIds.map(() => '?').join(',');
-            const programsRes = await db.execute({
-                sql: `
-                    SELECT channel_id, title, desc, sub_title, episode_num,
+            // SQLite has a bound-variable limit (often 999). A library with
+            // 1,000+ matched channels produced a 500 here because the single
+            // IN(...) list exceeded it. Query in bounded chunks and merge.
+            const CHUNK = 400;
+            for (let offset = 0; offset < epgIds.length; offset += CHUNK) {
+                const chunk = epgIds.slice(offset, offset + CHUNK);
+                const placeholders = chunk.map(() => '?').join(',');
+                const programsRes = await db.execute({
+                    sql: `
+                        SELECT channel_id, title, desc, sub_title, episode_num,
     category, rating, icon, start, stop, tmdb_poster
-                    FROM epg_programs 
-                    WHERE channel_id IN(${placeholders})
-                    AND stop > ? AND start < ?
+                        FROM epg_programs
+                        WHERE channel_id IN(${placeholders})
+                        AND stop > ? AND start < ?
     ORDER BY start ASC
-        `,
-                args: [...epgIds, startStr, endStr]
-            });
+            `,
+                    args: [...chunk, startStr, endStr]
+                });
 
-            for (const prog of programsRes.rows) {
-                const chId = String(prog.channel_id);
-                if (!programsMap.has(chId)) programsMap.set(chId, []);
-                programsMap.get(chId)!.push(prog);
+                for (const prog of programsRes.rows) {
+                    const chId = String(prog.channel_id);
+                    if (!programsMap.has(chId)) programsMap.set(chId, []);
+                    programsMap.get(chId)!.push(prog);
+                }
             }
         }
 
@@ -3124,7 +3246,7 @@ app.get('/api/channel/:id/programs', async (req, res) => {
             sql: `
                 SELECT title, desc, sub_title, episode_num, category,
     rating, icon, start, stop, tmdb_poster
-                FROM epg_programs 
+                FROM epg_programs
                 WHERE channel_id = ? AND stop > ? AND start < ?
     ORDER BY start ASC
             `,

@@ -1,0 +1,531 @@
+/* ── Player Diagnostics Overlay ────────────────── */
+.player-diagnostics {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    width: 320px;
+    z-index: 100;
+    padding: 16px;
+    border-radius: var(--radius-lg);
+    background: var(--bg-glass-strong);
+    border: var(--border-glass);
+    box-shadow: var(--shadow-glass);
+    animation: fadeInDropdown 0.25s var(--ease-smooth);
+    color: var(--text-primary);
+    backdrop-filter: blur(12px);
+}
+
+.diag-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 8px;
+}
+
+
+.diag-title {
+    font-family: var(--font-heading);
+    font-size: var(--font-md);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-primary);
+}
+
+.diag-close-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1.25rem;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s;
+}
+
+.diag-close-btn:hover {
+    color: var(--color-primary);
+}
+
+.diag-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.diag-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: var(--font-md);
+    font-family: var(--font-body);
+}
+
+.diag-label {
+    color: var(--text-secondary);
+}
+
+.diag-val {
+    font-weight: 600;
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+}
+
+.diag-val.warning {
+    color: var(--color-danger);
+}
+
+.codec-text {
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: right;
+}
+
+/* Button toggle styling */
+.diag-toggle-btn {
+    margin-left: 8px;
+    color: var(--text-secondary);
+    transition: color 0.25s var(--ease-smooth);
+}
+
+.diag-toggle-btn.active, .diag-toggle-btn:hover {
+    color: var(--color-primary) !important;
+}
+
+/* ── Watch Empty-State Overlay ────────────────── */
+.watch-empty-state {
+    position: fixed;
+    inset: var(--topbar-height, 56px) 0 0 0;
+    z-index: 90;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+/* Animated TV-static background */
+.wes-static {
+    position: absolute;
+    inset: 0;
+    background-image:
+        repeating-linear-gradient(
+            0deg,
+            transparent,
+            transparent 2px,
+            rgba(255,255,255,0.015) 2px,
+            rgba(255,255,255,0.015) 4px
+        ),
+        repeating-linear-gradient(
+            90deg,
+            transparent,
+            transparent 3px,
+            rgba(255,255,255,0.01) 3px,
+            rgba(255,255,255,0.01) 6px
+        );
+    background-color: #050508;
+    animation: staticNoise 0.1s steps(1) infinite;
+}
+
+@keyframes staticNoise {
+    0%   { background-position: 0 0, 0 0; }
+    25%  { background-position: 3px 1px, -2px 4px; }
+    50%  { background-position: -2px 3px, 4px -1px; }
+    75%  { background-position: 1px -2px, -3px 3px; }
+    100% { background-position: 0 0, 0 0; }
+}
+
+.wes-content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 16px;
+    max-width: 480px;
+    padding: 48px 40px;
+    border: 1px solid rgba(var(--color-primary-rgb), 0.25);
+    background: var(--bg-glass-strong);
+    backdrop-filter: blur(20px);
+    animation: wesAppear 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes wesAppear {
+    from { opacity: 0; transform: scale(0.92) translateY(16px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.wes-icon {
+    font-size: 4rem;
+    line-height: 1;
+    filter: drop-shadow(0 0 20px rgba(var(--color-primary-rgb), 0.4));
+    animation: wesIconPulse 2.5s ease-in-out infinite alternate;
+}
+
+@keyframes wesIconPulse {
+    from { filter: drop-shadow(0 0 12px rgba(var(--color-primary-rgb), 0.3)); }
+    to   { filter: drop-shadow(0 0 28px rgba(var(--color-primary-rgb), 0.7)); }
+}
+
+.wes-title {
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin: 0;
+    color: var(--text-primary, #e8e8f0);
+}
+
+.wes-desc {
+    font-size: 0.92rem;
+    color: var(--text-secondary, #8888aa);
+    line-height: 1.65;
+    margin: 0;
+}
+
+.wes-hint {
+    font-size: var(--font-md);
+    color: var(--color-warning);
+    background: rgba(var(--color-warning-rgb), 0.08);
+    border-left: 3px solid var(--color-warning);
+    padding: 8px 14px;
+    border-radius: 0 6px 6px 0;
+    text-align: left;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+}
+
+.wes-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    padding: 14px 32px;
+    font-size: var(--font-lg);
+    font-weight: 700;
+    color: var(--color-primary-text);
+    background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+    border-radius: 10px;
+    text-decoration: none;
+    transition: opacity 0.2s, transform 0.15s;
+    box-shadow: 0 4px 24px rgba(var(--color-primary-rgb), 0.25);
+}
+
+.wes-btn:hover {
+    opacity: 0.88;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(var(--color-primary-rgb), 0.35);
+}
+
+@media (max-width: 520px) {
+    .wes-content {
+        padding: 36px 24px;
+        margin: 16px;
+    }
+}
+
+/* ===========================================
+   Google Cast Button Integration
+   =========================================== */
+.cast-btn-wrapper {
+    position: relative;
+    padding: 0;
+    overflow: hidden;
+}
+
+.cast-fallback {
+    position: absolute;
+    z-index: 0;
+    pointer-events: none;
+}
+
+google-cast-launcher.cast-btn {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border: none !important;
+    background: transparent !important;
+    --connected-color: var(--color-primary);
+    --disconnected-color: var(--text-secondary);
+}
+
+google-cast-launcher.cast-btn:hover {
+    transform: none !important;
+    background: transparent !important;
+}
+
+google-cast-launcher.cast-btn {
+    margin: 10px;
+    width: 24px;
+    height: 24px;
+}
+
+google-cast-launcher.cast-btn::part(button) {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+google-cast-launcher.cast-btn::part(svg) {
+    width: 18px;
+    height: 18px;
+}
+
+.modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.settings-desc {
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+    line-height: 1.4;
+    margin: 0;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.form-group label {
+    font-size: var(--font-xs);
+    font-weight: 600;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.text-input {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(var(--color-primary-rgb), 0.12);
+    border-radius: 6px;
+    padding: 10px 12px;
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: var(--font-md);
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.text-input:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px rgba(var(--color-primary-rgb), 0.15);
+}
+
+.discovery-section {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+.discovery-section .btn {
+    flex: 1;
+    padding: 10px 14px;
+    font-size: var(--font-md);
+    font-weight: 600;
+    border-radius: 6px;
+    cursor: pointer;
+    border: none;
+    transition: background-color 0.2s, transform 0.1s;
+}
+
+.btn-primary {
+    background: var(--color-primary);
+    color: var(--color-primary-text);
+}
+
+.btn-primary:hover {
+    background: rgba(var(--color-primary-rgb), 0.85);
+}
+
+.btn-secondary {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-primary);
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.discovery-status {
+    font-size: var(--font-sm);
+    margin: 0;
+    color: var(--color-primary);
+    background: rgba(var(--color-primary-rgb), 0.06);
+    padding: 8px 12px;
+    border-radius: 6px;
+    border-left: 3px solid var(--color-primary);
+}
+
+.discovery-status.error {
+    color: var(--color-danger);
+    background: rgba(var(--color-danger-rgb), 0.06);
+    border-left-color: var(--color-danger);
+}
+
+
+/* ── Standby & Stay Tuned Player Overlays ── */
+.player-standby-overlay,
+.player-stay-tuned-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 95;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(8px);
+}
+
+.standby-card,
+.stay-tuned-card {
+    text-align: center;
+    padding: 24px 32px;
+    border-radius: 12px;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+}
+
+.standby-badge,
+.stay-tuned-badge {
+    font-size: var(--font-xs);
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    background: rgba(var(--color-primary-rgb), 0.2);
+    color: var(--color-primary);
+    border: 1px solid rgba(var(--color-primary-rgb), 0.4);
+}
+
+.stay-tuned-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 180, 0, 0.15);
+    color: #ffb400;
+    border-color: rgba(255, 180, 0, 0.4);
+}
+
+.stay-tuned-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 4px;
+    width: 100%;
+}
+
+.stay-tuned-actions .btn {
+    flex: 1;
+    white-space: nowrap;
+}
+
+.stay-tuned-logo {
+    max-height: 48px;
+    object-fit: contain;
+}
+
+.stay-tuned-channel {
+    font-size: var(--font-xl);
+    font-weight: 700;
+    color: #fff;
+}
+
+.stay-tuned-msg {
+    font-size: 0.84rem;
+    color: rgba(255, 255, 255, 0.7);
+    margin: 0;
+}
+
+.test-pattern-backdrop {
+    position: absolute;
+    inset: 0;
+    opacity: 0.15;
+    background: repeating-linear-gradient(
+        90deg,
+        #fff 0, #fff 14.28%,
+        #ff0 14.28%, #ff0 28.56%,
+        #0ff 28.56%, #0ff 42.84%,
+        #0f0 42.84%, #0f0 57.12%,
+        #f0f 57.12%, #f0f 71.4%,
+        #f00 71.4%, #f00 85.68%,
+        #00f 85.68%, #00f 100%
+    );
+}
+
+.standby-spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid rgba(255, 255, 255, 0.1);
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-top: 6px;
+}
+
+/* ── Placeholder EPG Program Blocks ─────── */
+.guide-program.placeholder-prog {
+    background: rgba(255, 255, 255, 0.03) !important;
+    border: 1px dashed rgba(255, 255, 255, 0.08) !important;
+    opacity: 0.6;
+}
+.guide-program.placeholder-prog .prog-title {
+    font-style: italic;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+/* Focus-visible outlines for keyboard navigation */
+.icon-btn:focus-visible,
+.ch-btn:focus-visible,
+.vol-btn:focus-visible,
+.guide-nav-btn:focus-visible,
+.cat-tab:focus-visible,
+.popout-icon-btn:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+/* Guide Category Colors */
+.guide-row[data-category*="movie" i],
+.guide-row[data-category*="movies" i] {
+    border-left: 3px solid var(--color-danger);
+}
+.guide-row[data-category*="news" i] {
+    border-left: 3px solid var(--color-info);
+}
+.guide-row[data-category*="sport" i],
+.guide-row[data-category*="sports" i] {
+    border-left: 3px solid var(--color-success);
+}
+.guide-row[data-category*="kid" i],
+.guide-row[data-category*="kids" i],
+.guide-row[data-category*="children" i],
+.guide-row[data-category*="animation" i] {
+    border-left: 3px solid var(--color-warning);
+}

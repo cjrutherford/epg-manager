@@ -13,7 +13,7 @@ test.describe.configure({ mode: 'serial' });
 test.describe('Series rules', () => {
     test.beforeEach(async ({ page }) => {
         await signIn(page);
-        await goToSection(page, 'DVR', 'DVR');
+        await goToSection(page, 'Recordings', 'Recordings');
     });
 
     test('recording a series books every future showing, not just the loaded window', async ({ page }) => {
@@ -40,14 +40,14 @@ test.describe('Series rules', () => {
         await expect(toast).toContainText(FIXTURE.seriesTitle);
 
         // And the rule is listed with what it has booked.
-        await page.getByRole('button', { name: /Series Recordings/ }).click();
+        await page.getByRole('button', { name: /Series recordings/ }).click();
         const rule = page.locator('.series-rule').filter({ hasText: FIXTURE.seriesTitle });
         await expect(rule).toBeVisible();
         await expect(rule).toContainText(/episode\(s\) scheduled|waiting for guide data/);
     });
 
     test('stopping a series asks separately about episodes it already booked', async ({ page }) => {
-        await page.getByRole('button', { name: /Series Recordings/ }).click();
+        await page.getByRole('button', { name: /Series recordings/ }).click();
 
         const rule = page.locator('.series-rule').filter({ hasText: FIXTURE.seriesTitle });
         await expect(rule).toBeVisible();

@@ -15,8 +15,8 @@ test.describe('Angular Client Auth Flow', () => {
     // Verify login overlay is visible
     const overlay = page.locator('.login-overlay');
     await expect(overlay).toBeVisible();
-    await expect(overlay.locator('h2')).toContainText('Tuner Daemon');
-    await expect(overlay.locator('p')).toContainText('Automated EPG & Live TV Engine');
+    await expect(overlay.locator('h1')).toContainText('Tuner Daemon');
+    await expect(overlay.locator('p')).toContainText('Automated guide & live TV engine');
   });
 
   test('login with invalid password shows error', async ({ page }) => {
@@ -66,8 +66,8 @@ test.describe('Admin Console Features', () => {
     for (const [label, title] of [
       ['Channels', 'Channels'],
       ['Sources', 'Sources'],
-      ['DVR', 'DVR'],
-      ['EPG & Matches', 'EPG & Matches'],
+      ['Recordings', 'Recordings'],
+      ['Guide & matching', 'Guide & matching'],
       ['Settings', 'Settings'],
       ['Dashboard', 'Dashboard'],
     ]) {
@@ -93,40 +93,41 @@ test.describe('Admin Console Features', () => {
     await expect(page.locator('.action-card:has-text("Run full sync")')).toBeVisible();
   });
 
-  test('settings page loads config and allows saving', async ({ page }) => {
+  test('settings page loads guide controls and saves a change', async ({ page }) => {
     await page.goto('/admin/settings');
     await expect(page.locator('.page-header h1')).toHaveText('Settings');
 
-    // Verify inputs are present
-    const customUrlInput = page.locator('input.custom-url-input');
-    await expect(customUrlInput).toBeVisible();
+    const duration = page.locator('#guide-days');
+    await expect(duration).toBeVisible();
+    await expect(page.locator('#preferred-lang')).toBeVisible();
+    await expect(page.locator('input[type="checkbox"]').first()).toBeVisible();
 
-    const durationInput = page.locator('input[type="number"]');
-    await expect(durationInput).toBeVisible();
+    const saveBtn = page.locator('button:has-text("Save configuration")');
+    await expect(saveBtn).toBeDisabled();
 
-    // Verify metadata enrichment section exists
-    const metadataCheckbox = page.locator('input[type="checkbox"]');
-    await expect(metadataCheckbox).toBeVisible();
-
-    // Click Save Configuration button
-    const saveBtn = page.locator('button:has-text("Save Configuration")');
-    await expect(saveBtn).toBeVisible();
+    const original = await duration.inputValue();
+    await duration.fill(original === '2' ? '3' : '2');
+    await expect(saveBtn).toBeEnabled();
     await saveBtn.click();
+    await expect(page.locator('.toast.success', { hasText: 'Configuration saved' }).first()).toBeVisible();
+    await expect(saveBtn).toBeDisabled();
 
-    // Verify success toast appears
-    const toast = page.locator('.toast.success');
-    await expect(toast).toBeVisible();
+    // Restore the fixture through the API so the test does not depend on a
+    // second sticky-bar click after the first save.
+    const token = await page.evaluate(() => localStorage.getItem('epg_admin_token'));
+    await page.request.post('/api/config', {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { epg_days: Number(original) }
+    });
   });
 
-  test('settings workflow adds playlists, loads iptv-org data, saves, and survives reload', async ({ page }) => {
-    // A full save, reload and restore round trip; the default 30s is tight.
+  test('sources owns the playlist workflow and it survives reload', async ({ page }) => {
     test.setTimeout(90_000);
     const token = await page.evaluate(() => localStorage.getItem('epg_admin_token'));
     const authHeaders = { Authorization: `Bearer ${token}` };
-    const originalConfigResponse = await page.request.get('/api/config', { headers: authHeaders });
-    const originalConfig = await originalConfigResponse.json();
-    const customPlaylistUrl = `https://example.test/e2e-workflow-${Date.now()}`;
-    const customPlaylistLabel = /e2e-workflow/i;
+    const originalConfig = await (await page.request.get('/api/config', { headers: authHeaders })).json();
+    const customPlaylistUrl = `https://example.test/e2e-playlist-${Date.now()}.m3u`;
+    const customPlaylistLabel = /e2e-playlist/i;
     const iptvOrgPlaylist = {
       name: 'US (countries)',
       label: 'US',
@@ -149,71 +150,55 @@ test.describe('Admin Console Features', () => {
     try {
       await page.request.post('/api/config', {
         headers: authHeaders,
-        data: {
-          playlist_urls: [],
-          playlist_url: '',
-          epg_days: 2,
-          channel_numbering_mode: 'list',
-          custom_channel_ranges: '{}'
-        }
+        data: { playlist_urls: [] }
       });
 
-      await page.goto('/admin/settings');
-      await expect(page.locator('.page-header h1')).toHaveText('Settings');
+      await page.goto('/admin/sources');
+      await expect(page.locator('.page-header h1')).toHaveText('Sources');
+      await page.getByRole('button', { name: 'Manage playlists' }).click();
 
-      const customUrlInput = page.locator('input.custom-url-input');
-      const saveBtn = page.locator('button:has-text("Save Configuration")');
-      const browseBtn = page.getByRole('button', { name: /Browse iptv-org & FAST Playlists|Refresh List/ });
+      const customInput = page.locator('#playlist-url');
+      const addBtn = page.locator('.custom-url-row button:has-text("Add")');
+      const saveBtn = page.getByRole('button', { name: 'Save playlists' });
 
-      await expect(customUrlInput).toBeVisible();
-      await customUrlInput.fill(customPlaylistUrl);
-
-      // "Add" is scoped to the custom-URL row: S26d renamed "+ Add Playlist"
-      // to "Add playlist", so an unscoped role lookup now matches seven buttons.
-      const addCustomBtn = page.locator('.custom-url-row button:has-text("Add")');
-      await expect(addCustomBtn).toBeEnabled();
-      await addCustomBtn.click();
+      await expect(customInput).toBeVisible();
+      await customInput.fill(customPlaylistUrl);
+      await addBtn.click();
       await expect(page.locator('.playlist-chip', { hasText: customPlaylistLabel })).toBeVisible();
 
-      await saveBtn.click();
-      await expect(page.locator('.toast.success', { hasText: 'Configuration saved' }).first()).toBeVisible();
-      await expect(saveBtn).toBeEnabled();
-
-      await browseBtn.click();
-      await expect(page.locator('.iptv-org-item', { hasText: 'US' })).toBeVisible();
-      await expect(page.locator('.iptv-org-item', { hasText: '42 est.' })).toBeVisible();
-
-      await page.locator('.iptv-org-item', { hasText: 'US' }).click();
-      await expect(page.locator('.playlist-chip', { hasText: 'countries' })).toBeVisible();
+      // A built-in preset has to keep its label ("Pluto TV"), not collapse to
+      // the URL filename ("all") before the first sync.
+      const pluto = page.locator('.preset-card-btn', { hasText: 'Pluto TV' });
+      await expect(pluto).toBeVisible();
+      await pluto.click();
+      await expect(page.locator('.playlist-chip', { hasText: 'Pluto TV' })).toBeVisible();
 
       await saveBtn.click();
-      await expect(page.locator('.toast.success', { hasText: 'Configuration saved' }).first()).toBeVisible();
-      await expect(saveBtn).toBeEnabled();
+      await expect(page.locator('.toast.success', { hasText: 'Playlists saved' }).first()).toBeVisible();
+
+      await page.getByRole('button', { name: 'Browse channel catalogues' }).click();
+      const us = page.locator('.iptv-org-item', { hasText: 'US' }).first();
+      await expect(us).toBeVisible();
+      await us.click();
+      await expect(page.locator('.playlist-chip', { hasText: /^US/ })).toBeVisible();
+
+      await saveBtn.click();
+      await expect(page.locator('.toast.success', { hasText: 'Playlists saved' }).first()).toBeVisible();
+      await expect(page.locator('.source-label', { hasText: /^US$/ })).toBeVisible();
 
       await page.reload();
-      await expect(page.locator('.page-header h1')).toHaveText('Settings');
-      await expect(customUrlInput).toBeVisible();
-      await expect(saveBtn).toBeEnabled();
+      await page.getByRole('button', { name: 'Manage playlists' }).click();
       await expect(page.locator('.playlist-chip', { hasText: customPlaylistLabel })).toBeVisible();
-      await expect(page.locator('.playlist-chip', { hasText: 'countries' })).toBeVisible();
+      await expect(page.locator('.playlist-chip', { hasText: /^US/ })).toBeVisible();
     } finally {
-      // Restoring must never mask the failure it is cleaning up after. Without
-      // the catch, a body failure was reported as a timeout in this line, which
-      // sent me looking at the wrong code entirely.
       try {
         await page.request.post('/api/config', {
           timeout: 10_000,
           headers: authHeaders,
-          data: {
-            playlist_urls: originalConfig.playlist_urls || [],
-            playlist_url: originalConfig.playlist_url || '',
-            epg_days: originalConfig.epg_days || 2,
-            channel_numbering_mode: originalConfig.channel_numbering_mode || 'list',
-            custom_channel_ranges: originalConfig.custom_channel_ranges || '{}'
-          }
+          data: { playlist_urls: originalConfig.playlist_urls || [] }
         });
       } catch (error) {
-        console.warn("[cleanup] could not restore config:", error);
+        console.warn("[cleanup] could not restore playlists:", error);
       }
     }
   });
@@ -221,16 +206,13 @@ test.describe('Admin Console Features', () => {
   test('channel manager loads channels list', async ({ page }) => {
     await page.goto('/admin/channels');
     await expect(page.locator('.page-header h1')).toHaveText('Channels');
-    
-    // Verify filter input
+
     const filterInput = page.locator('input[placeholder="Filter name or category..."]');
     await expect(filterInput).toBeVisible();
-    
-    // Verify status and category selects are present
+
     const selects = page.locator('select.themed-select');
     await expect(selects).toHaveCount(2);
 
-    // Verify matching filter pills
     const pills = page.locator('.filter-pills button.pill');
     await expect(pills).toHaveCount(5);
   });
@@ -239,90 +221,71 @@ test.describe('Admin Console Features', () => {
     await page.goto('/admin/channels');
     await expect(page.locator('.page-header h1')).toHaveText('Channels');
 
-    // Wait for the table to load
     const rows = page.locator('tbody tr');
     await expect(rows.first()).toBeVisible({ timeout: 10000 });
 
-    // Select the first 3 checkboxes
     const checkboxes = page.locator('tbody tr input[type="checkbox"]');
     await expect(checkboxes.first()).toBeVisible();
     await checkboxes.nth(1).check();
     await checkboxes.nth(2).check();
     await checkboxes.nth(3).check();
 
-    // Verify selected count chip and Auto-# button appear
     const autoBtn = page.locator('button:has-text("Auto-number")');
     await expect(autoBtn).toBeVisible();
-
-    // Click Auto-# button
     await autoBtn.click();
 
-    // Verify modal is open
     const modal = page.locator('.modal-backdrop');
     await expect(modal).toBeVisible();
     await expect(modal.locator('h2')).toContainText('Auto-number channels');
 
-    // Fill start number input with '800'
     const startNumInput = modal.locator('input[type="number"]');
     await expect(startNumInput).toBeVisible();
     await startNumInput.fill('800');
 
-    // Click Auto-Number submit button in modal
-    await modal.locator('button.btn-primary:has-text("Auto-Number")').click();
-
-    // Verify modal disappears
+    await modal.locator('button.btn-primary:has-text("Auto-number")').click();
     await expect(modal).not.toBeVisible();
 
-    // Verify success toast appears
     const toast = page.locator('.toast.success');
     await expect(toast).toBeVisible();
     await expect(toast).toContainText('Auto-assigned numbers');
 
-    // Verify the channels are numbered 800, 801, 802
     const numCells = page.locator('tbody tr td.channel-num');
     await expect(numCells.nth(1)).toContainText('800');
     await expect(numCells.nth(2)).toContainText('801');
     await expect(numCells.nth(3)).toContainText('802');
   });
 
-  test('dvr manager displays gauge and opens schedule modal', async ({ page }) => {
+  test('recordings page displays gauge and opens schedule modal', async ({ page }) => {
     await page.goto('/admin/dvr');
-    await expect(page.locator('.page-header h1')).toHaveText('DVR');
+    await expect(page.locator('.page-header h1')).toHaveText('Recordings');
 
-    // Storage ring is visible
     await expect(page.locator('.storage-ring')).toBeVisible();
 
-    // Open schedule modal
-    const scheduleBtn = page.locator('button:has-text("Schedule Recording")');
+    const scheduleBtn = page.locator('button:has-text("Schedule recording")');
     await expect(scheduleBtn).toBeVisible();
     await scheduleBtn.click();
 
-    // Verify modal is shown
     const modal = page.locator('.modal-backdrop');
     await expect(modal).toBeVisible();
     await expect(modal.locator('h2')).toContainText('Schedule a recording');
 
-    // Cancel modal
     await modal.locator('button:has-text("Cancel")').click();
     await expect(modal).not.toBeVisible();
   });
 
-  test('dvr manager schedules manual recording and cancels it', async ({ page }) => {
+  test('recordings page schedules a manual recording and cancels it', async ({ page }) => {
     const showTitle = `Manual Test Show ${Date.now()}`;
     await page.goto('/admin/dvr');
-    await expect(page.locator('.page-header h1')).toHaveText('DVR');
+    await expect(page.locator('.page-header h1')).toHaveText('Recordings');
 
-    // Open schedule modal
-    await page.locator('button:has-text("Schedule Recording")').click();
+    await page.locator('button:has-text("Schedule recording")').click();
     const modal = page.locator('.modal-backdrop');
     await expect(modal).toBeVisible();
 
-    // Select first channel in the select
     const select = modal.locator('select.themed-select');
     await expect(select).toBeVisible();
     await select.selectOption({ index: 1 });
 
-    // Fill title
     const titleInput = modal.locator('input[placeholder="Recording name..."]');
     await titleInput.fill(showTitle);
 
@@ -338,43 +301,31 @@ test.describe('Admin Console Features', () => {
     await modal.locator('button.btn-primary:has-text("Schedule")').click();
     await expect(modal).not.toBeVisible();
 
-    // Verify toast & table row
     const toast = page.locator('.toast.success').first();
     await expect(toast).toBeVisible();
-    // DvrService names the destination now: "Recording 'X' on the server".
     await expect(toast).toContainText('Recording');
 
-    // Table should contain the recording with a Cancel button
     const row = page.locator('.recording-card', { hasText: showTitle });
     await expect(row).toBeVisible();
-    // Capitalised since S20 gave both recorders one status vocabulary.
     await expect(row.locator('span.badge')).toContainText('Scheduled');
 
-    // Click Cancel
     const cancelBtn = row.locator('button:has-text("Cancel")');
     await expect(cancelBtn).toBeVisible();
-
     await cancelBtn.click();
 
-    // S23 replaced the native confirm with an in-app dialog, so there is no
-    // browser dialog event to listen for — the confirmation is in the page.
     const confirmDialog = page.locator('.confirm-modal');
     await expect(confirmDialog).toBeVisible();
     await expect(confirmDialog.locator('#confirm-title')).toHaveText('Cancel this scheduled recording?');
     await confirmDialog.getByRole('button', { name: 'Cancel recording' }).click();
 
-    // Verify toast for cancellation
-    const cancelToast = page.locator('.toast.success').first();
+    const cancelToast = page.locator('.toast.success', { hasText: 'Scheduled recording cancelled' });
     await expect(cancelToast).toBeVisible();
-    await expect(cancelToast).toContainText('Scheduled recording cancelled');
-
-    // Table should not contain it anymore
     await expect(row).not.toBeVisible();
   });
 
   test('diagnostics page loads tabs and opens manual rematch modal', async ({ page }) => {
     await page.goto('/admin/diagnostics');
-    await expect(page.locator('.page-header h1')).toHaveText('EPG & Matches');
+    await expect(page.locator('.page-header h1')).toHaveText('Guide & matching');
 
     // Verify stats / summary cards are present
     const summaryCards = page.locator('.stat-grid .stat');
@@ -382,20 +333,20 @@ test.describe('Admin Console Features', () => {
     await expect(summaryCards).toHaveCount(4);
 
     // Verify Match Analyzer tab content by default
-    const searchInput = page.locator('input[placeholder="Search channels, matched IDs, score tags..."]');
+    const searchInput = page.locator('input[placeholder="Search channels, guide IDs or match type…"]');
     await expect(searchInput).toBeVisible();
 
     // Verify EPG Source Reliability tab navigation
-    const reliabilityTab = page.locator('.tab-nav button:has-text("EPG Source Reliability")');
+    const reliabilityTab = page.locator('.tab-nav button:has-text("Source reliability")');
     await expect(reliabilityTab).toBeVisible();
     await reliabilityTab.click();
 
     // Verify source metrics table or elements appear
-    const tableHeader = page.locator('th:has-text("EPG Scraper Site")');
+    const tableHeader = page.locator('th:has-text("Guide scraper site")');
     await expect(tableHeader).toBeVisible();
 
     // Switch back to Match Analyzer
-    const matcherTab = page.locator('.tab-nav button:has-text("Match analyser")');
+    const matcherTab = page.locator('.tab-nav button:has-text("Channel matching")');
     await expect(matcherTab).toBeVisible();
     await matcherTab.click();
 
@@ -460,7 +411,7 @@ test.describe('Watch TV Interface', () => {
     await expect(modal.locator('#serverUrlInput')).toBeVisible();
 
     // Close modal
-    await modal.locator('button.close-btn').click();
+    await modal.locator('.close-modal-btn').click();
     await expect(modal).not.toBeVisible();
   });
 

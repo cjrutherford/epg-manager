@@ -1,22 +1,12 @@
 <div class="channel-manager">
-    <header class="page-header">
-        <div class="page-header__text">
-            <h1>Channels</h1>
-            <p class="page-sub">Every channel imported from your playlists, and its guide mapping.</p>
-        </div>
-    </header>
+    <app-page-header title="Channels" subtitle="Every channel imported from your playlists, and its guide mapping."></app-page-header>
 
     @if (loading) {
-    <div class="loading-container">
-        <div class="spinner"></div>
-    </div>
+    <app-skeleton [rows]="6" label="Loading channels"></app-skeleton>
     } @else if (loadError) {
-<div class="glass-card state state--error">
-        <lucide-icon name="circle-alert" class="icon icon--xl state__icon"></lucide-icon>
-        <h2 class="state__title">Could not load your channels</h2>
-        <p class="state__message">{{ loadError }}</p>
+<app-state tone="error" title="Could not load your channels" [message]="loadError">
         <button class="btn btn-secondary" (click)="loadChannels()">Try again</button>
-    </div>
+    </app-state>
     } @else {
     <!-- Toolbar -->
     <div class="toolbar glass-card">
@@ -73,16 +63,16 @@
                     </th>
                     <th class="sortable" (click)="sortBy('name')">
                         Channel
-                        @if (sortKey === 'name') { <span class="sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span> }
+                        @if (sortKey === 'name') { <lucide-icon [name]="sortDir === 'asc' ? 'chevron-up' : 'chevron-down'" class="icon sort-arrow"></lucide-icon> }
                     </th>
                     <th class="sortable" (click)="sortBy('number')">
                         #
-                        @if (sortKey === 'number') { <span class="sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span> }
+                        @if (sortKey === 'number') { <lucide-icon [name]="sortDir === 'asc' ? 'chevron-up' : 'chevron-down'" class="icon sort-arrow"></lucide-icon> }
                     </th>
                     <th>Now Playing</th>
                     <th class="sortable" (click)="sortBy('match')">
                         Match
-                        @if (sortKey === 'match') { <span class="sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span> }
+                        @if (sortKey === 'match') { <lucide-icon [name]="sortDir === 'asc' ? 'chevron-up' : 'chevron-down'" class="icon sort-arrow"></lucide-icon> }
                     </th>
                     <th style="width:60px"></th>
                 </tr>
@@ -100,7 +90,7 @@
                     <td>
                         <div class="channel-cell">
                             @if (ch.tvg_logo) {
-                            <img [src]="ch.tvg_logo" class="channel-logo" alt="">
+                            <img [src]="ch.tvg_logo" [appImageFallback]="ch.name" class="channel-logo" alt="">
                             }
                             <div>
                                 <div class="channel-name">{{ ch.name }}</div>
@@ -110,8 +100,8 @@
                     </td>
                     <td class="channel-num">{{ ch.channel_number || '-' }}</td>
                     <td>
-                        @if (ch.current_program_title) {
-                        <div class="program-now">{{ ch.current_program_title }}</div>
+                        @if (ch.current_program_title || ch.current_program) {
+                        <div class="program-now">{{ ch.current_program_title || ch.current_program }}</div>
                         @if (ch.current_program_subtitle) {
                         <div class="program-sub">{{ ch.current_program_subtitle }}</div>
                         }
@@ -154,8 +144,8 @@
 
                                 <hr style="border-color: var(--color-border); margin: 20px 0;">
 
-                                <h4>EPG Mapping</h4>
-                                <input type="text" class="themed-input w-full" placeholder="Search EPG channels..." aria-label="Search EPG channels to map"
+                                <h4>Guide mapping</h4>
+                                <input type="text" class="themed-input w-full" placeholder="Search guide channels…" aria-label="Search guide channels to map"
                                     [value]="epgSearchQuery"
                                     (input)="onEpgSearchInput(ch.id, $any($event.target).value)">
                                 <div class="epg-search-results">
@@ -171,10 +161,10 @@
                                 </div>
                             </div>
                             <div class="expanded-sidebar">
-                                <div class="sidebar-label">Current EPG Match</div>
+                                <div class="sidebar-label">Current guide match</div>
                                 <div class="sidebar-value text-primary">{{ getEffectiveEpgId(ch) }}</div>
                                 <button class="btn btn-secondary w-full" style="color:var(--color-danger);"
-                                    (click)="setOverride(ch.id, null)">Clear EPG Match</button>
+                                    (click)="setOverride(ch.id, null)">Clear guide match</button>
                             </div>
                         </div>
                     </td>
@@ -199,9 +189,7 @@
 
     <!-- Auto-Number Modal -->
     @if (showAutoNumberModal) {
-    <div class="modal-backdrop" (click)="showAutoNumberModal = false">
-        <div class="modal-content" appModalFocus (dismiss)="showAutoNumberModal = false" aria-labelledby="auto-number-title" (click)="$event.stopPropagation()" style="max-width: 500px;">
-            <h2 id="auto-number-title">Auto-number channels</h2>
+    <app-modal title="Auto-number channels" titleId="auto-number-title" [maxWidth]="'500px'" (closed)="showAutoNumberModal = false">
             <p class="modal-subtitle" style="margin-bottom: 20px; color: var(--text-secondary);">
                 Auto-assign channel numbers to the {{ selectedChannelIds.size }} selected channels.
             </p>
@@ -229,7 +217,6 @@
                 <button class="btn btn-secondary" (click)="showAutoNumberModal = false">Cancel</button>
                 <button class="btn btn-primary" (click)="executeAutoNumber()">Auto-number</button>
             </div>
-        </div>
-    </div>
+    </app-modal>
     }
 </div>

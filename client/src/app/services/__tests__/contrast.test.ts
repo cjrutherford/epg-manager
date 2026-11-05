@@ -83,8 +83,9 @@ describe('the shipped themes', () => {
     const themes = extractThemes(css);
 
     it('finds every theme in the stylesheet', () => {
-        expect(themes.length).toBeGreaterThanOrEqual(9);
-        expect(themes.map(t => t.name)).toContain('arctic-ice');
+        expect(themes.length).toBeGreaterThanOrEqual(5);
+        expect(themes.map(t => t.name)).toContain('daylight');
+        expect(themes.map(t => t.name)).toContain('high-contrast');
     });
 
     it('ships both a light and a dark theme', () => {

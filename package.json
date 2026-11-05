@@ -30,12 +30,19 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:e2e": "playwright test --project=e2e --project=e2e-destructive --project=e2e-reset",
+    "test:e2e:ux": "playwright test --project=e2e e2e/ux.spec.ts",
     "docker:build": "docker compose build",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
     "docker:start": "docker compose up -d --build",
     "test:e2e:docs": "playwright test --project=docs && ts-node e2e/docs/collect-video.ts",
+    "css:audit": "node scripts/css-budget.mjs",
+    "css:check": "node scripts/css-budget.mjs --check",
+    "quality:dashboard": "node scripts/ux-quality-dashboard.mjs",
+    "test:visual": "playwright test --project=visual",
+    "test:cross-browser": "CROSS_BROWSER=1 playwright test --project=firefox --project=webkit",
+    "bench:first-sync": "node scripts/benchmark-first-sync.mjs",
     "version:set": "ts-node scripts/set-version.ts",
     "version:check": "ts-node scripts/set-version.ts --check",
     "build:apk": "sh scripts/build-apk.sh"
@@ -56,6 +63,7 @@
     "sax": "^1.4.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@playwright/test": "^1.60.0",
     "@types/adm-zip": "^0.5.8",
     "@types/cli-progress": "^3.11.6",
