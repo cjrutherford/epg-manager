@@ -324,9 +324,9 @@
             <div class="callout accent" style="margin-top:14px">
               <h4>Phase 2 status · 5 Nov 2026</h4>
               <p><b>Engineering floor met:</b> zero serious axe issues; Lighthouse accessibility 100 on Watch and Login; no overflow at 320–1440; all five themes pass contrast. The guide now has a keyboard and D-pad path: channels and programmes are focusable, Enter activates, the programme action menu takes focus, Escape closes the menu and returns focus, and arrows stay inside the guide.</p>
-              <p style="margin-top:8px"><b>Harness added:</b> <code>docs/gate-2-usability-kit.md</code> contains the study protocol, task definitions, SUS form and scorecard; <code>e2e/keyboard.spec.ts</code> covers keyboard, D-pad and large-text/high-contrast paths; <code>e2e/aria.spec.ts</code> covers the ARIA contract; <code>npm run bench:first-sync</code> measures a clean-install sync. The synthetic run imported 60 channels in <b>25.2 s</b>.</p>
+              <p style="margin-top:8px"><b>Harness added:</b> <code>docs/gate-2-usability-kit.md</code> contains the study protocol, task definitions, SUS form and scorecard; <code>e2e/keyboard.spec.ts</code> covers keyboard, D-pad and large-text/high-contrast paths; <code>e2e/aria.spec.ts</code> covers the ARIA contract; <code>npm run bench:first-sync</code> measures a clean-install sync. The synthetic run imported 60 channels and <b>360 programmes</b> in <b>32.5 s</b>, with all 60 channels matched.</p>
               <p style="margin-top:8px"><b>Decisions:</b> user testing is deferred; automated ARIA is accepted as interim evidence; Firefox/WebKit runs in the new GitHub Actions <code>cross-browser</code> job; first sync reports synthetic, built-in and user-source modes separately; Android and Google TV hardware is available; the product owner signs the scorecard and the agent triages P1/P2.</p>
-              <p style="margin-top:8px"><b>Gate remains open:</b> SUS/task success and the manual screen-reader pass are deferred; built-in and user-source first-sync runs are pending; Android/TV capture is pending. A P1 was found: guide descriptors are stored and adapters expose <code>fetchGuide</code>, but <code>runFullSync</code> never calls it, so a guide source contributes no programmes. That must be fixed before the first-sync line is meaningful.</p>
+              <p style="margin-top:8px"><b>Gate remains open:</b> SUS/task success and the manual screen-reader pass are deferred; built-in and user-source first-sync runs are pending; Android/TV capture is pending. The guide-source P1 is resolved: <code>syncGuideSources</code> now imports every enabled guide source before matching; the synthetic cold run produced 60 channels and 360 programmes.</p>
             </div>
           </article>
 
@@ -342,6 +342,12 @@
               <li><b>Performance:</b> 60fps guide at 1,000+ channels; theme switch under 150 ms; memory and INP budgets in CI.</li>
             </ul>
             <div class="gate"><b>Gate 3 · 9.5</b>Guided first run reaches a live channel without help. Remote-only test passes. 60fps guide at 1,000+ channels. Core flows localized and RTL-safe. Two consecutive releases with no P1/P2 regression.</div>
+            <div class="callout accent" style="margin-top:14px">
+              <h4>Phase 3 kickoff · 5 Nov 2026</h4>
+              <p><b>First run:</b> the checklist's “Add a source” action now points at Sources (it still pointed at Settings after the Phase 1 move), and the card stays on the dashboard until Watch has been opened once. When source, channels and programmes are all present it becomes “You're ready to watch” with a primary <b>Watch your first channel</b> action, so the final step does not disappear the moment sync completes.</p>
+              <p style="margin-top:8px"><b>Blocker cleared:</b> the guide-source P1 is fixed. A cold synthetic run now imports 60 channels and 360 programmes in 32.5 s, matches all 60, and writes the guide.</p>
+              <p style="margin-top:8px"><b>Next:</b> remote-only TV run, motion specs for channel switching and guide focus, stale-guide/offline warnings, and the 1,000-channel frame-performance budget.</p>
+            </div>
           </article>
 
           <article class="phase">

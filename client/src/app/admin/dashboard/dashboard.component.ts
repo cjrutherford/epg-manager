@@ -133,7 +133,11 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
         private updateService: UpdateService
     ) { }
 
+    hasWatched = false;
+
     ngOnInit(): void {
+        this.hasWatched = typeof localStorage !== 'undefined'
+            && localStorage.getItem('tuner_daemon_has_watched') === '1';
         this.loadData();
         this.setupSseListeners();
         this.loadVersionInfo();

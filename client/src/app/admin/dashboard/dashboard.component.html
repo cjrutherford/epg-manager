@@ -9,6 +9,7 @@
         [hasSource]="!!dataState?.hasPlaylist || !!dataState?.hasChannels"
         [hasChannels]="!!dataState?.hasChannels"
         [hasPrograms]="!!dataState?.hasPrograms"
+        [hasWatched]="hasWatched"
         (runSync)="runFullSync()"></app-setup-checklist>
 
     <!-- Version & Update -->

@@ -368,6 +368,22 @@ test.describe('UX guardrails — clean install', () => {
         await expect(empty.locator('#btn-go-to-admin')).toBeVisible();
     });
 
+    test('first-run checklist keeps the watch moment until Watch is opened', async ({ page }) => {
+        await signIn(page);
+        await page.route('**/api/has-data', route => route.fulfill({
+            json: { hasChannels: true, hasPrograms: true, hasPlaylist: true, isEmpty: false }
+        }));
+        await page.goto('/admin/dashboard');
+        await expect(page.getByText("You're ready to watch")).toBeVisible();
+        await expect(page.getByRole('link', { name: 'Watch your first channel' })).toBeVisible();
+
+        await page.goto('/watch');
+        await page.waitForTimeout(1200);
+
+        await page.goto('/admin/dashboard');
+        await expect(page.getByText("You're ready to watch")).toHaveCount(0);
+    });
+
     test('Dashboard disables data actions until a source exists', async ({ page }) => {
         await signIn(page);
         await page.route('**/api/has-data', route => route.fulfill({ json: emptyData }));

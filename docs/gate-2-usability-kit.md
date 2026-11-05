@@ -137,14 +137,13 @@ the number, or the result is not comparable.
 - **Sign-off:** the product owner signs the scorecard; the agent triages P1/P2
   and presents the evidence.
 
-## P1 finding before the first-sync line can pass
+## P1 resolved — guide sources now reach the pipeline
 
-The source registry stores guide descriptors and the `xmltv` / `scraper-repo`
-adapters expose `fetchGuide`, but `runFullSync` never calls it. A clean install
-with a guide source therefore imports channels and leaves `epg_programs` empty.
-The synthetic benchmark (60 channels) completed in 25.2 s with 0 programmes.
-This needs a P1 triage decision before "first sync under two minutes" is treated
-as a meaningful Gate 2 line; measuring a channel-only sync would hide the gap.
+The source registry stored guide descriptors and the adapters exposed
+`fetchGuide`, but `runFullSync` never called it. `syncGuideSources` now imports
+every enabled guide source before matching, records the row count and failure
+state on the source, and shows the result in the sync log. The proof is the
+synthetic benchmark: 60 channels, **360 programmes**, 32.5 s cold.
 
 ## Current evidence
 
@@ -160,7 +159,7 @@ as a meaningful Gate 2 line; measuring a channel-only sync would hide the gap.
 | Screen reader manual pass | **Deferred** — automated ARIA accepted as interim |
 | Cross-browser Firefox/WebKit | **CI job added** — GitHub Actions `cross-browser`; not yet run |
 | SUS / task success | **Deferred** — needs participants |
-| First sync, synthetic | **25.2 s** — 60 channels, 0 programmes (guide-source gap above) |
+| First sync, synthetic | **32.5 s** — 60 channels, 360 programmes, 60 matched |
 | First sync, built-in | **Not run** — network sources |
 | First sync, user sources | **Not run** — needs the shipping URL pair |
 

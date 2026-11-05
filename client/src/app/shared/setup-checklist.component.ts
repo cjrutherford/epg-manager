@@ -15,13 +15,13 @@ import { LucideAngularModule } from 'lucide-angular';
     standalone: true,
     imports: [RouterLink, LucideAngularModule],
     template: `
-        @if (!hasSource || !hasChannels || !hasPrograms) {
+        @if (!hasWatched) {
         <section class="setup glass-card" aria-labelledby="setup-title">
             <div class="setup__head">
                 <div>
                     <div class="setup__eyebrow">Get started</div>
-                    <h2 id="setup-title">Three steps to live TV</h2>
-                    <p>Add a source, pull the guide, then open Watch. You can come back to this list at any time.</p>
+                    <h2 id="setup-title">{{ allDone ? "You're ready to watch" : 'Three steps to live TV' }}</h2>
+                    <p>{{ allDone ? 'Your guide is populated. Open Watch to tune the first channel.' : 'Add a source, pull the guide, then open Watch. You can come back to this list at any time.' }}</p>
                 </div>
                 <span class="setup__count">{{ doneCount }} of 3 done</span>
             </div>
@@ -36,7 +36,7 @@ import { LucideAngularModule } from 'lucide-angular';
                         <p>Paste an M3U or XMLTV URL, or pick a free channel catalogue.</p>
                     </div>
                     @if (!hasSource) {
-                    <a class="btn btn-secondary small-btn" routerLink="/admin/settings">Add a source</a>
+                    <a class="btn btn-secondary small-btn" routerLink="/admin/sources">Add a source</a>
                     }
                 </li>
 
@@ -70,6 +70,13 @@ import { LucideAngularModule } from 'lucide-angular';
                     }
                 </li>
             </ol>
+
+            @if (allDone) {
+            <div class="setup__ready">
+                <a class="btn btn-primary" routerLink="/watch">Watch your first channel</a>
+                <span>You can adjust sources and guide settings at any time.</span>
+            </div>
+            }
         </section>
         }
     `,
@@ -173,6 +180,21 @@ import { LucideAngularModule } from 'lucide-angular';
             color: var(--text-secondary);
         }
 
+        .setup__ready {
+            display: flex;
+            align-items: center;
+            gap: var(--space-lg);
+            flex-wrap: wrap;
+            margin-top: var(--space-xl);
+            padding-top: var(--space-xl);
+            border-top: 1px solid var(--border-subtle);
+        }
+
+        .setup__ready span {
+            font-size: var(--font-sm);
+            color: var(--text-muted);
+        }
+
         @media (max-width: 640px) {
             .setup__head { flex-direction: column; }
             .setup__step {
@@ -189,8 +211,13 @@ export class SetupChecklistComponent {
     @Input() hasSource = false;
     @Input() hasChannels = false;
     @Input() hasPrograms = false;
+    @Input() hasWatched = false;
 
     @Output() runSync = new EventEmitter<void>();
+
+    get allDone(): boolean {
+        return this.hasSource && this.hasChannels && this.hasPrograms;
+    }
 
     get doneCount(): number {
         return [this.hasSource, this.hasChannels && this.hasPrograms, this.hasChannels]

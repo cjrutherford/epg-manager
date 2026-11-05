@@ -257,6 +257,11 @@ export class WatchComponent implements OnInit, OnDestroy {
             return;
         }
 
+        // The first-run checklist stays on the dashboard until Watch has been
+        // opened once, so the final "watch something" moment is not hidden by
+        // the checklist disappearing the instant sync completes.
+        localStorage.setItem('tuner_daemon_has_watched', '1');
+
         const urlParams = new URLSearchParams(window.location.search);
         this.isPopoutMode = urlParams.get('popout') === 'true';
 
@@ -377,8 +382,6 @@ export class WatchComponent implements OnInit, OnDestroy {
         if (this.recordingsSub) { this.recordingsSub.unsubscribe(); this.recordingsSub = null; }
         if (this.jobStatusSub) { this.jobStatusSub.unsubscribe(); this.jobStatusSub = null; }
         if (this.channelEventsSub) { this.channelEventsSub.unsubscribe(); this.channelEventsSub = null; }
-        clearTimeout(this.overlayTimer);
-        clearTimeout(this.osdTimer);
         clearTimeout(this.idleTimer);
         clearInterval(this.currentTimeInterval);
         clearInterval(this.diagnosticsInterval);
