@@ -89,8 +89,9 @@ function duplicateRules(text, file) {
 
 function routeCss() {
     if (!fs.existsSync(CLIENT_DIST)) return [];
-    const pages = [];
+    const pagesByRoute = new Map();
     const addPage = (file) => {
+        const relativePage = path.relative(CLIENT_DIST, file).replace(/index\.csr\.html$/, 'index.html');
         const html = fs.readFileSync(file, 'utf8');
         let cssBytes = 0;
         for (const style of html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)) {
@@ -104,16 +105,20 @@ function routeCss() {
             if (fs.existsSync(asset)) linked.add(asset);
         }
         for (const asset of linked) cssBytes += fs.statSync(asset).size;
-        pages.push({
-            page: path.relative(CLIENT_DIST, file),
-            initialCss: cssBytes,
-            linked: [...linked].map(item => path.relative(CLIENT_DIST, item)),
-        });
+        // A server-output build may emit only index.csr.html. Count it as the
+        // root route instead of silently dropping a route and its baseline.
+        if (!pagesByRoute.has(relativePage)) {
+            pagesByRoute.set(relativePage, {
+                page: relativePage,
+                initialCss: cssBytes,
+                linked: [...linked].map(item => path.relative(CLIENT_DIST, item)),
+            });
+        }
     };
     for (const entry of walk(CLIENT_DIST, '.html')) {
-        if (path.basename(entry) === 'index.html') addPage(entry);
+        if (path.basename(entry) === 'index.html' || path.basename(entry) === 'index.csr.html') addPage(entry);
     }
-    return pages.sort((a, b) => b.initialCss - a.initialCss);
+    return [...pagesByRoute.values()].sort((a, b) => b.initialCss - a.initialCss);
 }
 
 const files = walk(CLIENT_SRC).sort();
