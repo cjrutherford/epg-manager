@@ -6,7 +6,9 @@ import {
     parseVersion,
     readPackageVersion,
     setGradleVersion,
-    setPackageVersion
+    setPackageVersion,
+    setXcodeGenVersion,
+    setXcodeProjectVersion
 } from '../version';
 
 describe('parseVersion', () => {
@@ -107,6 +109,47 @@ android {
 
     it('fails loudly on a file it does not recognise', () => {
         expect(() => setGradleVersion('android {}', parseVersion('1.0.0')!)).toThrow(/versionName/);
+    });
+});
+
+describe('setXcodeProjectVersion', () => {
+    const project = `
+        MARKETING_VERSION = 1.0;
+        CURRENT_PROJECT_VERSION = 1;
+        MARKETING_VERSION = 1.0;
+        CURRENT_PROJECT_VERSION = 1;
+    `;
+
+    it('writes the marketing version and a matching build number everywhere', () => {
+        const updated = setXcodeProjectVersion(project, parseVersion('1.2.3')!);
+        expect(updated).toContain('MARKETING_VERSION = 1.2.3;');
+        expect(updated).toContain('CURRENT_PROJECT_VERSION = 10203;');
+        expect(updated.match(/CURRENT_PROJECT_VERSION = 10203;/g)).toHaveLength(2);
+    });
+
+    it('fails loudly on a file it does not recognise', () => {
+        expect(() => setXcodeProjectVersion('{}', parseVersion('1.0.0')!))
+            .toThrow(/MARKETING_VERSION/);
+    });
+});
+
+describe('setXcodeGenVersion', () => {
+    const project = `
+settings:
+  base:
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+`;
+
+    it('writes both fields', () => {
+        const updated = setXcodeGenVersion(project, parseVersion('1.2.3')!);
+        expect(updated).toContain('MARKETING_VERSION: "1.2.3"');
+        expect(updated).toContain('CURRENT_PROJECT_VERSION: "10203"');
+    });
+
+    it('fails loudly on a file it does not recognise', () => {
+        expect(() => setXcodeGenVersion('{}', parseVersion('1.0.0')!))
+            .toThrow(/MARKETING_VERSION/);
     });
 });
 

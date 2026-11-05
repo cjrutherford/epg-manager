@@ -208,8 +208,9 @@ did.
 ## Releases
 
 Versions are set in one place and propagated. `package.json`, `client/package.json`,
-`client/android/app/build.gradle`, `docker-compose.yml` (pinned `TAG`) and `.env.example`
-used to disagree — `0.1.0` vs `0.0.0` vs `1.0` — which makes a bug report impossible to place.
+`client/android/app/build.gradle`, the iOS Xcode project, the tvOS XcodeGen
+project, `docker-compose.yml` (pinned `TAG`) and `.env.example` used to
+disagree — `0.1.0` vs `0.0.0` vs `1.0` — which makes a bug report impossible to place.
 
 ```bash
 npm run version:set minor     # or patch, major, or an exact 1.4.0
@@ -225,6 +226,8 @@ Cutting a release (fully automatic):
    - builds and pushes a pinned image to **GHCR** (`ghcr.io/cjrutherford/epg-manager:X.Y.Z`, `X.Y`, `X`, `latest` if stable), and to **Docker Hub** as `docker.io/<namespace>/epg-manager` when `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` are configured
    - builds the `mobile` and `tv` Android installers
    - publishes a GitHub Release with the installers and pinned `docker-compose.yml` + `.env.example`
+   - (Apple packages are built by `apple.yml`; signing is documented in
+     [`docs/apple-platforms.md`](docs/apple-platforms.md))
 
 Dev branches push `edge`, `branch-<name>`, `branch-<name>-<sha>` and `sha-<short>` via `edge.yml` on every non-`main` push.
 
@@ -243,6 +246,25 @@ To build the installers locally:
 ```bash
 npm run build:apk    # uses JAVA_HOME, or the JDK vendored under client/
 ```
+
+### iOS and Apple TV
+
+iOS runs the same mobile bundle as the Android apps through Capacitor. Apple TV
+cannot: tvOS has no public WebView, so `client/tvos` is a native SwiftUI client
+against the same REST API. It already has a server picker, channel grid and
+`AVPlayer` HLS playback; the full guide and DVR are the remaining work. Both
+need macOS with Xcode 16+; tvOS also needs `brew install xcodegen`.
+
+```bash
+npm run build:ios     # iOS simulator app
+npm run build:tvos    # Apple TV simulator app
+npm run build:apple   # both
+```
+
+`apple.yml` builds unsigned simulator artifacts on macOS CI. Signed App Store
+and device packages need an Apple Developer account; see
+[`docs/apple-platforms.md`](docs/apple-platforms.md) for the signing secrets,
+the parity checklist and the known gaps.
 
 ---
 

@@ -21,17 +21,11 @@ fi
 
 echo "Using JAVA_HOME=$JAVA_HOME"
 
+# Android, iOS and tvOS ship the same bundle; the shared script also fixes the
+# SPA entry point Capacitor loads.
+sh scripts/build-mobile-web.sh
+
 cd client
-npx ng build --configuration mobile
-
-# Angular's static build emits a redirect document for the empty route. Capacitor
-# loads the root index file directly, so a redirect page would leave the WebView
-# on "Redirecting to /watch" forever. Use the prerendered Watch shell as the SPA
-# entry point; client-side routing then takes over.
-if [ -f dist/client/browser/watch/index.html ]; then
-    cp dist/client/browser/watch/index.html dist/client/browser/index.html
-fi
-
 npx cap sync android
 
 cd android

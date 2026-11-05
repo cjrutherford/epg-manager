@@ -1,11 +1,12 @@
 /**
- * One version, written in four places.
+ * One version, written in every place that carries one.
  *
- * The root package says 0.1.0, the client package says 0.0.0 and the Android
- * manifest says 1.0 — three answers to "which build is this?", which makes a
- * bug report from a user impossible to place. A release has to set all of them
- * from a single input, and a tag has to be checked against them before anything
- * is published under that name.
+ * The root package said 0.1.0, the client package said 0.0.0 and the Android
+ * manifest said 1.0 — three answers to "which build is this?", which makes a
+ * bug report from a user impossible to place. iOS and tvOS add two more
+ * projects to the same problem. A release has to set all of them from a single
+ * input, and a tag has to be checked against them before anything is published
+ * under that name.
  *
  * Kept pure so the arithmetic and the rewriting rules are tested rather than
  * discovered during a release.
@@ -89,6 +90,44 @@ export function setGradleVersion(gradle: string, version: SemVer): string {
     return gradle
         .replace(/versionName\s+"[^"]*"/, `versionName "${formatVersion(version)}"`)
         .replace(/versionCode\s+\d+/, `versionCode ${androidVersionCode(version)}`);
+}
+
+/**
+ * Set Apple's two version fields in an Xcode `project.pbxproj`.
+ *
+ * `CFBundleShortVersionString` reads `MARKETING_VERSION`, and `CFBundleVersion`
+ * reads `CURRENT_PROJECT_VERSION`. Both must move with the Android version or
+ * an App Store upload reports a different build than the APK beside it.
+ */
+export function setXcodeProjectVersion(project: string, version: SemVer): string {
+    if (!/MARKETING_VERSION = [^;]+;/.test(project)) {
+        throw new Error('project.pbxproj has no MARKETING_VERSION to set');
+    }
+    if (!/CURRENT_PROJECT_VERSION = [^;]+;/.test(project)) {
+        throw new Error('project.pbxproj has no CURRENT_PROJECT_VERSION to set');
+    }
+    return project
+        .replace(/MARKETING_VERSION = [^;]+;/g, `MARKETING_VERSION = ${formatVersion(version)};`)
+        .replace(
+            /CURRENT_PROJECT_VERSION = [^;]+;/g,
+            `CURRENT_PROJECT_VERSION = ${androidVersionCode(version)};`
+        );
+}
+
+/** Set the same two fields in an XcodeGen `project.yml`. */
+export function setXcodeGenVersion(project: string, version: SemVer): string {
+    if (!/MARKETING_VERSION:\s*"[^"]*"/.test(project)) {
+        throw new Error('project.yml has no MARKETING_VERSION to set');
+    }
+    if (!/CURRENT_PROJECT_VERSION:\s*"[^"]*"/.test(project)) {
+        throw new Error('project.yml has no CURRENT_PROJECT_VERSION to set');
+    }
+    return project
+        .replace(/MARKETING_VERSION:\s*"[^"]*"/, `MARKETING_VERSION: "${formatVersion(version)}"`)
+        .replace(
+            /CURRENT_PROJECT_VERSION:\s*"[^"]*"/,
+            `CURRENT_PROJECT_VERSION: "${androidVersionCode(version)}"`
+        );
 }
 
 /** Read the version out of a package.json. */

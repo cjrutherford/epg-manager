@@ -1,0 +1,18 @@
+{
+  "images": [
+    {
+      "filename": "AppIcon-400.png",
+      "idiom": "tv",
+      "scale": "1x"
+    },
+    {
+      "filename": "AppIcon-800.png",
+      "idiom": "tv",
+      "scale": "2x"
+    }
+  ],
+  "info": {
+    "version": 1,
+    "author": "xcode"
+  }
+}

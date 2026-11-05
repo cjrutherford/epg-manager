@@ -36,6 +36,7 @@ test_*.js
 # Temporary
 /tmp/
 *.tmp
+/scratch/
 
 # Progress artifacts
 dl_progress.txt

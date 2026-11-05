@@ -1,0 +1,8 @@
+# XcodeGen generates the project from project.yml. Never edit or commit it.
+TunerDaemonTV.xcodeproj/
+
+# Local build output
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
