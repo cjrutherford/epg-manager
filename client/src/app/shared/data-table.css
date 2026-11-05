@@ -1,0 +1,94 @@
+/* Shared table contract for Sources and Diagnostics.
+   Loaded through each component's styleUrls, so Watch never downloads it. */
+/* One table contract for Sources and Diagnostics. The mobile card pattern
+   used to be copied into both components with different prefixes. */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+}
+
+.data-table th {
+    text-align: left;
+    font-size: var(--font-xs);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    padding: var(--space-lg) var(--space-xl);
+    border-bottom: 1px solid var(--border-subtle);
+    white-space: nowrap;
+}
+
+.data-table td {
+    padding: var(--space-lg) var(--space-xl);
+    border-bottom: 1px solid var(--border-subtle);
+    vertical-align: top;
+    font-size: var(--font-md);
+}
+
+.data-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.data-table tbody tr:hover td {
+    background: var(--bg-surface-hover);
+}
+
+@media (max-width: 768px) {
+    .data-table,
+    .data-table tbody,
+    .data-table tr {
+        display: block;
+    }
+
+    .data-table thead {
+        display: none;
+    }
+
+    .data-table tbody tr {
+        padding: var(--space-xl);
+        border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .data-table tbody tr:last-child {
+        border-bottom: none;
+    }
+
+    .data-table tbody td {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: var(--space-xl);
+        padding: var(--space-2xs) 0;
+        border: 0;
+    }
+
+    .data-table tbody td::before {
+        content: attr(data-label);
+        flex: none;
+        font-size: var(--font-xs);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+    }
+
+    .data-table tbody td[data-label="Channel"],
+    .data-table tbody td[data-label="Source"],
+    .data-table tbody td[data-label="Scraper site"],
+    .data-table tbody td[data-label="Actions"] {
+        display: block;
+    }
+
+    .data-table tbody td[data-label="Channel"]::before,
+    .data-table tbody td[data-label="Source"]::before,
+    .data-table tbody td[data-label="Scraper site"]::before,
+    .data-table tbody td[data-label="Actions"]::before {
+        display: none;
+    }
+
+    .data-table tbody td[data-label="Actions"] {
+        margin-top: var(--space-sm);
+    }
+}
+

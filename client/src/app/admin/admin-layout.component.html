@@ -1,26 +1,27 @@
 <!-- Login Overlay -->
 @if (!isAuthenticated) {
-<div class="login-overlay">
+<main class="login-overlay">
     <div class="login-card glass-card">
         <div class="login-logo">
             <img src="assets/tuner-daemon-icon.png" alt="Tuner Daemon" class="mascot-brand-img" style="width: 64px; height: 64px; border-radius: 12px; margin-bottom: 8px;">
-            <h2>Tuner Daemon</h2>
-            <p>Automated EPG & Live TV Engine</p>
+            <h1>Tuner Daemon</h1>
+            <p>Automated guide & live TV engine</p>
         </div>
         <form (ngSubmit)="login()" class="login-form">
             <input type="password" [(ngModel)]="password" name="password" placeholder="Enter password"
-                class="themed-input w-full" required autofocus>
+                class="themed-input w-full" aria-label="Password" required autofocus>
             @if (loginError) {
             <div class="login-error">{{ loginError }}</div>
             }
             <button type="submit" class="btn btn-primary w-full">Sign In</button>
         </form>
     </div>
-</div>
+</main>
 } @else {
 <div class="admin-shell" [class.sidebar-collapsed]="!sidebarOpen">
     <!-- Sidebar -->
-    <aside class="sidebar" [class.open]="sidebarOpen">
+    <aside class="sidebar" [class.open]="sidebarOpen" [attr.inert]="isMobile && !sidebarOpen ? '' : null"
+        [attr.aria-hidden]="isMobile && !sidebarOpen ? 'true' : null">
         <div class="sidebar-header">
             <div class="brand-logo" style="display: flex; align-items: center; gap: 10px;">
                 <img src="assets/tuner-daemon-icon.png" alt="Tuner Daemon" style="width: 32px; height: 32px; border-radius: 6px;">
@@ -42,12 +43,12 @@
                 <span>Sources</span>
             </a>
             <a routerLink="dvr" routerLinkActive="active" class="nav-item">
-                <lucide-icon name="disc" class="icon icon--lg"></lucide-icon>
-                <span>DVR</span>
+                <lucide-icon name="clapperboard" class="icon icon--lg"></lucide-icon>
+                <span>Recordings</span>
             </a>
             <a routerLink="diagnostics" routerLinkActive="active" class="nav-item">
-                <lucide-icon name="activity" class="icon icon--lg"></lucide-icon>
-                <span>EPG & Matches</span>
+                <lucide-icon name="calendar-days" class="icon icon--lg"></lucide-icon>
+                <span>Guide &amp; matching</span>
             </a>
             <a routerLink="settings" routerLinkActive="active" class="nav-item">
                 <lucide-icon name="settings" class="icon icon--lg"></lucide-icon>
@@ -58,28 +59,14 @@
         <div class="sidebar-footer">
             <!-- Theme Picker -->
             <div class="sidebar-theme-picker">
-                <button class="nav-item" (click)="toggleThemePicker()">
+                <button class="nav-item" (click)="toggleThemePicker()" [attr.aria-expanded]="themePickerOpen"
+                    aria-haspopup="true">
                     <lucide-icon name="palette" class="icon icon--lg"></lucide-icon>
                     <span>Theme</span>
                 </button>
                 @if (themePickerOpen) {
-                <div class="theme-dropdown">
-                    <div class="theme-dropdown-title">Choose Theme</div>
-                    @for (theme of themeService.getThemes(); track theme.key) {
-                    <button class="theme-option"
-                        [class.active]="themeService.getCurrentThemeKey() === theme.key"
-                        (click)="setTheme(theme.key)">
-                        <span class="theme-swatch-group">
-                            <span class="theme-swatch" [style.background]="theme.primaryColor"></span>
-                            <span class="theme-swatch" [style.background]="theme.bgColor"></span>
-                        </span>
-                        <span class="theme-label">{{ theme.name }}</span>
-                        @if (themeService.getCurrentThemeKey() === theme.key) {
-                        <span class="theme-check">✓</span>
-                        }
-                    </button>
-                    }
-                </div>
+                <app-theme-menu align="left" placement="up" (selected)="themePickerOpen = false" (closed)="themePickerOpen = false"
+                    (click)="$event.stopPropagation()"></app-theme-menu>
                 }
             </div>
 
@@ -98,7 +85,7 @@
     <div class="main-content">
         <!-- Mobile Header -->
         <div class="mobile-header">
-            <button class="hamburger" (click)="toggleSidebar()">
+            <button class="hamburger" (click)="toggleSidebar()" aria-label="Open navigation">
                 <lucide-icon name="menu" class="icon icon--lg"></lucide-icon>
             </button>
             <span class="mobile-title" style="display: flex; align-items: center; gap: 8px;">
@@ -107,9 +94,9 @@
             </span>
         </div>
 
-        <div class="content-scroll">
+        <main class="content-scroll">
             <router-outlet></router-outlet>
-        </div>
+        </main>
     </div>
 
     <!-- Mobile sidebar overlay -->

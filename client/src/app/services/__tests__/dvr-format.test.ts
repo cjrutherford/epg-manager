@@ -108,8 +108,13 @@ describe('status vocabulary', () => {
     });
 
     it('does not paint a missed recording as an error', () => {
-        expect(statusClass('missed')).toBe('badge-info');
+        expect(statusClass('missed')).toBe('badge-warning');
         expect(statusClass('failed')).toBe('badge-danger');
+    });
+
+    it('treats a finished recording as success, not a warning', () => {
+        expect(statusClass('completed')).toBe('badge-success');
+        expect(statusClass('recording')).toBe('badge-success');
     });
 
     it('covers both recorders\' statuses', () => {

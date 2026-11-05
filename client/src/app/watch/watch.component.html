@@ -1,3 +1,5 @@
+<h1 class="sr-only">Tuner Daemon — Watch live TV</h1>
+
 @if (isPopoutMode) {
   <div class="popout-container" (mousemove)="onUserActivity()">
     <video
@@ -16,6 +18,7 @@
           @if (currentChannel?.logo) {
             <img
               [src]="resolveUrl(currentChannel!.logo)"
+              [appImageFallback]="currentChannel?.name || 'TV'"
               class="popout-logo"
               alt=""
             />
@@ -35,7 +38,7 @@
           title="Close Popout"
           aria-label="Close Popout"
         >
-          ✕
+          <lucide-icon name="x" class="icon"></lucide-icon>
         </button>
       </div>
 
@@ -95,7 +98,7 @@
           src="/assets/mascot.jpg"
           class="icon"
           style="width: 24px; height: 24px; border-radius: 4px"
-          alt="Logo"
+          alt="Tuner Daemon"
         />
         <span>Tuner Daemon</span>
       </div>
@@ -147,7 +150,7 @@
           class="icon-btn"
           [class.active]="dvrOpen"
           (click)="dvrOpen = !dvrOpen"
-          title="DVR Manager"
+          title="Recordings"
         >
           <lucide-icon name="film" class="icon"></lucide-icon>
         </button>
@@ -159,49 +162,30 @@
         >
           <lucide-icon name="server" class="icon"></lucide-icon>
         </button>
-        <!-- Theme Picker -->
-        <div
-          class="theme-picker-container"
-          style="position: relative; display: inline-block"
+        <button
+          class="icon-btn shortcuts-btn"
+          [class.active]="shortcutsOpen"
+          (click)="shortcutsOpen = true"
+          title="Keyboard shortcuts"
+          aria-label="Keyboard shortcuts"
         >
+          <lucide-icon name="help-circle" class="icon"></lucide-icon>
+        </button>
+        <!-- Theme Picker -->
+        <div class="theme-picker-container">
           <button
             class="icon-btn theme-picker-btn"
             [class.active]="themePickerOpen"
             (click)="toggleThemePicker($event)"
+            [attr.aria-expanded]="themePickerOpen"
+            aria-haspopup="true"
             title="Change Theme"
           >
             <lucide-icon name="palette" class="icon"></lucide-icon>
           </button>
           @if (themePickerOpen) {
-            <div class="theme-picker-dropdown glass-card">
-              <div class="theme-picker-title">Select Theme</div>
-              <div class="theme-options">
-                @for (theme of themes; track theme.key) {
-                  <button
-                    class="theme-option-row"
-                    [class.active]="theme.key === currentThemeKey"
-                    (click)="selectTheme(theme.key)"
-                  >
-                    <span class="theme-colors-preview">
-                      <span
-                        class="theme-color-dot"
-                        [style.background-color]="theme.primaryColor"
-                        title="Primary Accent"
-                      ></span>
-                      <span
-                        class="theme-color-dot"
-                        [style.background-color]="theme.bgColor"
-                        title="Background"
-                      ></span>
-                    </span>
-                    <span class="theme-name">{{ theme.name }}</span>
-                    @if (theme.key === currentThemeKey) {
-                      <span class="theme-active-check">✓</span>
-                    }
-                  </button>
-                }
-              </div>
-            </div>
+            <app-theme-menu (selected)="themePickerOpen = false" (closed)="themePickerOpen = false"
+              (click)="$event.stopPropagation()"></app-theme-menu>
           }
         </div>
         <a routerLink="/admin" class="icon-btn" title="Admin Settings">
@@ -215,7 +199,7 @@
     <aside class="recordings-library glass-card">
       <div class="recordings-head">
         <div>
-          <div class="recordings-kicker">DVR Library</div>
+          <div class="recordings-kicker">Recordings</div>
           <h2>Recordings</h2>
         </div>
         <div class="recordings-head-actions">
@@ -223,7 +207,7 @@
             class="btn btn-secondary small-btn"
             (click)="openWatchScheduleModal()"
           >
-            Schedule Recording
+            Schedule recording
           </button>
           <button
             class="icon-btn"
@@ -240,14 +224,14 @@
           [class.active]="recordingsTab === 'my'"
           (click)="recordingsTab = 'my'"
         >
-          My Recordings
+          On this device
           <span>{{ localRecordings.length }}</span>
         </button>
         <button
           [class.active]="recordingsTab === 'system'"
           (click)="recordingsTab = 'system'; loadRecordings()"
         >
-          System
+          Server
           <span>{{ systemRecordings.length }}</span>
         </button>
       </div>
@@ -268,7 +252,7 @@
               class="btn btn-secondary small-btn"
               (click)="openWatchScheduleModal()"
             >
-              Schedule Recording
+              Schedule recording
             </button>
           </div>
         } @else {
@@ -294,9 +278,7 @@
                 </div>
                 <div class="recording-body">
                   <div class="recording-row">
-                    <span class="recording-status" [class]="rec.status">{{
-                      recordingStatusLabel(rec.status)
-                    }}</span>
+<app-status-badge [status]="rec.status"></app-status-badge>
                     @if (isDocumentHidden && rec.status === "recording") {
                       <span class="recording-risk">background best-effort</span>
                     }
@@ -368,7 +350,7 @@
               class="btn btn-secondary small-btn"
               (click)="openWatchScheduleModal()"
             >
-              Schedule Recording
+              Schedule recording
             </button>
           </div>
         } @else {
@@ -387,13 +369,11 @@
                       class="recording-fallback-icon"
                     ></lucide-icon>
                   }
-                  <span class="recording-source">System</span>
+                  <span class="recording-source">Server</span>
                 </div>
                 <div class="recording-body">
                   <div class="recording-row">
-                    <span class="recording-status" [class]="rec.status">{{
-                      recordingStatusLabel(rec.status)
-                    }}</span>
+<app-status-badge [status]="rec.status"></app-status-badge>
                   </div>
                   <h3>{{ recordingTitle(rec) }}</h3>
                   <p class="recording-channel">{{ recordingChannel(rec) }}</p>
@@ -445,17 +425,8 @@
   }
 
   @if (showWatchScheduleModal) {
-    <div class="modal-backdrop" (click)="showWatchScheduleModal = false">
-      <div
-        class="modal-content schedule-modal"
-        (click)="$event.stopPropagation()"
-      >
-        <div class="modal-header">
-          <h3>Schedule Local Recording</h3>
-          <button class="close-btn" (click)="showWatchScheduleModal = false">
-            &times;
-          </button>
-        </div>
+    <app-modal title="Schedule Local Recording" heading="h3" panelClass="schedule-modal"
+      (closed)="showWatchScheduleModal = false">
         <div class="modal-body">
           <p class="settings-desc">
             Recordings created here are saved in this browser under My
@@ -561,8 +532,7 @@
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </app-modal>
   }
 
   <!-- ── No-data empty state ─────────────────────────────────────────── -->
@@ -570,7 +540,7 @@
     <div class="watch-empty-state">
       <div class="wes-static"></div>
       <div class="wes-content glass-card">
-        <div class="wes-icon">📡</div>
+        <div class="wes-icon"><lucide-icon name="satellite" class="icon icon--xl"></lucide-icon></div>
         <h2 class="wes-title">No channels configured</h2>
         <p class="wes-desc">
           The system has no channel or guide data yet. Head to the Admin
@@ -583,7 +553,7 @@
           </p>
         }
         <a id="btn-go-to-admin" routerLink="/admin" class="wes-btn">
-          ⚙ Go to Admin Dashboard
+          <lucide-icon name="settings" class="icon"></lucide-icon> Open Admin dashboard
         </a>
       </div>
     </div>
@@ -599,10 +569,11 @@
     <!-- ── TOP ROW: video + channel card (hidden in guide-only on small heights) ── -->
     <div class="top-row">
       <!-- Video / player -->
-      <main class="player-area">
+      <main class="player-area" aria-label="Live TV player">
         <video
           #videoPlayer
           crossorigin="anonymous"
+          aria-label="Live TV stream"
           [style.display]="isCasting ? 'none' : 'block'"
         ></video>
 
@@ -637,7 +608,7 @@
                   >
                     <div class="tv-g-num">{{ ch.channel_number }}</div>
                     @if (ch.logo) {
-                      <img [src]="resolveUrl(ch.logo)" class="tv-g-logo" />
+                      <img [src]="resolveUrl(ch.logo)" [appImageFallback]="ch.name" class="tv-g-logo" alt="" />
                     }
                     <div class="tv-g-text">
                       <div class="tv-g-name">{{ ch.name }}</div>
@@ -667,7 +638,7 @@
 
         <!-- Volume -->
         <div class="volume-bar" [class.ui-hidden]="!userActive && !guideOpen">
-          <button class="vol-btn" (click)="toggleMute()">
+          <button class="vol-btn" (click)="toggleMute()" aria-label="Mute or unmute">
             @if (!muted && volume > 0) {
               <lucide-icon name="volume-2" class="icon"></lucide-icon>
             } @else {
@@ -679,6 +650,7 @@
             class="volume-slider"
             min="0"
             max="100"
+            aria-label="Volume"
             [value]="volume * 100"
             (input)="onVolumeSlider($event)"
           />
@@ -713,65 +685,6 @@
           </button>
         </div>
 
-        <!-- Unified OSD / Info Overlay -->
-        @if ((showInfoOverlay || showOsd) && (osdChannel || currentChannel)) {
-          <div class="info-overlay">
-            <div class="info-overlay-content">
-              <img
-                [src]="
-                  (osdChannel || currentChannel)?.logo
-                    ? resolveUrl((osdChannel || currentChannel)!.logo)
-                    : '/assets/mascot.jpg'
-                "
-                class="info-logo"
-                alt="Logo"
-              />
-              <div class="info-text">
-                <div class="info-channel-name">
-                  <span class="info-channel-number">{{
-                    (osdChannel || currentChannel)?.channel_number
-                  }}</span>
-                  {{ (osdChannel || currentChannel)?.name }}
-                </div>
-                <div class="info-program-title">
-                  {{ activeProgram?.title || "No Program Info" }}
-                </div>
-                @if (activeProgram?.sub_title) {
-                  <div class="info-program-subtitle">
-                    {{ activeProgram.sub_title }}
-                  </div>
-                }
-                <div class="info-meta">
-                  @if (activeProgram) {
-                    <span>{{
-                      fmtTimeRange(activeProgram.start, activeProgram.stop)
-                    }}</span>
-                  }
-                  @if (
-                    activeProgram?.category ||
-                    (osdChannel || currentChannel)?.group_title
-                  ) {
-                    <span class="info-category">{{
-                      activeProgram?.category ||
-                        (osdChannel || currentChannel)?.group_title
-                    }}</span>
-                  }
-                </div>
-                @if (activeProgram) {
-                  <div class="info-progress-bar">
-                    <div
-                      class="info-progress"
-                      [style.width.%]="
-                        programProgress(activeProgram.start, activeProgram.stop)
-                      "
-                    ></div>
-                  </div>
-                }
-              </div>
-            </div>
-          </div>
-        }
-
         <!-- Loading -->
         @if (loading) {
           <div class="player-loading">
@@ -798,8 +711,8 @@
               title="Expand Sync Status"
             >
               <span class="pill-spinner"></span>
-              <span class="pill-text">Syncing Guide Data...</span>
-              <button class="pill-expand-btn">⤢</button>
+              <span class="pill-text">Syncing guide data…</span>
+              <button class="pill-expand-btn" aria-label="Expand sync status"><lucide-icon name="maximize" class="icon"></lucide-icon></button>
             </div>
           } @else {
             <!-- Full Standby Overlay -->
@@ -814,14 +727,15 @@
                     align-items: center;
                   "
                 >
-                  <div class="standby-badge">📡 STANDBY</div>
+                  <div class="standby-badge"><lucide-icon name="satellite" class="icon"></lucide-icon><span>STANDBY</span></div>
                   @if (channels.length > 0) {
                     <button
                       class="standby-minimize-btn"
                       (click)="toggleSyncMessageMinimization()"
                       title="Minimize to Watch TV"
+                      aria-label="Minimize sync status"
                     >
-                      ─
+                      <lucide-icon name="minimize" class="icon"></lucide-icon>
                     </button>
                   }
                 </div>
@@ -865,12 +779,13 @@
 
         <!-- Stay Tuned Offline / Error Overlay -->
         @if (error && !loading && !serverStandby) {
-          <div class="player-stay-tuned-overlay">
+          <div class="player-stay-tuned-overlay" role="alert">
             <div class="test-pattern-backdrop"></div>
             <div class="stay-tuned-card glass-card">
               @if (currentChannel?.logo) {
                 <img
                   [src]="resolveUrl(currentChannel!.logo)"
+                  [appImageFallback]="currentChannel?.name || 'TV'"
                   class="stay-tuned-logo"
                   alt=""
                 />
@@ -878,16 +793,33 @@
               <div class="stay-tuned-channel">
                 {{ currentChannel?.name || "Channel Offline" }}
               </div>
-              <div class="stay-tuned-badge">📺 STAY TUNED</div>
-              <p class="stay-tuned-msg">
-                Stream is temporarily offline or unavailable.
-              </p>
-              <button
-                class="btn btn-secondary small-btn"
-                (click)="tuneToChannel(currentChannelIndex)"
-              >
-                Retry Connection
-              </button>
+              <div class="stay-tuned-badge">
+                <lucide-icon name="monitor-play" class="icon"></lucide-icon>
+                <span>STAY TUNED</span>
+              </div>
+              <p class="stay-tuned-msg">{{ error }}</p>
+              <div class="stay-tuned-actions">
+                <button
+                  class="btn btn-secondary small-btn"
+                  (click)="channelUp()"
+                  [disabled]="currentChannelIndex <= 0"
+                >
+                  Previous
+                </button>
+                <button
+                  class="btn btn-primary small-btn"
+                  (click)="tuneToChannel(currentChannelIndex)"
+                >
+                  Retry connection
+                </button>
+                <button
+                  class="btn btn-secondary small-btn"
+                  (click)="channelDown()"
+                  [disabled]="currentChannelIndex >= channels.length - 1"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           </div>
         }
@@ -957,6 +889,7 @@
             @if (currentChannel.logo) {
               <img
                 [src]="resolveUrl(currentChannel.logo)"
+                [appImageFallback]="currentChannel.name"
                 class="cib-logo"
                 alt=""
               />
@@ -999,6 +932,7 @@
               title="Google Cast"
               [style.display]="castAvailable ? 'inline-flex' : 'none'"
             >
+              <lucide-icon name="cast" class="icon cast-fallback" aria-hidden="true"></lucide-icon>
               <google-cast-launcher class="cast-btn"></google-cast-launcher>
             </button>
             <button
@@ -1006,8 +940,9 @@
               [class.active]="isFavorite(currentChannel.id)"
               (click)="toggleFavorite(currentChannel.id)"
               title="Toggle Favorite"
+              [attr.aria-label]="isFavorite(currentChannel.id) ? 'Remove from favorites' : 'Add to favorites'"
             >
-              {{ isFavorite(currentChannel.id) ? "★" : "☆" }}
+              <lucide-icon name="star" class="icon star-icon" [class.filled]="isFavorite(currentChannel.id)"></lucide-icon>
             </button>
             <!-- <button
               class="icon-btn"
@@ -1059,7 +994,7 @@
                     >
                       <span class="layout-name">Overlay</span>
                       @if (guideLayout === "overlay") {
-                        <span class="layout-active-check">✓</span>
+                        <lucide-icon name="check" class="icon layout-active-check"></lucide-icon>
                       }
                     </button>
                     <button
@@ -1069,7 +1004,7 @@
                     >
                       <span class="layout-name">Side-by-Side</span>
                       @if (guideLayout === "side") {
-                        <span class="layout-active-check">✓</span>
+                        <lucide-icon name="check" class="icon layout-active-check"></lucide-icon>
                       }
                     </button>
                     <button
@@ -1079,7 +1014,7 @@
                     >
                       <span class="layout-name">Guide Only</span>
                       @if (guideLayout === "guide-only") {
-                        <span class="layout-active-check">✓</span>
+                        <lucide-icon name="check" class="icon layout-active-check"></lucide-icon>
                       }
                     </button>
                   </div>
@@ -1104,6 +1039,7 @@
     @if (guideOpen) {
       <section
         class="guide-panel"
+        aria-label="Programme guide"
         [style.height.px]="guideLayout === 'overlay' ? guideHeight : null"
         [style.width.px]="guideLayout === 'side' ? guideHeight * 1.6 : null"
         [style.max-width]="guideLayout === 'side' ? '50vw' : null"
@@ -1129,14 +1065,14 @@
             <span>Program Guide</span>
           </div>
           <div class="guide-time-nav">
-            <button class="guide-nav-btn" (click)="guideEarlier()">
+            <button class="guide-nav-btn" (click)="guideEarlier()" aria-label="Earlier in the guide">
               <lucide-icon name="chevron-left" class="icon"></lucide-icon>
             </button>
             <span class="guide-time-label">{{ guideTimeLabel }}</span>
             <button class="guide-nav-btn guide-now-btn" (click)="guideNow()">
               Now
             </button>
-            <button class="guide-nav-btn" (click)="guideLater()">
+            <button class="guide-nav-btn" (click)="guideLater()" aria-label="Later in the guide">
               <lucide-icon name="chevron-right" class="icon"></lucide-icon>
             </button>
           </div>
@@ -1149,6 +1085,7 @@
             <input
               type="text"
               class="search-input"
+              aria-label="Search the guide"
               placeholder="Search..."
               [(ngModel)]="searchQuery"
               (input)="onSearchChange()"
@@ -1156,9 +1093,10 @@
             @if (searchQuery) {
               <button
                 class="search-clear"
+                aria-label="Clear guide search"
                 (click)="searchQuery = ''; onSearchChange()"
               >
-                ✕
+                <lucide-icon name="x" class="icon"></lucide-icon>
               </button>
             }
           </div>
@@ -1166,14 +1104,16 @@
             <button
               class="cat-tab"
               [class.active]="selectedCategories.size === 0"
+              [attr.aria-pressed]="selectedCategories.size === 0"
               (click)="clearCategories()"
             >
-              ⭐ All
+              <lucide-icon name="star" class="icon"></lucide-icon> All
             </button>
             @for (cat of categories; track cat.group_title) {
               <button
                 class="cat-tab"
                 [class.active]="isCategoryActive(cat.group_title)"
+                [attr.aria-pressed]="isCategoryActive(cat.group_title)"
                 (click)="toggleCategory(cat.group_title)"
               >
                 <lucide-icon
@@ -1193,6 +1133,9 @@
         </div>
 
         <!-- Guide Grid -->
+        <div class="guide-scroll-shell" [class.at-end-x]="guideAtEndX">
+        <div class="guide-scroll" (scroll)="onGuideHorizontalScroll($event)"
+          (touchstart)="guideScrolledX = true" (pointerdown)="guideScrolledX = true">
         <div class="guide-grid">
           <!-- Timeline -->
           <div class="guide-timeline">
@@ -1224,7 +1167,7 @@
           >
             @if (favChannels.length > 0) {
               <div class="guide-section-divider">
-                <span class="divider-label">★ Favorites</span
+                <span class="divider-label"><lucide-icon name="star" class="icon"></lucide-icon> Favorites</span
                 ><span class="divider-line"></span>
               </div>
               @for (ch of favChannels; track ch.id) {
@@ -1238,13 +1181,15 @@
                   <div class="guide-channel" (click)="tuneToChannelById(ch.id)">
                     <button
                       class="fav-star is-fav"
+                      [attr.aria-label]="'Remove ' + ch.name + ' from favorites'"
                       (click)="$event.stopPropagation(); toggleFavorite(ch.id)"
                     >
-                      ★
+                      <lucide-icon name="star" class="icon star-icon filled"></lucide-icon>
                     </button>
                     @if (ch.logo) {
                       <img
                         [src]="resolveUrl(ch.logo)"
+                        [appImageFallback]="ch.name"
                         class="guide-channel-logo"
                         alt=""
                         loading="lazy"
@@ -1278,9 +1223,7 @@
                           {{ fmtTimeRange(prog.start, prog.stop) }}
                         </div>
                         @if (hasRecording(ch.id, prog.start, prog.stop)) {
-                          <div class="rec-badge" title="Recording scheduled">
-                            🔴
-                          </div>
+                          <div class="rec-badge" title="Recording scheduled"><span class="rec-dot"></span></div>
                         }
                       </div>
                     }
@@ -1309,30 +1252,34 @@
                   <button
                     class="fav-star"
                     [class.is-fav]="isFavorite(ch.id)"
+                    [attr.aria-label]="(isFavorite(ch.id) ? 'Remove ' : 'Add ') + ch.name + (isFavorite(ch.id) ? ' from favorites' : ' to favorites')"
                     (click)="$event.stopPropagation(); toggleFavorite(ch.id)"
                   >
-                    {{ isFavorite(ch.id) ? "★" : "☆" }}
+                    <lucide-icon name="star" class="icon star-icon" [class.filled]="isFavorite(ch.id)"></lucide-icon>
                   </button>
                   @if (hiddenChannels.has(ch.id)) {
                     <button
                       class="hide-btn"
+                      [attr.aria-label]="'Show ' + ch.name"
                       (click)="$event.stopPropagation(); toggleHidden(ch.id)"
                       title="Show Channel"
                     >
-                      👁
+                      <lucide-icon name="eye" class="icon"></lucide-icon>
                     </button>
                   } @else {
                     <button
                       class="hide-btn"
+                      [attr.aria-label]="'Hide ' + ch.name"
                       (click)="$event.stopPropagation(); toggleHidden(ch.id)"
                       title="Hide Channel"
                     >
-                      ⦿
+                      <lucide-icon name="eye-off" class="icon"></lucide-icon>
                     </button>
                   }
                   @if (ch.logo) {
                     <img
                       [src]="resolveUrl(ch.logo)"
+                      [appImageFallback]="ch.name"
                       class="guide-channel-logo"
                       alt=""
                       loading="lazy"
@@ -1366,9 +1313,7 @@
                         {{ fmtTimeRange(prog.start, prog.stop) }}
                       </div>
                       @if (hasRecording(ch.id, prog.start, prog.stop)) {
-                        <div class="rec-badge" title="Recording scheduled">
-                          🔴
-                        </div>
+                        <div class="rec-badge" title="Recording scheduled"><span class="rec-dot"></span></div>
                       }
                     </div>
                   }
@@ -1377,7 +1322,7 @@
             }
             <div [style.height.px]="virtualPaddingBottom"></div>
 
-            @if (filteredChannels.length === 0 && !loading) {
+            @if (filteredChannels.length === 0 && !guideLoading) {
               <div class="guide-empty">
                 {{
                   searchQuery
@@ -1387,6 +1332,14 @@
               </div>
             }
           </div>
+        </div>
+        </div>
+        @if (!guideScrolledX) {
+        <div class="guide-swipe-hint" aria-hidden="true">
+          Swipe for more
+          <lucide-icon name="arrow-right" class="icon"></lucide-icon>
+        </div>
+        }
         </div>
       </section>
     }
@@ -1445,7 +1398,7 @@
                 )
               "
             >
-              ⏹ Cancel Recording
+              <lucide-icon name="stop-circle" class="icon"></lucide-icon> Cancel recording
             </button>
           } @else {
             <button
@@ -1456,14 +1409,14 @@
                 )
               "
             >
-              🗑️ Delete Recording
+              <lucide-icon name="trash-2" class="icon"></lucide-icon> Delete recording
             </button>
           }
         } @else {
           <button
             (click)="recordProgram(contextMenu.channel, contextMenu.program)"
           >
-            ⏺ Record Episode
+            <lucide-icon name="circle" class="icon"></lucide-icon> Record episode
           </button>
           @if (
             isSeriesCandidate(
@@ -1474,7 +1427,7 @@
             <button
               (click)="recordSeries(contextMenu.channel, contextMenu.program)"
             >
-              🔁 Record Series
+              <lucide-icon name="repeat" class="icon"></lucide-icon> Record series
             </button>
           }
         }
@@ -1482,20 +1435,28 @@
     </div>
   }
 
+  <!-- Keyboard shortcuts -->
+  @if (shortcutsOpen) {
+    <app-modal title="Keyboard shortcuts" heading="h3" (closed)="shortcutsOpen = false">
+      <p class="settings-desc">These work while the player has focus and no form field is open.</p>
+      <dl class="shortcut-grid">
+        <div><dt><kbd>Space</kbd> / <kbd>K</kbd></dt><dd>Play or pause</dd></div>
+        <div><dt><kbd>G</kbd></dt><dd>Open or close the guide</dd></div>
+        <div><dt><kbd>M</kbd></dt><dd>Mute or unmute</dd></div>
+        <div><dt><kbd>F</kbd></dt><dd>Fullscreen</dd></div>
+        <div><dt><kbd>P</kbd></dt><dd>Picture-in-picture</dd></div>
+        <div><dt><kbd>Page Up</kbd> / <kbd>Page Down</kbd></dt><dd>Previous or next channel</dd></div>
+        <div><dt><kbd>+</kbd> / <kbd>−</kbd></dt><dd>Volume up or down</dd></div>
+        <div><dt><kbd>Esc</kbd></dt><dd>Close the guide, recordings or a dialog</dd></div>
+        <div><dt><kbd>?</kbd></dt><dd>Show this list</dd></div>
+      </dl>
+    </app-modal>
+  }
+
   <!-- Server Connection Modal -->
   @if (serverSettingsOpen) {
-    <div class="modal-backdrop" (click)="serverSettingsOpen = false">
-      <div class="modal-content glass-card" appModalFocus (dismiss)="serverSettingsOpen = false" aria-labelledby="watch-modal-title" (click)="$event.stopPropagation()">
-        <div class="modal-header">
-          <h3 id="watch-modal-title">Server Connection</h3>
-          <button
-            class="close-btn"
-            (click)="serverSettingsOpen = false"
-            aria-label="Close"
-          >
-            &times;
-          </button>
-        </div>
+    <app-modal title="Server Connection" heading="h3" titleId="watch-modal-title"
+      (closed)="serverSettingsOpen = false">
         <div class="modal-body">
           <p class="settings-desc">
             Specify the URL of your self-hosted Tuner Daemon server.
@@ -1528,7 +1489,6 @@
             </p>
           }
         </div>
-      </div>
-    </div>
+    </app-modal>
   }
 }

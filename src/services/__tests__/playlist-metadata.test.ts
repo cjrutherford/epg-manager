@@ -15,7 +15,7 @@ describe('playlist metadata', () => {
 
     expect(result.sourceType).toBe('iptv-org');
     expect(result.category).toBe('countries');
-    expect(result.label).toBe('Us');
+    expect(result.label).toBe('US');
     expect(result.pathSummary).toBe('countries/us.m3u');
   });
 });

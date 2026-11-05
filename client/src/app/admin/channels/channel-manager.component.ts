@@ -1,18 +1,22 @@
-import { ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, HostListener, OnDestroy, OnInit } from '@angular/core';
 import { LucideAngularModule } from 'lucide-angular';
 import { ConfirmService } from '../../services/confirm.service';
-import { ModalFocusDirective } from '../../services/modal-focus.directive';
+import { ModalComponent } from '../../shared/modal.component';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
 import { ToastService } from '../../services/toast.service';
 import { ChannelEventsService } from '../../services/channel-events.service';
+import { ImageFallbackDirective } from '../../shared/image-fallback.directive';
+import { PageHeaderComponent } from '../../shared/page-header.component';
+import { StateComponent } from '../../shared/state.component';
+import { SkeletonComponent } from '../../shared/skeleton.component';
 import { computeWindow } from './channel-window';
 
 @Component({
     selector: 'app-channel-manager',
     standalone: true,
-    imports: [CommonModule, FormsModule, ModalFocusDirective, LucideAngularModule],
+    imports: [CommonModule, FormsModule, ModalComponent, LucideAngularModule, ImageFallbackDirective, PageHeaderComponent, StateComponent, SkeletonComponent],
     templateUrl: './channel-manager.component.html',
     styleUrl: './channel-manager.component.css'
 })
@@ -49,7 +53,14 @@ export class ChannelManagerComponent implements OnInit, OnDestroy {
     // ── Virtual scrolling ───────────────────────
     // The list used to render `filteredChannels.slice(0, 500)`; past that,
     // channels were simply unreachable.
-    readonly rowHeight = 48;
+    /**
+     * Card rows are taller than table rows. The virtual window needs the real
+     * height, or the spacer rows drift and rows jump as the list scrolls. A
+     * getter rather than a field so a resize or rotation is picked up.
+     */
+    get rowHeight(): number {
+        return typeof window !== 'undefined' && window.innerWidth <= 768 ? 132 : 48;
+    }
     readonly expandedExtraHeight = 300;
     visibleChannels: any[] = [];
     windowStartIndex = 0;
@@ -74,6 +85,13 @@ export class ChannelManagerComponent implements OnInit, OnDestroy {
     }
 
     // ── Virtual scrolling ───────────────────────
+    @HostListener('window:resize')
+    onViewportResize(): void {
+        // Row height changes at the table/card breakpoint.
+        this.updateWindow(this.lastScrollTop);
+        this.cdr.detectChanges();
+    }
+
     onListScroll(event: Event): void {
         const target = event.target as HTMLElement;
         this.viewportHeight = target.clientHeight || this.viewportHeight;
@@ -444,7 +462,7 @@ export class ChannelManagerComponent implements OnInit, OnDestroy {
             this.expandedChannelId = null;
             this.clearEpgSearch();
             this.applyFilters();
-            this.toast.show(epgId ? `EPG mapping set to ${epgId}` : 'EPG mapping cleared', 'success');
+            this.toast.show(epgId ? `Guide match set to ${epgId}` : 'Guide match cleared', 'success');
         } catch { this.toast.show('Override failed', 'error'); }
     }
 

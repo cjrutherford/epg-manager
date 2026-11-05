@@ -23,11 +23,11 @@ test.describe('Feedback', () => {
         await page.route('**/api/override', route => route.abort('failed'));
 
         await page.locator('tbody button:has-text("Edit")').first().click();
-        const search = page.getByLabel('Search EPG channels to map');
+        const search = page.getByLabel('Search guide channels to map');
         await expect(search).toBeVisible();
 
         // Clearing a mapping goes through the same failing route.
-        await page.getByRole('button', { name: /Clear EPG Match/i }).click();
+        await page.getByRole('button', { name: /Clear guide match/i }).click();
 
         const toast = page.locator('.toast-error');
         await expect(toast).toBeVisible();
@@ -41,8 +41,8 @@ test.describe('Feedback', () => {
     });
 
     test('a success does not linger', async ({ page }) => {
-        await goToSection(page, 'DVR', 'DVR');
-        await page.getByRole('button', { name: /Recording Settings/ }).click();
+        await goToSection(page, 'Recordings', 'Recordings');
+        await page.getByRole('button', { name: /Recording settings/ }).click();
         await page.getByRole('button', { name: 'Save settings' }).click();
 
         const toast = page.locator('.toast-success');
@@ -54,7 +54,7 @@ test.describe('Feedback', () => {
         let nativeDialogs = 0;
         page.on('dialog', async dialog => { nativeDialogs++; await dialog.dismiss(); });
 
-        await goToSection(page, 'DVR', 'DVR');
+        await goToSection(page, 'Recordings', 'Recordings');
 
         const card = page.locator('.recording-card')
             .filter({ hasText: FIXTURE.scheduledRecordingTitle });
@@ -78,7 +78,7 @@ test.describe('Feedback', () => {
     });
 
     test('the confirm dialog keeps keyboard focus inside itself', async ({ page }) => {
-        await goToSection(page, 'DVR', 'DVR');
+        await goToSection(page, 'Recordings', 'Recordings');
         await page.locator('.recording-card')
             .filter({ hasText: FIXTURE.scheduledRecordingTitle })
             .getByRole('button', { name: 'Cancel' }).click();

@@ -17,6 +17,7 @@ import {
     type SourceDescriptor,
     type SourceKind
 } from './descriptor';
+import { describePlaylist } from '../playlist-metadata';
 
 export interface SourceRecord {
     key: string;
@@ -147,6 +148,30 @@ export async function addSource(input: Partial<SourceDescriptor>): Promise<AddRe
     return { ok: true, key };
 }
 
+/** Record the outcome of one fetch for a source, so its row is not stale. */
+export async function recordSourceSync(
+    key: string,
+    outcome: { rows?: number; status: 'success' | 'empty' | 'failed'; error?: string | null }
+): Promise<void> {
+    await db.execute({
+        sql: `UPDATE sources
+              SET imported_rows = COALESCE(?, imported_rows),
+                  last_row_count = COALESCE(?, last_row_count),
+                  last_sync_at = ?,
+                  last_sync_status = ?,
+                  last_error = ?
+              WHERE key = ?`,
+        args: [
+            outcome.rows ?? null,
+            outcome.rows ?? null,
+            Date.now(),
+            outcome.status,
+            outcome.error ?? null,
+            key
+        ]
+    });
+}
+
 export async function setSourceEnabled(key: string, enabled: boolean): Promise<boolean> {
     const result = await db.execute({
         sql: 'UPDATE sources SET enabled = ? WHERE key = ?',
@@ -221,4 +246,75 @@ export async function importSources(descriptors: unknown[]): Promise<ImportSumma
     }
 
     return summary;
+}
+
+/**
+ * Register the configured playlists as first-class sources.
+ *
+ * `initDb` used to do this once at boot, so a playlist selected in Settings was
+ * written to `settings.playlist_urls` but never appeared in the source
+ * registry until the next restart. The Sources screen read the registry and
+ * showed nothing. Saving configuration now reconciles the two in the same
+ * transaction: add/update selected playlists, remove sources for playlists that
+ * were deselected.
+ */
+export async function syncPlaylistSources(urls: string[]): Promise<void> {
+    const wanted = new Set<string>();
+
+    for (const raw of urls) {
+        const url = String(raw || '').trim();
+        if (!url) continue;
+
+        const key = `playlist:${url}`;
+        wanted.add(key);
+        const meta = describePlaylist(url);
+        const label = /^[a-z]{2}$/i.test(meta.label) ? meta.label.toUpperCase() : meta.label;
+
+        const descriptor: SourceDescriptor = {
+            id: key,
+            kind: 'm3u',
+            label,
+            provides: ['channels'],
+            enabled: true,
+            priority: 0,
+            fetch: { url, refresh: '12h', conditional: true }
+        };
+
+        await db.execute({
+            sql: `INSERT INTO sources
+                    (key, provider, site, label, enabled, priority, grab_capable,
+                     kind, provides, config_json, last_sync_status, notes)
+                  VALUES (?, ?, ?, ?, 1, 0, 0, 'm3u', 'channels', ?, 'pending', ?)
+                  ON CONFLICT(key) DO UPDATE SET
+                    provider = excluded.provider,
+                    site = excluded.site,
+                    label = excluded.label,
+                    kind = excluded.kind,
+                    provides = excluded.provides,
+                    config_json = excluded.config_json,
+                    grab_capable = excluded.grab_capable`,
+            args: [
+                key,
+                url.startsWith('/files/') ? 'iptv-org' : 'custom',
+                meta.host || 'local',
+                label,
+                JSON.stringify(descriptor),
+                'Configured playlist'
+            ]
+        });
+    }
+
+    // A playlist removed from Settings should stop being a source, along with
+    // the channels it contributed. User-added m3u sources keep their own keys.
+    const existing = await db.execute("SELECT key FROM sources WHERE key LIKE 'playlist:%'");
+    for (const row of existing.rows) {
+        const key = String(row.key);
+        if (wanted.has(key)) continue;
+        // Remove the registry entry, but leave imported channels in place.
+        // Config saves happen for every settings change, including transient
+        // empty lists, and deleting a user's channels as a side effect of an
+        // unrelated save is not acceptable. The explicit playlist delete
+        // endpoint owns destructive removal.
+        await removeSource(key);
+    }
 }

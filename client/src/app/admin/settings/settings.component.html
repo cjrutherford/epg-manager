@@ -1,215 +1,80 @@
 <div class="settings-page">
-    <header class="page-header">
-        <div class="page-header__text">
-            <h1>Settings</h1>
-            <p class="page-sub">Playlists, guide options and how the automatic sync runs.</p>
-        </div>
-    </header>
+    <app-page-header title="Settings" subtitle="Playlists, guide feeds, output files and automation.">
+        <a class="btn btn-secondary" routerLink="/admin/sources">View source health</a>
+    </app-page-header>
 
     @if (loading) {
-    <div class="loading-container">
-        <div class="spinner"></div>
-    </div>
+    <app-skeleton variant="cards" [rows]="3" label="Loading settings"></app-skeleton>
     } @else {
-    <!-- Playlist & EPG Config -->
-    <div class="glass-card settings-card">
-        <h2><lucide-icon name="satellite" class="icon"></lucide-icon> Playlist configuration</h2>
+    <nav class="settings-nav" aria-label="Settings sections">
+        <a href="#guide">Guide &amp; channels</a>
+        <a href="#output">Output files</a>
+        <a href="#artwork">Artwork &amp; descriptions</a>
+    </nav>
 
-        <!-- Selected Playlists -->
-        @if (selectedPlaylists.length > 0) {
-        <div class="selected-playlists">
-            <span class="current-label">Active Playlists ({{ selectedPlaylists.length }})</span>
-            <div class="playlist-scope-summary">
-                <span>{{ selectedPlaylistScope.importedChannels }} imported channels</span>
-                <span>{{ selectedPlaylistScope.estimatedChannels || 0 }} estimated source channels</span>
-                <span>{{ epgDays }} EPG day{{ epgDays === 1 ? '' : 's' }}</span>
+    <!-- Guide & channel config. Playlists live in Sources. -->
+    <div class="glass-card settings-card" id="guide" (input)="dirty = true">
+        <div class="settings-card-head">
+            <div>
+                <h2><lucide-icon name="calendar-days" class="icon"></lucide-icon> Guide &amp; channels</h2>
+                <p class="settings-desc">How guide data is fetched and how channels are numbered. Playlists are managed in Sources.</p>
             </div>
-            @if (selectedPlaylistScope.isLargeSelection) {
-            <div class="playlist-warning">
-                This selection is broad enough to increase sync time and memory pressure. Consider fewer playlists or fewer EPG days when troubleshooting OOM issues.
-            </div>
-            }
-            <div class="playlist-chips">
-                @for (playlist of selectedPlaylistDetails; track playlist.url) {
-                <div class="playlist-chip">
-                    <span class="chip-label" [title]="playlist.url">{{ playlist.label }}</span>
-                    <span class="chip-meta">{{ playlist.category }}</span>
-                    <button class="chip-remove" (click)="removePlaylist(playlist.url)" title="Remove playlist"><lucide-icon name="x" class="icon"></lucide-icon></button>
-                </div>
-                }
-            </div>
-        </div>
-        }
-
-        <!-- FAST Platform Presets Section -->
-        <div class="fast-presets-container">
-            <div class="presets-header">
-                <span class="presets-title"><lucide-icon name="zap" class="icon"></lucide-icon> FAST channel presets</span>
-                <span class="presets-desc">Click any provider to add free, legal live channel playlists instantly:</span>
-            </div>
-            <div class="preset-buttons-grid">
-                @for (preset of builtInPresets; track preset.id) {
-                <button type="button" class="preset-card-btn" [class.added]="isPlaylistSelected(preset.url)"
-                    [attr.aria-pressed]="isPlaylistSelected(preset.url)"
-                    (click)="addPresetPlaylist(preset.url)">
-                    <span class="preset-name">{{ preset.label }}</span>
-                    <span class="preset-count">~{{ preset.channelCountEstimate }} channels</span>
-                    <span class="preset-status">@if (isPlaylistSelected(preset.url)) {
-                            <lucide-icon name="check" class="icon"></lucide-icon> Added
-                        } @else {
-                            <lucide-icon name="plus" class="icon"></lucide-icon> Add playlist
-                        }</span>
-                </button>
-                }
-                @if (builtInPresets.length === 0) {
-                <span class="presets-desc">Loading available providers…</span>
-                }
-            </div>
+            <a class="btn btn-secondary small-btn" routerLink="/admin/sources">Manage playlists</a>
         </div>
 
-        <!-- Custom URL -->
-        <div class="form-group">
-            <label>Custom Playlist URL</label>
-            <div class="custom-url-row">
-                <input type="text" class="themed-input custom-url-input" [(ngModel)]="customPlaylistUrl"
-                    placeholder="Paste any M3U playlist URL..."
-                    (keyup.enter)="addCustomPlaylist()">
-                <button class="btn btn-secondary" (click)="addCustomPlaylist()"
-                    [disabled]="!customPlaylistUrl.trim()">Add</button>
+        <div class="settings-field-grid">
+            <div class="form-group">
+                <label for="guide-days">Guide data duration (days)</label>
+                <input id="guide-days" type="number" class="themed-input" [(ngModel)]="epgDays" min="1" max="14"
+                    [class.field-invalid]="fieldErrors['epg_days']">
+                @if (fieldErrors['epg_days']) { <div class="field-error">{{ fieldErrors['epg_days'] }}</div> }
             </div>
-        </div>
 
-        <!-- iptv-org Browser -->
-        <div class="form-group">
-            <label>Or select from iptv-org & FAST lists</label>
-            <div class="custom-url-row">
-                <button class="btn btn-secondary" (click)="loadIptvOrgPlaylists()" [disabled]="iptvOrgLoading">
-                    {{ iptvOrgLoading ? 'Loading...' : iptvOrgFiles.length ? 'Refresh List' : 'Browse iptv-org & FAST Playlists' }}
-                </button>
-                <button class="btn btn-secondary" style="margin-left: 10px" (click)="syncIptvOrgRepo()" [disabled]="iptvOrgSyncing">
-                    {{ iptvOrgSyncing ? 'Synchronizing Repo...' : 'Sync iptv-org Repo' }}
-                </button>
-            </div>
-        </div>
-
-        @if (iptvOrgFiles.length > 0) {
-        <div class="iptv-org-browser">
-            <div class="iptv-org-controls">
-                <input type="text" class="themed-input w-full" [(ngModel)]="iptvOrgSearchQuery"
-                    placeholder="Search playlists, host, or path...">
-                <select class="themed-input" [(ngModel)]="iptvOrgCategoryFilter">
-                    <option value="all">All Sources</option>
-                    <option value="selected">Selected</option>
-                    <option value="fast">FAST Platforms (Pluto, Samsung, Roku, Plex)</option>
-                    <option value="countries">Countries</option>
-                    <option value="categories">Categories</option>
-                    <option value="languages">Languages</option>
-                    <option value="regions">Regions</option>
-                </select>
-                <select class="themed-input" [(ngModel)]="iptvOrgSortKey">
-                    <option value="selected">Selected First</option>
-                    <option value="name">Name</option>
-                    <option value="category">Category</option>
-                    <option value="channelCount">Channel Count</option>
-                </select>
-                <select class="themed-input" [(ngModel)]="iptvOrgSortDir">
-                    <option value="asc">Ascending</option>
-                    <option value="desc">Descending</option>
-                </select>
-            </div>
-            <div class="iptv-org-grid">
-                @for (file of filteredIptvOrgFiles; track file.url) {
-                <button class="iptv-org-item" [class.selected]="isPlaylistSelected(file.url)"
-                    (click)="toggleIptvOrgPlaylist(file)" [title]="file.url">
-                    <div class="iptv-org-main">
-                        <span class="iptv-org-name">{{ file.label }}</span>
-                        <span class="iptv-org-meta">{{ file.category }} · {{ file.host }}</span>
-                        <span class="iptv-org-meta secondary">{{ file.pathSummary }}</span>
-                        <span class="iptv-org-stats">
-                            @if (file.importedCount) {
-                            <span>{{ file.importedCount }} imported</span>
-                            }
-                            @if (file.channelCountEstimate !== null) {
-                            <span>{{ file.channelCountEstimate }} est.</span>
-                            }
-                        </span>
-                    </div>
-                    @if (isPlaylistSelected(file.url)) {
-                    <lucide-icon name="check" class="icon iptv-org-check"></lucide-icon>
+            <div class="form-group">
+                <label for="preferred-lang">Preferred language</label>
+                <select id="preferred-lang" class="themed-input" [(ngModel)]="preferredLang"
+                    [class.field-invalid]="fieldErrors['preferred_lang']">
+                    @for (language of languages; track language.code) {
+                    <option [value]="language.code">{{ language.label }}</option>
                     }
-                </button>
+                </select>
+                @if (fieldErrors['preferred_lang']) { <div class="field-error">{{ fieldErrors['preferred_lang'] }}</div> }
+            </div>
+
+            <div class="form-group settings-field-full">
+                <label for="numbering-mode">Channel numbering mode</label>
+                <select id="numbering-mode" class="themed-input" [(ngModel)]="channelNumberingMode"
+                    [class.field-invalid]="fieldErrors['channel_numbering_mode']">
+                    <option value="list">List — sequential from 700</option>
+                    <option value="auto-group">Auto-group — group by category, map to 100 blocks</option>
+                    <option value="custom-ranges">Custom ranges — map categories to start numbers</option>
+                </select>
+                <p class="field-hint">Controls how channel numbers are assigned during a sync.</p>
+                @if (fieldErrors['channel_numbering_mode'] || fieldErrors['custom_channel_ranges']) {
+                <div class="field-error">{{ fieldErrors['channel_numbering_mode'] || fieldErrors['custom_channel_ranges'] }}</div>
                 }
             </div>
-            <div class="iptv-org-footnote">
-                Imported counts reflect channels currently stored from a source. Estimated counts come from lightweight playlist scans and help identify broad sources before syncing.
-            </div>
-        </div>
-        }
-
-        <div class="form-group" style="margin-top:16px;">
-            <label>EPG Data Duration (days)</label>
-            <input type="number" class="themed-input" [(ngModel)]="epgDays" min="1" max="14" style="width:100px;"
-                [class.field-invalid]="fieldErrors['epg_days']">
-            @if (fieldErrors['epg_days']) {
-            <div class="field-error">{{ fieldErrors['epg_days'] }}</div>
-            }
-        </div>
-
-        <div class="form-group" style="margin-top:16px;">
-            <label for="preferred-lang">Preferred Language</label>
-            @if (fieldErrors['preferred_lang']) {
-            <div class="field-error">{{ fieldErrors['preferred_lang'] }}</div>
-            }
-            <select id="preferred-lang" class="themed-input" [(ngModel)]="preferredLang" style="max-width:220px;"
-                [class.field-invalid]="fieldErrors['preferred_lang']">
-                @for (language of languages; track language.code) {
-                <option [value]="language.code">{{ language.label }}</option>
-                }
-            </select>
-            <p style="font-size: 0.85em; color: var(--text-secondary); margin-top: 4px;">
-                Preferred language when a channel is matched against several guide entries.
-            </p>
-        </div>
-
-        <div class="form-group" style="margin-top:16px;">
-            <label for="numbering-mode">Channel Numbering Mode</label>
-            @if (fieldErrors['channel_numbering_mode'] || fieldErrors['custom_channel_ranges']) {
-            <div class="field-error">{{ fieldErrors['channel_numbering_mode'] || fieldErrors['custom_channel_ranges'] }}</div>
-            }
-            <select id="numbering-mode" class="themed-input" [(ngModel)]="channelNumberingMode"
-                [class.field-invalid]="fieldErrors['channel_numbering_mode']">
-                <option value="list">List (Sequential from 700+)</option>
-                <option value="auto-group">Auto-Group (Group by category, map to 100 blocks)</option>
-                <option value="custom-ranges">Custom Ranges (Map categories to start numbers)</option>
-            </select>
-            <p style="font-size: 0.85em; color: var(--text-secondary); margin-top: 4px;">
-                Controls how tvg-chno (Channel Number) is assigned when syncing headers.
-            </p>
         </div>
 
         @if (channelNumberingMode === 'custom-ranges') {
         <div class="form-group custom-ranges-container">
-            <label>Custom Category Numbering Ranges</label>
+            <label>Custom category numbering ranges</label>
             <div class="ranges-list">
                 @for (item of customRangesArray; track $index) {
-                <div class="range-row" style="display: flex; gap: 10px; margin-bottom: 8px;">
-                    <input type="text" class="themed-input flex-1" [(ngModel)]="item.category" placeholder="Category (e.g. News)">
-                    <input type="number" class="themed-input" [(ngModel)]="item.startNum" placeholder="Start (e.g. 100)" style="width: 120px;">
-                    <button class="btn btn-secondary btn-sm" style="padding: 0 10px;" (click)="removeCustomRange($index)"><lucide-icon name="x" class="icon"></lucide-icon></button>
+                <div class="range-row">
+                    <input type="text" class="themed-input flex-1" [(ngModel)]="item.category" aria-label="Category" placeholder="Category (e.g. News)">
+                    <input type="number" class="themed-input range-number" [(ngModel)]="item.startNum" aria-label="Start number" placeholder="Start (e.g. 100)">
+                    <button type="button" class="btn btn-secondary small-btn" (click)="removeCustomRange($index)" aria-label="Remove category"><lucide-icon name="x" class="icon"></lucide-icon></button>
                 </div>
                 }
             </div>
-            <button class="btn btn-secondary btn-sm" (click)="addCustomRange()" style="margin-top: 5px;">+ Add category</button>
+            <button type="button" class="btn btn-secondary small-btn" (click)="addCustomRange()">+ Add category</button>
         </div>
         }
-
-        <button class="btn btn-primary" (click)="saveConfig()" [disabled]="savingConfig">
-            {{ savingConfig ? 'Saving...' : 'Save Configuration' }}
-        </button>
     </div>
 
     <!-- Output Files -->
-    <div class="glass-card settings-card">
+    <div class="glass-card settings-card" id="output" (input)="dirty = true">
         <h2><lucide-icon name="package" class="icon"></lucide-icon> Output files</h2>
         <div class="file-links">
             <div class="file-link-row">
@@ -218,7 +83,7 @@
                 <button class="btn btn-secondary small-btn" (click)="copyUrl('/playlist.m3u')">Copy URL</button>
             </div>
             <div class="file-link-row">
-                <span>EPG Guide (XML)</span>
+                <span>Guide file (XMLTV)</span>
                 <code>/epg.xml</code>
                 <button class="btn btn-secondary small-btn" (click)="copyUrl('/epg.xml')">Copy URL</button>
             </div>
@@ -231,42 +96,41 @@
     </div>
 
     <!-- Metadata Enrichment -->
-    <div class="glass-card settings-card">
-        <h2><lucide-icon name="clapperboard" class="icon"></lucide-icon> Metadata enrichment</h2>
+    <div class="glass-card settings-card" id="artwork" (input)="dirty = true">
+        <h2><lucide-icon name="clapperboard" class="icon"></lucide-icon> Artwork &amp; descriptions</h2>
         <div class="form-group checkbox-group">
             <label>
-                <input type="checkbox" [(ngModel)]="metadataEnabled" (change)="toggleMetadata()">
-                Enable metadata enrichment
+                <input type="checkbox" [(ngModel)]="metadataEnabled" (change)="toggleMetadata()"
+                    aria-label="Add channel artwork and programme descriptions">
+                Add channel artwork and programme descriptions
             </label>
         </div>
 
         @if (metadataEnabled) {
         <div class="metadata-section">
             @if (metadataStats) {
-            <div class="stats-grid" style="grid-template-columns:repeat(3,1fr); margin-bottom:20px;">
-                <div class="stat-item">
-                    <div class="stat-val">{{ metadataStats.cachedShows || 0 }}</div>
-                    <div class="stat-label">Cached Shows</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-val">{{ metadataStats.enrichedPrograms || 0 }}</div>
-                    <div class="stat-label">Enriched Programs</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-val">{{ metadataStats.imdbDataAge || 'None' }}</div>
-                    <div class="stat-label">IMDb Data Age</div>
-                </div>
+            <div class="stat-grid">
+                <app-stat [value]="metadataStats.cachedShows || 0" label="Cached shows"></app-stat>
+                <app-stat [value]="metadataStats.enrichedPrograms || 0" label="Enriched programmes"></app-stat>
+                <app-stat [value]="metadataStats.imdbDataAge || 'None'" label="IMDb data age"></app-stat>
             </div>
             }
 
             <div class="action-row">
-                <button class="btn btn-secondary" (click)="triggerEnrichment()">Run enrichment</button>
-                <button class="btn btn-secondary" (click)="refreshImdbData()">Refresh IMDb data</button>
+                <button class="btn btn-secondary" (click)="triggerEnrichment()">Refresh artwork</button>
+                <button class="btn btn-secondary" (click)="refreshImdbData()">Refresh ratings data</button>
                 <button class="btn btn-secondary" style="color:var(--color-danger);" (click)="clearCache()">Clear
-                    Cache</button>
+                    cache</button>
             </div>
         </div>
         }
+    </div>
+
+    <div class="settings-save-bar">
+        <span class="settings-save-state">{{ dirty ? 'Unsaved changes' : 'All changes saved' }}</span>
+        <button type="button" class="btn btn-primary" (click)="saveConfig()" [disabled]="savingConfig || !dirty">
+            {{ savingConfig ? 'Saving…' : 'Save configuration' }}
+        </button>
     </div>
     }
 </div>

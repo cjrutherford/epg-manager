@@ -9,7 +9,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--bg-dark);
+    background: var(--bg-deep);
     background-image: var(--bg-gradient);
 }
 
@@ -30,7 +30,7 @@
     margin: 0 auto var(--space-xl);
 }
 
-.login-logo h2 {
+.login-logo h1 {
     font-size: var(--font-2xl);
     margin-bottom: var(--space-2xs);
 }
@@ -187,6 +187,11 @@
 }
 
 .hamburger {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     background: none;
     border: none;
     color: var(--text-primary);
@@ -232,87 +237,4 @@
 /* ── Theme Picker ──────────────────────────── */
 .sidebar-theme-picker {
     position: relative;
-}
-
-.theme-dropdown {
-    padding: var(--space-lg);
-    margin: var(--space-2xs) 0 var(--space-sm);
-    background: var(--bg-glass);
-    backdrop-filter: blur(16px);
-    border: 1px solid rgba(var(--color-primary-rgb), 0.12);
-    border-radius: var(--radius-md);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2xs);
-    animation: themeDropIn 0.2s var(--ease-smooth);
-}
-
-@keyframes themeDropIn {
-    from { opacity: 0; transform: translateY(-6px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-.theme-dropdown-title {
-    font-family: var(--font-heading);
-    font-size: var(--font-2xs);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--text-muted);
-    padding: var(--space-2xs) var(--space-sm) var(--space-sm);
-    border-bottom: 1px solid var(--border-subtle);
-    margin-bottom: var(--space-2xs);
-}
-
-.theme-option {
-    display: flex;
-    align-items: center;
-    gap: var(--space-md);
-    width: 100%;
-    padding: var(--space-sm) var(--space-md);
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: var(--radius-sm);
-    color: var(--text-secondary);
-    font-family: var(--font-body);
-    font-size: var(--font-sm);
-    cursor: pointer;
-    text-align: left;
-    transition: all 0.2s var(--ease-smooth);
-}
-
-.theme-option:hover {
-    background: rgba(var(--color-primary-rgb), 0.06);
-    border-color: rgba(var(--color-primary-rgb), 0.1);
-    color: var(--text-primary);
-}
-
-.theme-option.active {
-    background: rgba(var(--color-primary-rgb), 0.12);
-    border-color: rgba(var(--color-primary-rgb), 0.3);
-    color: var(--color-primary);
-    font-weight: 600;
-}
-
-.theme-swatch-group {
-    display: flex;
-    gap: var(--space-3xs);
-}
-
-.theme-swatch {
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    border: 1px solid var(--border-medium);
-    flex-shrink: 0;
-}
-
-.theme-label {
-    flex: 1;
-}
-
-.theme-check {
-    font-size: var(--font-xs);
-    font-weight: 700;
-    color: var(--color-primary);
 }

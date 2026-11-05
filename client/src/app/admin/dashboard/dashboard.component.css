@@ -1,7 +1,4 @@
-.dashboard h1 {
-    margin-bottom: var(--space-3xl);
-    font-size: var(--font-3xl);
-}
+
 
 .actions-section h2 {
     font-size: var(--font-xl);
@@ -13,7 +10,7 @@
 
 .action-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: var(--space-xl);
     margin-bottom: var(--space-4xl);
 }
@@ -56,6 +53,22 @@
     font-size: var(--font-lg);
 }
 
+/* The template used .stat-row for every scheduled-job line, but the class
+   never existed — labels and values ran together ("Daily EPG UpdateEvery 12
+   hours"). */
+.stat-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-xl);
+    padding: var(--space-sm) 0;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.stat-row:last-of-type {
+    border-bottom: none;
+}
+
 @media (max-width: 768px) {
 
     .dashboard-grid,
@@ -71,84 +84,6 @@
 
 
 /* ── Empty-state banner ────────────────────────────────── */
-.empty-state-banner {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3xl);
-    padding: var(--space-4xl) var(--space-4xl);
-    margin-bottom: var(--space-4xl);
-    border: 1px solid rgba(var(--color-primary-rgb), 0.35);
-    background: linear-gradient(135deg, rgba(var(--color-primary-rgb), 0.06) 0%, rgba(var(--color-primary-rgb), 0.02) 100%);
-    animation: bannerGlow 3s ease-in-out infinite alternate;
-}
-
-@keyframes bannerGlow {
-    from { box-shadow: 0 0 18px rgba(var(--color-primary-rgb), 0.08); }
-    to   { box-shadow: 0 0 32px rgba(var(--color-primary-rgb), 0.18); }
-}
-
-.empty-state-icon {
-    font-size: var(--font-5xl);
-    flex-shrink: 0;
-    line-height: 1;
-}
-
-.empty-state-body {
-    flex: 1;
-}
-
-.empty-state-title {
-    font-size: var(--font-xl);
-    font-weight: 700;
-    margin: 0 0 var(--space-sm);
-    color: var(--text-primary);
-}
-
-.empty-state-desc {
-    font-size: var(--font-md);
-    color: var(--text-secondary);
-    margin: 0 0 var(--space-sm);
-    line-height: 1.6;
-}
-
-.empty-state-warn {
-    font-size: var(--font-md);
-    color: var(--color-warning);
-    margin: 0;
-    background: rgba(var(--color-warning-rgb), 0.08);
-    border-left: 3px solid var(--color-warning);
-    padding: var(--space-sm) var(--space-lg);
-    border-radius: 0 6px 6px 0;
-}
-
-.btn-sync-now {
-    flex-shrink: 0;
-    padding: var(--space-lg) var(--space-3xl);
-    font-size: var(--font-lg);
-    font-weight: 700;
-    color: var(--color-primary-text);
-    background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
-    border: none;
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    transition: opacity 0.2s, transform 0.15s;
-    white-space: nowrap;
-}
-
-.btn-sync-now:hover:not(:disabled) {
-    opacity: 0.88;
-    transform: translateY(-1px);
-}
-
-.btn-sync-now:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-    transform: none;
-}
-
 .spinner-sm {
     display: inline-block;
     width: 16px;
@@ -164,14 +99,6 @@
 }
 
 @media (max-width: 768px) {
-    .empty-state-banner {
-        flex-direction: column;
-        text-align: center;
-    }
-    .btn-sync-now {
-        width: 100%;
-        justify-content: center;
-    }
 }
 
 /* ── Sync Pipeline Visualization ─────────────── */
@@ -223,7 +150,7 @@
     color: var(--color-success);
 }
 .stage-label {
-    font-size: var(--font-2xs);
+    font-size: var(--font-xs);
     color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -428,57 +355,6 @@
     font-size: var(--font-md);
 }
 /* ── Reset scope picker ─────────────────────────── */
-.reset-modal {
-    max-width: 620px;
-    width: 90%;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-xl);
-}
-
-/*
- * .modal-content (global) already makes this a scroll container with a
- * max-height. Combined with flex-direction: column that means children are
- * shrinkable by default — the preview list gets squashed below its content
- * height and overflows onto the action buttons. Pin every child at its natural
- * size and let the container scroll instead.
- */
-.reset-modal > * {
-    flex-shrink: 0;
-}
-
-.reset-modal .modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: var(--space-xl);
-    border-bottom: 1px solid var(--border-subtle);
-    padding-bottom: var(--space-lg);
-}
-
-.reset-modal .modal-header h2 {
-    margin: 0;
-    font-size: var(--text-2xl);
-}
-
-.close-modal-btn {
-    background: none;
-    border: none;
-    font-size: var(--font-xl);
-    line-height: 1;
-    padding: var(--space-xs) var(--space-md);
-    border-radius: var(--radius-sm);
-    color: var(--text-muted);
-    cursor: pointer;
-    transition: color 0.15s, background 0.15s;
-}
-
-.close-modal-btn:hover,
-.close-modal-btn:focus-visible {
-    color: var(--text-primary);
-    background: var(--bg-surface-hover);
-}
-
 .reset-intro {
     margin: 0;
     font-size: var(--font-md);
@@ -606,29 +482,6 @@
 .reset-preview-empty {
     font-size: var(--font-md);
     color: var(--text-muted);
-}
-
-.reset-modal .modal-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--space-lg);
-    padding-top: var(--space-2xs);
-}
-
-.reset-modal .btn-danger {
-    background: var(--color-danger);
-    border: 1px solid var(--color-danger);
-    color: var(--color-danger-text);
-    font-weight: 600;
-}
-
-.reset-modal .btn-danger:hover:not(:disabled) {
-    filter: brightness(1.1);
-}
-
-.reset-modal .btn-danger:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
 }
 
 /* .action-card became a <button>; reset the defaults so it looks unchanged,

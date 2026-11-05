@@ -1,0 +1,125 @@
+<div class="playlist-config">
+    <div class="playlist-head">
+        <div>
+            <h3>Playlists &amp; guide feeds</h3>
+            <p>Choose what Tuner Daemon imports. Saving updates this page and the source list; run a sync to fetch channels.</p>
+        </div>
+        <div class="playlist-head-actions">
+            <button type="button" class="btn btn-secondary" (click)="openCatalog()">
+                <lucide-icon name="search" class="icon"></lucide-icon>
+                Browse channel catalogues
+            </button>
+        </div>
+    </div>
+
+    @if (loading) {
+    <div class="playlist-loading">
+        <span class="spinner"></span>
+        <span>Loading playlists…</span>
+    </div>
+    } @else if (error) {
+    <div class="playlist-error">{{ error }}</div>
+    } @else {
+
+    <section class="selected-playlists" aria-labelledby="active-playlists-title">
+        <div class="playlist-scope-summary">
+            <strong id="active-playlists-title">Active playlists ({{ selectedPlaylists.length }})</strong>
+            <span>{{ selectedImportedChannels }} imported channels</span>
+            <span>{{ selectedEstimatedChannels }} estimated source channels</span>
+        </div>
+        @if (selectedDetails.length === 0) {
+        <p class="playlist-empty">No playlist selected yet. Add one below or pick a free channel preset.</p>
+        } @else {
+        <div class="playlist-chips">
+            @for (item of selectedDetails; track item.url) {
+            <div class="playlist-chip">
+                <span class="chip-label" [title]="item.url">{{ item.label }}</span>
+                <span class="chip-meta">{{ item.category }}</span>
+                <button type="button" class="chip-remove" (click)="remove(item.url)"
+                    [attr.aria-label]="'Remove ' + item.label">
+                    <lucide-icon name="x" class="icon"></lucide-icon>
+                </button>
+            </div>
+            }
+        </div>
+        }
+    </section>
+
+    <section class="fast-presets-container" aria-labelledby="presets-title">
+        <div class="presets-header">
+            <span class="presets-title" id="presets-title"><lucide-icon name="zap" class="icon"></lucide-icon> Free channel presets</span>
+            <span class="presets-desc">Add a free, legal live-channel playlist in one step.</span>
+        </div>
+        <div class="preset-buttons-grid">
+            @for (preset of presets; track preset.id) {
+            <button type="button" class="preset-card-btn" [class.added]="isSelected(preset.url)"
+                (click)="isSelected(preset.url) ? remove(preset.url) : addPreset(preset.url)">
+                <span class="preset-name">{{ preset.label }}</span>
+                <span class="preset-count">~{{ preset.channelCountEstimate }} channels</span>
+                <span class="preset-status">{{ isSelected(preset.url) ? 'Added' : '+ Add playlist' }}</span>
+            </button>
+            }
+        </div>
+    </section>
+
+    <div class="form-group">
+        <label for="playlist-url">Add a playlist URL</label>
+        <div class="custom-url-row">
+            <input id="playlist-url" type="text" class="themed-input" [(ngModel)]="customUrl"
+                aria-label="Playlist URL" placeholder="Paste any M3U playlist URL…" (keyup.enter)="addCustom()">
+            <button type="button" class="btn btn-secondary" (click)="addCustom()" [disabled]="!customUrl.trim()">Add</button>
+        </div>
+    </div>
+
+    @if (catalogOpen) {
+    <section class="iptv-org-browser" aria-labelledby="catalogue-title">
+        <div class="iptv-org-head">
+            <div>
+                <strong id="catalogue-title">Channel catalogues</strong>
+                <p>IPTV-ORG country, language and category lists.</p>
+            </div>
+            <button type="button" class="btn btn-secondary small-btn" (click)="syncCatalog()" [disabled]="syncing">
+                {{ syncing ? 'Syncing…' : 'Sync catalogue' }}
+            </button>
+        </div>
+        <div class="iptv-org-controls">
+            <input type="text" class="themed-input" [(ngModel)]="search" aria-label="Search channel catalogues"
+                placeholder="Search by country, language or name…">
+            <select class="themed-input" [(ngModel)]="category" aria-label="Catalogue category">
+                <option value="all">All catalogues</option>
+                @for (cat of categories; track cat) {
+                <option [value]="cat">{{ cat }}</option>
+                }
+            </select>
+        </div>
+        @if (catalogLoading) {
+        <div class="playlist-loading"><span class="spinner"></span><span>Loading catalogues…</span></div>
+        } @else {
+        <div class="iptv-org-grid">
+            @for (file of filteredCatalog; track file.url) {
+            <button type="button" class="iptv-org-item" [class.selected]="isSelected(file.url)"
+                (click)="toggleCatalogItem(file.url)" [title]="file.url">
+                <span class="iptv-org-main">
+                    <span class="iptv-org-name">{{ file.label }}</span>
+                    <span class="iptv-org-meta">{{ file.category }} · {{ file.host }}</span>
+                </span>
+                @if (isSelected(file.url)) {
+                <lucide-icon name="check" class="icon iptv-org-check"></lucide-icon>
+                } @else {
+                <lucide-icon name="plus" class="icon iptv-org-check"></lucide-icon>
+                }
+            </button>
+            }
+        </div>
+        }
+    </section>
+    }
+
+    <div class="playlist-save">
+        <span class="playlist-save-state">{{ dirty ? 'Unsaved changes' : 'No changes to save' }}</span>
+        <button type="button" class="btn btn-primary" (click)="save()" [disabled]="saving || !dirty">
+            {{ saving ? 'Saving…' : 'Save playlists' }}
+        </button>
+    </div>
+    }
+</div>

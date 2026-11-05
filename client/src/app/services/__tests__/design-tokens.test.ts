@@ -33,7 +33,7 @@ function withoutTokenBlocks(css: string): string {
 
 describe('the type scale', () => {
     it('is declared once, with every step', () => {
-        for (const step of ['2xs', 'xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', '4xl', '5xl']) {
+        for (const step of ['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', '4xl', '5xl']) {
             expect(shared).toContain(`--font-${step}:`);
         }
     });

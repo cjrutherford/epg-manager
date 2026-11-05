@@ -1,6 +1,11 @@
 import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
 import { ConfirmService } from '../../services/confirm.service';
-import { ModalFocusDirective } from '../../services/modal-focus.directive';
+import { ModalComponent } from '../../shared/modal.component';
+import { StatComponent } from '../../shared/stat.component';
+import { PageHeaderComponent } from '../../shared/page-header.component';
+import { StateComponent } from '../../shared/state.component';
+import { SkeletonComponent } from '../../shared/skeleton.component';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
@@ -10,9 +15,9 @@ import { LucideAngularModule } from 'lucide-angular';
 @Component({
     selector: 'app-diagnostics',
     standalone: true,
-    imports: [CommonModule, FormsModule, LucideAngularModule, ModalFocusDirective],
+    imports: [CommonModule, FormsModule, LucideAngularModule, ModalComponent, StatComponent, PageHeaderComponent, StateComponent, SkeletonComponent],
     templateUrl: './diagnostics.component.html',
-    styleUrl: './diagnostics.component.css'
+    styleUrls: ['./diagnostics.component.css', '../../shared/data-table.css']
 })
 export class DiagnosticsComponent implements OnInit {
     activeTab: 'matches' | 'sources' = 'matches';
@@ -39,10 +44,14 @@ export class DiagnosticsComponent implements OnInit {
         private api: ApiService,
         private toast: ToastService,
         private cdr: ChangeDetectorRef,
-        private confirm: ConfirmService
+        private confirm: ConfirmService,
+        private route: ActivatedRoute
     ) { }
 
     ngOnInit(): void {
+        // Sources links here with ?tab=sources; keep the deep link working.
+        const tab = this.route.snapshot.queryParamMap.get('tab');
+        if (tab === 'sources' || tab === 'matches') this.activeTab = tab;
         this.loadAll();
     }
 
@@ -117,17 +126,17 @@ export class DiagnosticsComponent implements OnInit {
         if (!this.selectedChannel) return;
         try {
             await this.api.setOverride(this.selectedChannel.id, candidate.id).toPromise();
-            this.toast.show(`EPG override set for '${this.selectedChannel.name}'`, 'success');
+            this.toast.show(`Guide match set for '${this.selectedChannel.name}'`, 'success');
             this.showRematchModal = false;
             await this.loadAll();
         } catch (e: any) {
-            this.toast.show('Failed to set EPG override: ' + e.message, 'error');
+            this.toast.show('Failed to set guide match: ' + e.message, 'error');
         }
     }
 
     async clearChannelMatch(ch: any): Promise<void> {
         const confirmed = await this.confirm.ask({
-            title: 'Clear this EPG match?',
+            title: 'Clear this guide match?',
             message: `'${ch.name}' will have no guide data until it is matched again.`,
             detail: 'The next sync may re-match it automatically.',
             confirmLabel: 'Clear match',
@@ -136,7 +145,7 @@ export class DiagnosticsComponent implements OnInit {
         if (!confirmed) return;
         try {
             await this.api.setOverride(ch.id, null).toPromise();
-            this.toast.show(`EPG match cleared for '${ch.name}'`, 'success');
+            this.toast.show(`Guide match cleared for '${ch.name}'`, 'success');
             await this.loadAll();
         } catch (e: any) {
             this.toast.show('Failed to clear match: ' + e.message, 'error');
@@ -164,7 +173,7 @@ export class DiagnosticsComponent implements OnInit {
             this.toast.show(`${source.label || source.site} ${nextEnabled ? 'enabled' : 'disabled'}`, 'success');
         } catch (e: any) {
             source.enabled = !nextEnabled;
-            this.toast.show('Failed to update EPG source: ' + e.message, 'error');
+            this.toast.show('Failed to update guide source: ' + e.message, 'error');
         } finally {
             this.cdr.markForCheck();
         }
@@ -175,9 +184,9 @@ export class DiagnosticsComponent implements OnInit {
         this.cdr.markForCheck();
         try {
             await this.api.syncEpgSources().toPromise();
-            this.toast.show('EPG source sync started.', 'success');
+            this.toast.show('Guide source sync started.', 'success');
         } catch (e: any) {
-            this.toast.show('Failed to start EPG source sync: ' + e.message, 'error');
+            this.toast.show('Failed to start guide source sync: ' + e.message, 'error');
         } finally {
             this.syncingSources = false;
             this.cdr.markForCheck();

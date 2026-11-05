@@ -1,20 +1,26 @@
 import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { LucideAngularModule } from 'lucide-angular';
 import { ConfirmService } from '../../services/confirm.service';
-import { ModalFocusDirective } from '../../services/modal-focus.directive';
+import { ModalComponent } from '../../shared/modal.component';
+import { StatComponent } from '../../shared/stat.component';
+import { PageHeaderComponent } from '../../shared/page-header.component';
+import { StateComponent } from '../../shared/state.component';
+import { SkeletonComponent } from '../../shared/skeleton.component';
+import { PlaylistConfigComponent } from '../../shared/playlist-config.component';
 import { CommonModule } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { ApiService, ProbeResult, SourceRecord } from '../../services/api.service';
 import { ToastService } from '../../services/toast.service';
 
-type Family = 'all' | 'channels' | 'guide';
+type Family = 'all' | 'channels' | 'guide' | 'failing';
 
 @Component({
     selector: 'app-sources',
     standalone: true,
-    imports: [CommonModule, FormsModule, ModalFocusDirective, LucideAngularModule],
+    imports: [CommonModule, FormsModule, RouterLink, ModalComponent, LucideAngularModule, StatComponent, PageHeaderComponent, StateComponent, SkeletonComponent, PlaylistConfigComponent],
     templateUrl: './sources.component.html',
-    styleUrl: './sources.component.css'
+    styleUrls: ['./sources.component.css', '../../shared/data-table.css']
 })
 export class SourcesComponent implements OnInit {
     sources: SourceRecord[] = [];
@@ -22,6 +28,7 @@ export class SourcesComponent implements OnInit {
     loadError: string | null = null;
     loading = true;
     family: Family = 'all';
+    playlistsOpen = false;
 
     // Add flow
     showAddModal = false;
@@ -49,6 +56,9 @@ export class SourcesComponent implements OnInit {
         this.loadError = null;
         try {
             this.sources = (await this.api.getSources().toPromise()) || [];
+            // A brand-new install should land on the playlist picker, not an
+            // empty health table with no explanation.
+            if (this.sources.length === 0) this.playlistsOpen = true;
         } catch (e: any) {
             this.sources = [];
             this.loadError = e?.status === 0
@@ -60,9 +70,14 @@ export class SourcesComponent implements OnInit {
         }
     }
 
+    onPlaylistsSaved(): void {
+        void this.load();
+    }
+
     get visibleSources(): SourceRecord[] {
         const family = this.family;
         if (family === 'all') return this.sources;
+        if (family === 'failing') return this.sources.filter(source => this.healthOf(source) === 'failed');
         return this.sources.filter(source => source.provides.includes(family));
     }
 

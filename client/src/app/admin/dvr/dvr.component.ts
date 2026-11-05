@@ -1,7 +1,7 @@
 import { ChangeDetectorRef, Component, OnDestroy, OnInit, Input, Output, EventEmitter } from '@angular/core';
 import { LucideAngularModule } from 'lucide-angular';
 import { ConfirmService } from '../../services/confirm.service';
-import { ModalFocusDirective } from '../../services/modal-focus.directive';
+import { ModalComponent } from '../../shared/modal.component';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
@@ -10,11 +10,15 @@ import { ToastService } from '../../services/toast.service';
 import { ClientRecordingService } from '../../services/client-recording.service';
 import { ClientRecording } from '../../services/client-recording.types';
 import { DvrService } from '../../services/dvr.service';
+import { ImageFallbackDirective } from '../../shared/image-fallback.directive';
+import { StatusBadgeComponent } from '../../shared/status-badge.component';
+import { PageHeaderComponent } from '../../shared/page-header.component';
+import { SkeletonComponent } from '../../shared/skeleton.component';
 
 @Component({
     selector: 'app-dvr',
     standalone: true,
-    imports: [CommonModule, FormsModule, ModalFocusDirective, LucideAngularModule],
+    imports: [CommonModule, FormsModule, ModalComponent, LucideAngularModule, ImageFallbackDirective, StatusBadgeComponent, PageHeaderComponent, SkeletonComponent],
     templateUrl: './dvr.component.html',
     styleUrl: './dvr.component.css'
 })
@@ -335,7 +339,7 @@ export class DvrComponent implements OnInit, OnDestroy {
         this.cdr.detectChanges();
         try {
             await this.api.saveDvrSettings(this.dvrSettings).toPromise();
-            this.toast.show('DVR settings saved', 'success');
+            this.toast.show('Recording settings saved', 'success');
             await this.loadAll();
         } catch (e: any) {
             this.toast.show(this.dvr.describeError(e, 'Could not save those settings'), 'error');
@@ -506,14 +510,6 @@ export class DvrComponent implements OnInit, OnDestroy {
         } catch {
             this.toast.show(isScheduled ? 'Failed to cancel scheduled recording' : 'Failed to delete recording', 'error');
         }
-    }
-
-    getStatusClass(status: string): string {
-        return this.dvr.statusClass(status);
-    }
-
-    statusLabel(status: string): string {
-        return this.dvr.statusLabel(status);
     }
 
     /** The reason a recording ended as it did, from either recorder. */

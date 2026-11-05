@@ -1,0 +1,337 @@
+.playlist-config {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xl);
+    padding: var(--space-xl) 0 0;
+    border-top: 1px solid var(--border-subtle);
+    margin-top: var(--space-xl);
+}
+
+.playlist-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--space-xl);
+}
+
+.playlist-head h3 {
+    margin: 0 0 var(--space-2xs);
+    font-size: var(--font-xl);
+}
+
+.playlist-head p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--font-md);
+    max-width: 64ch;
+}
+
+.playlist-head-actions {
+    flex: none;
+}
+
+.playlist-loading {
+    display: flex;
+    align-items: center;
+    gap: var(--space-lg);
+    padding: var(--space-2xl) 0;
+    color: var(--text-secondary);
+    font-size: var(--font-md);
+}
+
+.playlist-loading .spinner {
+    width: 22px;
+    height: 22px;
+}
+
+.playlist-error {
+    padding: var(--space-lg) var(--space-xl);
+    border-left: 3px solid var(--color-danger);
+    background: rgba(var(--color-danger-rgb), 0.08);
+    color: var(--color-danger);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-md);
+}
+
+.selected-playlists {
+    background: var(--bg-inset);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: var(--space-lg) var(--space-xl);
+}
+
+.playlist-scope-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-xs) var(--space-lg);
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+}
+
+.playlist-scope-summary strong {
+    color: var(--text-primary);
+    font-size: var(--font-md);
+}
+
+.playlist-empty {
+    margin: var(--space-lg) 0 0;
+    color: var(--text-muted);
+    font-size: var(--font-sm);
+}
+
+.playlist-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    margin-top: var(--space-lg);
+}
+
+.playlist-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: var(--space-3xs) var(--space-3xs) var(--space-3xs) var(--space-md);
+    border-radius: var(--radius-pill);
+    background: rgba(var(--color-primary-rgb), 0.1);
+    border: 1px solid rgba(var(--color-primary-rgb), 0.24);
+    color: var(--text-primary);
+    font-size: var(--font-sm);
+}
+
+.chip-label {
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chip-meta {
+    color: var(--text-muted);
+    font-size: var(--font-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.chip-remove {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(var(--color-primary-rgb), 0.08);
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0;
+}
+
+.chip-remove:hover {
+    background: rgba(var(--color-danger-rgb), 0.25);
+    color: var(--color-danger);
+}
+
+.fast-presets-container {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: var(--space-lg) var(--space-xl);
+    background: var(--bg-surface);
+}
+
+.presets-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-xs) var(--space-lg);
+    margin-bottom: var(--space-md);
+}
+
+.presets-title {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2xs);
+    font-weight: 700;
+    color: var(--text-primary);
+    font-size: var(--font-md);
+}
+
+.presets-desc {
+    color: var(--text-muted);
+    font-size: var(--font-sm);
+}
+
+.preset-buttons-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: var(--space-sm);
+}
+
+.preset-card-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3xs);
+    padding: var(--space-md) var(--space-lg);
+    background: var(--bg-inset);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    cursor: pointer;
+    text-align: left;
+}
+
+.preset-card-btn:hover {
+    border-color: rgba(var(--color-primary-rgb), 0.4);
+}
+
+.preset-card-btn.added {
+    border-color: rgba(var(--color-success-rgb), 0.45);
+    background: rgba(var(--color-success-rgb), 0.08);
+}
+
+.preset-name { font-weight: 600; font-size: var(--font-sm); }
+.preset-count { color: var(--text-muted); font-size: var(--font-xs); }
+.preset-status {
+    color: var(--color-primary);
+    font-size: var(--font-xs);
+    font-weight: 600;
+    margin-top: var(--space-3xs);
+}
+.preset-card-btn.added .preset-status { color: var(--color-success); }
+
+.form-group > label {
+    display: block;
+    margin-bottom: var(--space-2xs);
+    color: var(--text-secondary);
+    font-size: var(--font-sm);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.custom-url-row {
+    display: flex;
+    gap: var(--space-sm);
+}
+
+.custom-url-row .themed-input {
+    flex: 1;
+}
+
+.iptv-org-browser {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: var(--space-lg) var(--space-xl);
+    background: var(--bg-surface);
+}
+
+.iptv-org-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--space-xl);
+    margin-bottom: var(--space-md);
+}
+
+.iptv-org-head strong {
+    display: block;
+    color: var(--text-primary);
+    font-size: var(--font-md);
+}
+
+.iptv-org-head p {
+    margin: var(--space-3xs) 0 0;
+    color: var(--text-muted);
+    font-size: var(--font-sm);
+}
+
+.iptv-org-controls {
+    display: flex;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-md);
+}
+
+.iptv-org-controls input { flex: 1; }
+
+.iptv-org-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: var(--space-xs);
+    max-height: 360px;
+    overflow-y: auto;
+    padding-right: var(--space-2xs);
+}
+
+.iptv-org-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    background: var(--bg-inset);
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    cursor: pointer;
+    text-align: left;
+}
+
+.iptv-org-item:hover {
+    border-color: rgba(var(--color-primary-rgb), 0.3);
+}
+
+.iptv-org-item.selected {
+    border-color: rgba(var(--color-success-rgb), 0.5);
+    background: rgba(var(--color-success-rgb), 0.1);
+}
+
+.iptv-org-main {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.iptv-org-name {
+    font-size: var(--font-sm);
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.iptv-org-meta {
+    font-size: var(--font-xs);
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.iptv-org-check { flex: none; color: var(--color-primary); }
+.iptv-org-item.selected .iptv-org-check { color: var(--color-success); }
+
+.playlist-save {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: var(--space-xl);
+    padding-top: var(--space-md);
+    border-top: 1px solid var(--border-subtle);
+}
+
+.playlist-save-state {
+    color: var(--text-muted);
+    font-size: var(--font-sm);
+}
+
+@media (max-width: 640px) {
+    .playlist-head { flex-direction: column; }
+    .playlist-head-actions { width: 100%; }
+    .playlist-head-actions .btn { width: 100%; }
+    .playlist-scope-summary { display: grid; gap: var(--space-3xs); }
+    .chip-label { max-width: 150px; }
+    .custom-url-row { flex-direction: column; }
+    .iptv-org-head { flex-direction: column; }
+    .iptv-org-controls { flex-direction: column; }
+    .playlist-save { justify-content: space-between; }
+}

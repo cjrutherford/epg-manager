@@ -62,13 +62,13 @@ test('a tour of the admin interface', async ({ page }) => {
     await beat(page, 1600);
 
     // ── DVR ──
-    await page.getByRole('link', { name: 'DVR' }).click();
-    await expect(page.locator('.page-header h1')).toHaveText('DVR');
+    await page.getByRole('link', { name: 'Recordings' }).click();
+    await expect(page.locator('.page-header h1')).toHaveText('Recordings');
     await beat(page, 1400);
 
-    // ── EPG & Matches ──
-    await page.getByRole('link', { name: 'EPG & Matches' }).click();
-    await expect(page.locator('.page-header h1')).toHaveText('EPG & Matches');
+    // ── Guide & matching ──
+    await page.getByRole('link', { name: 'Guide & matching' }).click();
+    await expect(page.locator('.page-header h1')).toHaveText('Guide & matching');
     await expect(page.locator('.stat').first()).toBeVisible();
     await beat(page, 1600);
 

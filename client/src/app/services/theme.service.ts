@@ -6,6 +6,8 @@ export interface Theme {
     name: string;
     primaryColor: string;
     bgColor: string;
+    /** One line explaining what the theme is for, shown in the picker. */
+    description?: string;
 }
 
 @Injectable({
@@ -15,16 +17,16 @@ export class ThemeService {
     private isBrowser: boolean;
     private currentTheme = 'cinematic-noir';
 
+    /**
+     * Ordered so the first four are the curated choices in the picker.
+     * Everything after them lives behind "Show all themes".
+     */
     readonly themes: Theme[] = [
-        { key: 'tuner-daemon', name: 'Tuner Daemon (Cyber Lime)', primaryColor: '#22c55e', bgColor: '#070a12' },
-        { key: 'cinematic-noir', name: 'Cinematic Noir', primaryColor: '#e8a854', bgColor: '#050505' },
-        { key: 'aether', name: 'Aether Vision', primaryColor: '#00f0ff', bgColor: '#05070e' },
-        { key: 'pulse', name: 'Pulse Broadcast', primaryColor: '#ff007f', bgColor: '#0c0614' },
-        { key: 'omni', name: 'Omni Station', primaryColor: '#3b82f6', bgColor: '#0b1120' },
-        { key: 'midnight-forest', name: 'Midnight Forest', primaryColor: '#3cd070', bgColor: '#08100c' },
-        { key: 'cosmic-purple', name: 'Cosmic Purple', primaryColor: '#a855f7', bgColor: '#090514' },
-        { key: 'neon-cyberpunk', name: 'Neon Cyberpunk', primaryColor: '#e040fb', bgColor: '#110214' },
-        { key: 'arctic-ice', name: 'Arctic Ice', primaryColor: '#4fc3f7', bgColor: '#020e14' }
+        { key: 'cinematic-noir', name: 'Cinematic Noir', description: 'Warm amber on near-black — the default', primaryColor: '#e8a854', bgColor: '#050505' },
+        { key: 'daylight', name: 'Daylight', description: 'Warm paper and ink for bright rooms', primaryColor: '#955613', bgColor: '#f5efe5' },
+        { key: 'high-contrast', name: 'High Contrast', description: 'Brighter borders and text for low vision', primaryColor: '#ffd23f', bgColor: '#000000' },
+        { key: 'tuner-daemon', name: 'Tuner Daemon', description: 'Cyber-lime accents on deep navy', primaryColor: '#22c55e', bgColor: '#070a12' },
+        { key: 'midnight-forest', name: 'Midnight Forest', description: 'Bioluminescent green and deep woodland', primaryColor: '#3cd070', bgColor: '#08100c' },
     ];
 
     constructor(@Inject(PLATFORM_ID) platformId: Object) {

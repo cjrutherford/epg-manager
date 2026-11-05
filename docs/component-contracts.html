@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tuner Daemon — Component contracts</title>
+<style>
+    :root {
+        --bg: #050505;
+        --surface: #0f0c0a;
+        --inset: #14100c;
+        --border: rgba(255, 255, 255, 0.08);
+        --text: #f5f2eb;
+        --muted: #b5ac9d;
+        --primary: #e8a854;
+        --primary-text: #1a1408;
+        --success: #7fb685;
+        --danger: #c75d5d;
+        --mono: 'JetBrains Mono', ui-monospace, monospace;
+        font-family: 'Libre Franklin', system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); line-height: 1.6; }
+    main { max-width: 1080px; margin: 0 auto; padding: 48px 24px 96px; }
+    h1, h2, h3 { line-height: 1.15; }
+    h1 { font-size: 2.25rem; margin: 0 0 8px; letter-spacing: -0.02em; }
+    h2 { font-size: 1.35rem; margin: 56px 0 8px; padding-top: 24px; border-top: 1px solid var(--border); }
+    h3 { font-size: 1rem; margin: 32px 0 8px; }
+    p, li { color: var(--muted); }
+    code { font-family: var(--mono); font-size: 0.85em; color: var(--primary); }
+    .lede { max-width: 72ch; font-size: 1.05rem; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 0; }
+    .tag { border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; font-size: 0.75rem; color: var(--muted); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 16px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+    .card h3 { margin-top: 0; }
+    .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 0.875rem; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { color: var(--text); font-weight: 600; }
+    td { color: var(--muted); }
+    .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 0 16px; border-radius: 8px; font: inherit; font-size: 0.875rem; font-weight: 600; border: 1px solid transparent; cursor: pointer; }
+    .btn-primary { background: var(--primary); color: var(--primary-text); }
+    .btn-secondary { background: rgba(255, 255, 255, 0.04); border-color: var(--border); color: var(--text); }
+    .btn-ghost { background: transparent; color: var(--muted); }
+    .btn-danger { background: rgba(199, 93, 93, 0.16); border-color: rgba(199, 93, 93, 0.5); color: #f3b4b4; }
+    .btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+    .input { width: 100%; min-height: 38px; padding: 8px 12px; border-radius: 8px; background: var(--inset); border: 1px solid var(--border); color: var(--text); font: inherit; font-size: 0.875rem; }
+    .input:focus { outline: 2px solid var(--primary); outline-offset: 1px; }
+    .input.invalid { border-color: var(--danger); }
+    .field-error { color: #f3b4b4; font-size: 0.8rem; margin-top: 6px; }
+    .type-row { display: flex; align-items: baseline; gap: 16px; padding: 6px 0; border-bottom: 1px dashed var(--border); }
+    .type-row span:first-child { width: 72px; flex: none; color: var(--primary); font-family: var(--mono); font-size: 0.75rem; }
+    .swatches { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-top: 16px; }
+    .swatch { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .swatch .chip { height: 56px; }
+    .swatch .label { padding: 8px 10px; font-family: var(--mono); font-size: 0.72rem; color: var(--muted); }
+    .note { border-left: 3px solid var(--primary); background: rgba(232, 168, 84, 0.06); padding: 12px 16px; border-radius: 0 8px 8px 0; margin-top: 16px; }
+    .state { padding: 14px 16px; border-radius: 10px; border: 1px solid var(--border); margin-top: 12px; }
+    .state.error { border-left: 3px solid var(--danger); background: rgba(199, 93, 93, 0.08); }
+    .state.empty { border-style: dashed; color: var(--muted); text-align: center; }
+    @media (max-width: 640px) { main { padding: 32px 16px 72px; } h1 { font-size: 1.75rem; } }
+</style>
+</head>
+<body>
+<main>
+    <h1>Component contracts</h1>
+    <p class="lede">The rules a screen must follow to look and behave like Tuner Daemon. This page is the reference for review: if a component is not described here, it is a one-off and needs a reason.</p>
+    <div class="meta">
+        <span class="tag">Phase 1 · design system</span>
+        <span class="tag">5 supported themes</span>
+        <span class="tag">WCAG 2.1 AA</span>
+        <span class="tag">320–1440 px</span>
+    </div>
+
+    <h2>Supported themes</h2>
+    <p>Only these themes ship. Every token below is defined for each one, and the contrast test audits text and semantic colours against WCAG AA.</p>
+    <table>
+        <thead><tr><th>Theme</th><th>Key</th><th>Intent</th></tr></thead>
+        <tbody>
+            <tr><td>Cinematic Noir</td><td><code>cinematic-noir</code></td><td>Warm amber on near-black. Default.</td></tr>
+            <tr><td>Daylight</td><td><code>daylight</code></td><td>Warm paper and ink for bright rooms.</td></tr>
+            <tr><td>High Contrast</td><td><code>high-contrast</code></td><td>Brighter borders and text for low vision.</td></tr>
+            <tr><td>Tuner Daemon</td><td><code>tuner-daemon</code></td><td>Cyber-lime accents on deep navy.</td></tr>
+            <tr><td>Midnight Forest</td><td><code>midnight-forest</code></td><td>Bioluminescent green on woodland black.</td></tr>
+        </tbody>
+    </table>
+    <div class="note">A theme is not a skin on top of hard-coded colours. Components use semantic tokens only: <code>--bg-surface</code>, <code>--text-secondary</code>, <code>--border-subtle</code>, <code>--color-primary</code>. A raw hex value in a component is a defect.</div>
+
+    <h2>Type scale</h2>
+    <p>Nine steps replace the 42 ad-hoc sizes that had accumulated. Sub-12px text is not supported.</p>
+    <div class="card">
+        <div class="type-row"><span>xs · 12</span><span style="font-size:12px">Guide metadata, timestamps, chip labels</span></div>
+        <div class="type-row"><span>sm · 13</span><span style="font-size:13px">Table cells, secondary labels, helper text</span></div>
+        <div class="type-row"><span>md · 14</span><span style="font-size:14px">Body copy, form values, buttons</span></div>
+        <div class="type-row"><span>lg · 16</span><span style="font-size:16px">Card leads, section intros</span></div>
+        <div class="type-row"><span>xl · 18</span><span style="font-size:18px">Card headings, panel titles</span></div>
+        <div class="type-row"><span>2xl · 21</span><span style="font-size:21px">Page section headings</span></div>
+        <div class="type-row"><span>3xl · 24</span><span style="font-size:24px">Page title on small screens</span></div>
+        <div class="type-row"><span>4xl · 28</span><span style="font-size:28px">Page title</span></div>
+        <div class="type-row"><span>5xl · 32</span><span style="font-size:32px">Marketing-scale display moments</span></div>
+    </div>
+
+    <h2>Semantic colour</h2>
+    <p>Use the named token, never the raw value. Every solid semantic fill ships a matching <code>--color-*-text</code> token for its label; white is not assumed.</p>
+    <div class="swatches">
+        <div class="swatch"><div class="chip" style="background:var(--primary)"></div><div class="label">--color-primary<br>--color-primary-text</div></div>
+        <div class="swatch"><div class="chip" style="background:var(--success)"></div><div class="label">--color-success<br>--color-success-text</div></div>
+        <div class="swatch"><div class="chip" style="background:var(--danger)"></div><div class="label">--color-danger<br>--color-danger-text</div></div>
+        <div class="swatch"><div class="chip" style="background:var(--surface)"></div><div class="label">--bg-surface<br>--bg-inset</div></div>
+        <div class="swatch"><div class="chip" style="background:var(--inset);border-top:1px solid var(--border)"></div><div class="label">--border-subtle<br>--text-secondary</div></div>
+    </div>
+
+    <h2>Buttons</h2>
+    <div class="card">
+        <div class="row">
+            <button class="btn btn-primary">Primary action</button>
+            <button class="btn btn-secondary">Secondary</button>
+            <button class="btn btn-ghost">Ghost</button>
+            <button class="btn btn-danger">Destructive</button>
+            <button class="btn btn-primary" disabled>Disabled</button>
+        </div>
+        <table>
+            <thead><tr><th>Variant</th><th>Use</th><th>Contract</th></tr></thead>
+            <tbody>
+                <tr><td>Primary</td><td>One per view: save, sync, confirm.</td><td>Solid <code>--color-primary</code>, label uses <code>--color-primary-text</code>.</td></tr>
+                <tr><td>Secondary</td><td>Alternatives and navigation.</td><td>Transparent surface, <code>--border-subtle</code>, no colour change on hover beyond border.</td></tr>
+                <tr><td>Ghost</td><td>Low-emphasis actions inside dense rows.</td><td>No border; hover adds <code>--bg-surface-hover</code>.</td></tr>
+                <tr><td>Destructive</td><td>Delete or cancel something that exists.</td><td>Danger tint at ≤16% fill, danger border, never a solid red block.</td></tr>
+                <tr><td>Disabled</td><td>Unavailable, not merely unclicked.</td><td>45% opacity, no pointer events, explanation adjacent or in a tooltip.</td></tr>
+            </tbody>
+        </table>
+        <p>Minimum target is 44 × 44 px on touch layouts and 32 × 32 px for icon-only controls on desktop. All icon-only buttons require <code>aria-label</code> or <code>title</code>.</p>
+    </div>
+
+    <h2>Fields and validation</h2>
+    <div class="card">
+        <div class="row">
+            <div style="flex:1;min-width:200px">
+                <label for="ok" style="display:block;font-size:13px;margin-bottom:6px">Playlist URL</label>
+                <input id="ok" class="input" value="https://example.com/channels.m3u">
+            </div>
+            <div style="flex:1;min-width:200px">
+                <label for="bad" style="display:block;font-size:13px;margin-bottom:6px">Guide days</label>
+                <input id="bad" class="input invalid" value="0" aria-invalid="true" aria-describedby="bad-error">
+                <div class="field-error" id="bad-error">Enter a number between 1 and 14.</div>
+            </div>
+        </div>
+        <p>Every input has a visible label. Errors point at the field, set <code>aria-invalid</code>, and describe the fix. A save that is rejected keeps the user's values and names each bad field — it never silently discards input.</p>
+    </div>
+
+    <h2>Surfaces and states</h2>
+    <div class="grid">
+        <div class="card"><h3>Card</h3><p>One job per card. A heading, optional lead, content. <code>--bg-surface</code> plus <code>--border-subtle</code>. No nested cards.</p></div>
+        <div class="card"><h3>Data table</h3><p>Header stays visible; rows are 44–48 px. Below 768 px the table becomes labelled cards, and every row action stays reachable.</p></div>
+        <div class="card"><h3>Empty state</h3><p>Name the next action, not the absence. A first run opens the playlist picker instead of an empty health table.</p></div>
+    </div>
+    <div class="state error"><strong>Error state.</strong> Say what failed, keep the retry in place, and log the technical detail to the console rather than the page.</div>
+    <div class="state empty">Empty state: “No playlist selected yet. Add one below or pick a free channel preset.”</div>
+
+    <h2>Watch guide (mobile)</h2>
+    <p>The timeline and programme rows share one horizontal scroll surface. Below 860 px the right edge fades and a “Swipe for more” hint appears; both disappear once the grid reaches its end. The hint is decorative (<code>aria-hidden</code>) and never blocks a programme cell.</p>
+    <div class="note">Scroll containers own overscroll: <code>overscroll-behavior-x: contain</code>. A sideways swipe in the guide must never navigate the browser history.</div>
+
+    <h2>Accessibility contract</h2>
+    <ul>
+        <li>axe-core serious/critical findings: zero on every admin screen, Watch and mobile Watch.</li>
+        <li>Focus is always visible: 2 px outline with 2 px offset, never removed without a replacement.</li>
+        <li>Colour is never the only signal. Status badges pair colour with text.</li>
+        <li>Motion respects <code>prefers-reduced-motion</code> for anything that loops or travels.</li>
+        <li>Lighthouse accessibility is a floor of 95; the axe gate is the stricter per-screen check.</li>
+    </ul>
+
+    <h2>Responsive contract</h2>
+    <table>
+        <thead><tr><th>Width</th><th>Expectation</th></tr></thead>
+        <tbody>
+            <tr><td>320 px</td><td>No horizontal page scroll. Controls stay inside the viewport. Tables become cards.</td></tr>
+            <tr><td>390 px</td><td>Phone baseline used by the mobile follow-up checks.</td></tr>
+            <tr><td>768 px</td><td>Two-column admin layouts may start; sidebar collapses.</td></tr>
+            <tr><td>1024 px</td><td>Full admin tables; guide may sit beside the player.</td></tr>
+            <tr><td>1440 px</td><td>Reference desktop review width.</td></tr>
+        </tbody>
+    </table>
+
+    <h2>Change rule</h2>
+    <p>A new visual variant is a design-system change, not a local fix. Add the token or component here first, then use it. One-off hex values, sub-12px labels, white-on-semantic-fill buttons and shadowed cards inside cards are review failures.</p>
+</main>
+</body>
+</html>

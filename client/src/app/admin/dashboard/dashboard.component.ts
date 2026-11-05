@@ -1,7 +1,11 @@
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef, AfterViewChecked, ChangeDetectorRef } from '@angular/core';
 import { LucideAngularModule } from 'lucide-angular';
 import { ConfirmService } from '../../services/confirm.service';
-import { ModalFocusDirective } from '../../services/modal-focus.directive';
+import { ModalComponent } from '../../shared/modal.component';
+import { StatComponent } from '../../shared/stat.component';
+import { PageHeaderComponent } from '../../shared/page-header.component';
+import { SetupChecklistComponent } from '../../shared/setup-checklist.component';
+import { SkeletonComponent } from '../../shared/skeleton.component';
 import { CommonModule } from '@angular/common';
 import { ApiService, ResetPreview, ResetScope } from '../../services/api.service';
 import { SseService } from '../../services/sse.service';
@@ -26,7 +30,7 @@ interface SyncStage {
 @Component({
     selector: 'app-dashboard',
     standalone: true,
-    imports: [CommonModule, ModalFocusDirective, LucideAngularModule],
+    imports: [CommonModule, ModalComponent, LucideAngularModule, StatComponent, PageHeaderComponent, SetupChecklistComponent, SkeletonComponent],
     templateUrl: './dashboard.component.html',
     styleUrl: './dashboard.component.css'
 })
@@ -50,6 +54,23 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
     loading = true;
     syncStarted = false;
     progressCollapsed = true;
+
+    get hasSourceConfigured(): boolean {
+        return !!this.dataState?.hasPlaylist || !!this.dataState?.hasChannels;
+    }
+
+    get hasChannels(): boolean {
+        return !!this.dataState?.hasChannels;
+    }
+
+    /** Map the server's health word onto the same semantic tones as the rest of the app. */
+    get healthTone(): 'success' | 'warning' | 'danger' | 'primary' {
+        const status = String(this.health?.status || '').toLowerCase();
+        if (status === 'healthy' || status === 'ok' || status === 'up') return 'success';
+        if (status === 'unhealthy' || status === 'down' || status === 'error') return 'danger';
+        if (status === 'degraded' || status === 'warning') return 'warning';
+        return 'primary';
+    }
 
     showResetModal = false;
     resetScope: ResetScope = 'guide';
@@ -93,12 +114,12 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
     shouldScrollLogs = false;
 
     stages: SyncStage[] = [
-        { id: 'playlist', label: 'Playlist', icon: '📋', status: 'idle' },
-        { id: 'metadata', label: 'Metadata', icon: '🧭', status: 'idle' },
-        { id: 'match', label: 'Match', icon: '🔗', status: 'idle' },
-        { id: 'grab', label: 'EPG Grab', icon: '📡', status: 'idle' },
-        { id: 'enrich', label: 'Enrich', icon: '🎬', status: 'idle' },
-        { id: 'rebuild', label: 'Rebuild', icon: '📦', status: 'idle' },
+        { id: 'playlist', label: 'Playlist', icon: 'list', status: 'idle' },
+        { id: 'metadata', label: 'Artwork', icon: 'search', status: 'idle' },
+        { id: 'match', label: 'Match', icon: 'link-2', status: 'idle' },
+        { id: 'grab', label: 'Guide fetch', icon: 'satellite', status: 'idle' },
+        { id: 'enrich', label: 'Enrich', icon: 'clapperboard', status: 'idle' },
+        { id: 'rebuild', label: 'Rebuild', icon: 'package', status: 'idle' },
     ];
 
     private subs: Subscription[] = [];
@@ -271,7 +292,7 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
             playlist: '📋 Playlist',
             metadata: '🧭 Metadata',
             match: '🔗 Matching',
-            grab: '📡 Grabbing EPG',
+            grab: 'Fetching guide data',
             enrich: '🎬 Enriching',
             rebuild: '📦 Rebuilding Files'
         };

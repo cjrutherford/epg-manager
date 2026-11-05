@@ -1,5 +1,3 @@
-@import './assets/fonts.css';
-
 /* ===========================================
    Tuner Daemon — Cinematic Noir Theme
    Refined aesthetic: warm amber accents, film grain depth, editorial typography
@@ -47,6 +45,11 @@
     --bg-surface: rgba(10, 8, 6, 0.5);
     --bg-surface-hover: rgba(var(--color-primary-rgb), 0.06);
     --bg-inset: rgba(0, 0, 0, 0.2);
+    --bg-input: rgba(8, 6, 4, 0.6);
+    --bg-input-focus: rgba(10, 8, 6, 0.8);
+    --bg-table-head: rgba(8, 6, 4, 0.5);
+    --bg-card: linear-gradient(145deg, rgba(var(--color-primary-rgb), 0.04) 0%, rgba(10, 8, 6, 0.6) 100%);
+    --bg-modal: linear-gradient(145deg, rgba(20, 16, 12, 0.98) 0%, rgba(8, 6, 4, 0.99) 100%);
     --border-subtle: rgba(255, 255, 255, 0.06);
     --border-medium: rgba(255, 255, 255, 0.1);
     
@@ -60,15 +63,6 @@
     --font-body: 'Libre Franklin', sans-serif;
     --font-sans: 'Libre Franklin', sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
-    
-    --text-xs: 0.75rem;
-    --text-sm: 0.875rem;
-    --text-base: 1rem;
-    --text-lg: 1.125rem;
-    --text-xl: 1.25rem;
-    --text-2xl: 1.5rem;
-    --text-3xl: 1.875rem;
-    --text-4xl: 2.25rem;
     
     /* Borders & Shadows */
     --border-glass: 1px solid rgba(var(--color-primary-rgb), 0.12);
@@ -88,7 +82,6 @@
      * that had accumulated — 0.72rem, 0.73rem, 0.74rem, 0.75rem and 0.76rem all
      * appeared, which is five decisions where there should be one.
      */
-    --font-2xs: 0.6875rem;  /* 11px */
     --font-xs: 0.75rem;     /* 12px */
     --font-sm: 0.8125rem;   /* 13px */
     --font-md: 0.875rem;    /* 14px */
@@ -154,60 +147,105 @@
    Theme Custom Overrides
    =========================================== */
 
-/* 1. Neon Cyberpunk — Digital grid, scan-lines, hot neon */
-body.theme-neon-cyberpunk {
-    --bg-deep: #0c0614;
-    --bg-void: #05020a;
-    --bg-gradient: radial-gradient(ellipse at 20% 0%, rgba(255, 0, 127, 0.25) 0%, var(--bg-deep) 55%),
-                   radial-gradient(ellipse at 80% 100%, rgba(0, 240, 255, 0.22) 0%, var(--bg-deep) 45%),
-                   radial-gradient(circle at 50% 50%, rgba(100, 0, 255, 0.08) 0%, transparent 70%),
-                   linear-gradient(180deg, #0d0615 0%, var(--bg-deep) 100%);
-    --color-primary: #00f0ff;
-    --color-primary-rgb: 0, 240, 255;
-    --color-primary-dark: #00a2ff;
-    --color-primary-text: #0c0614;
-    --color-primary-dim: rgba(0, 240, 255, 0.15);
-    --color-primary-glow: rgba(0, 240, 255, 0.5);
-    --color-secondary: #ff007f;
-    --color-secondary-rgb: 255, 0, 127;
-    --color-success: #39ff14;
-    --color-success-rgb: 57, 255, 20;
-    --color-danger: #ff2d55;
-    --color-danger-rgb: 255, 45, 85;
-    /* Text on a solid --color-danger fill. Not always white: the danger colour
-       is light in several themes, where white label text measured as low as
-       2.65:1 — below AA for any text size. */
-    --color-danger-text: #0c0a08;
-    --color-warning: #ffe100;
-    --color-warning-rgb: 255, 225, 0;
-    --color-info: #00b4ff;
-    --color-info-rgb: 0, 180, 255;
-    --text-primary: #f3e8ff;
-    --text-secondary: #c4aefc;
-    --text-muted: #9565f0;
-    --bg-surface: rgba(13, 6, 21, 0.6);
-    --bg-surface-hover: rgba(0, 240, 255, 0.08);
-    --bg-inset: rgba(0, 0, 0, 0.3);
-    --border-subtle: rgba(0, 240, 255, 0.06);
-    --border-medium: rgba(0, 240, 255, 0.12);
-    --bg-glass: rgba(13, 6, 21, 0.85);
-    --bg-glass-strong: rgba(18, 9, 29, 0.95);
-    --bg-glass-light: rgba(0, 240, 255, 0.03);
-    --border-glass: 1px solid rgba(0, 240, 255, 0.15);
-    --border-glow: 1px solid rgba(0, 240, 255, 0.5);
-    --shadow-glow: 0 0 30px rgba(0, 240, 255, 0.25);
-    --shadow-md: 0 6px 24px rgba(0, 0, 0, 0.5);
-    --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.5);
-    /* Scan-line texture */
-    --theme-texture: repeating-linear-gradient(
-        0deg,
-        transparent,
-        transparent 2px,
-        rgba(0, 240, 255, 0.015) 2px,
-        rgba(0, 240, 255, 0.015) 4px
-    );
-    --theme-texture-opacity: 1;
+
+
+/* Daylight — the light counterpart to Cinematic Noir. Warm paper surfaces,
+   ink text and the same amber accent. Watch keeps its black video stage; the
+   admin surface is what changes for daylight use. */
+body.theme-daylight {
+    --bg-deep: #f5efe5;
+    --bg-void: #eee6d9;
+    --bg-gradient: radial-gradient(ellipse at 20% 0%, rgba(154, 90, 18, 0.08) 0%, transparent 60%),
+                   linear-gradient(180deg, #faf6ef 0%, #f3ece0 100%);
+    --color-primary: #955613;
+    --color-primary-rgb: 149, 86, 19;
+    --color-primary-light: #b87424;
+    --color-primary-dark: #7a450c;
+    --color-primary-text: #fffaf2;
+    --color-primary-dim: rgba(149, 86, 19, 0.12);
+    --color-primary-glow: rgba(149, 86, 19, 0.28);
+    --color-secondary: #6f573c;
+    --color-secondary-rgb: 111, 87, 60;
+    --color-success: #2f7a46;
+    --color-success-rgb: 47, 122, 70;
+    --color-danger: #a9342e;
+    --color-danger-rgb: 169, 52, 46;
+    --color-danger-text: #fff8f6;
+    --color-warning: #9a5f12;
+    --color-warning-rgb: 154, 95, 18;
+    --color-info: #2f6785;
+    --color-info-rgb: 47, 103, 133;
+    --text-primary: #1d1710;
+    --text-secondary: #4f4538;
+    --text-muted: #6f6456;
+    --bg-surface: rgba(255, 253, 248, 0.72);
+    --bg-surface-hover: rgba(149, 86, 19, 0.07);
+    --bg-inset: rgba(255, 253, 248, 0.62);
+    --bg-input: #fffdf8;
+    --bg-input-focus: #ffffff;
+    --bg-table-head: #efe7da;
+    --bg-card: linear-gradient(145deg, #fffdf8 0%, #faf3e7 100%);
+    --bg-modal: #fffdf8;
+    --border-subtle: rgba(29, 23, 16, 0.12);
+    --border-medium: rgba(29, 23, 16, 0.2);
+    --bg-glass: rgba(255, 252, 246, 0.88);
+    --bg-glass-strong: rgba(255, 253, 248, 0.97);
+    --bg-glass-light: rgba(255, 255, 255, 0.45);
+    --border-glass: 1px solid rgba(149, 86, 19, 0.22);
+    --border-glow: 1px solid rgba(149, 86, 19, 0.65);
+    --shadow-glass: 0 8px 40px rgba(62, 45, 24, 0.16);
+    --shadow-glow: 0 0 30px rgba(149, 86, 19, 0.14);
+    --shadow-card: 0 4px 20px rgba(62, 45, 24, 0.12);
+    --shadow-md: 0 6px 24px rgba(62, 45, 24, 0.14);
+    --theme-texture: none;
+    --theme-texture-opacity: 0;
 }
+
+/* High Contrast — pure black, bright yellow accent, strong borders. The
+   palette is for low-vision users rather than a mood; every text token is
+   above 7:1 on the background and borders are at least twice as visible. */
+body.theme-high-contrast {
+    --bg-deep: #000000;
+    --bg-void: #000000;
+    --bg-gradient: linear-gradient(180deg, #000000 0%, #000000 100%);
+    --color-primary: #ffd23f;
+    --color-primary-rgb: 255, 210, 63;
+    --color-primary-light: #ffe37a;
+    --color-primary-dark: #d9ac00;
+    --color-primary-text: #000000;
+    --color-primary-dim: rgba(255, 210, 63, 0.2);
+    --color-primary-glow: rgba(255, 210, 63, 0.55);
+    --color-secondary: #9ad7ff;
+    --color-secondary-rgb: 154, 215, 255;
+    --color-success: #5dff8a;
+    --color-success-rgb: 93, 255, 138;
+    --color-danger: #ff7373;
+    --color-danger-rgb: 255, 115, 115;
+    --color-danger-text: #000000;
+    --color-warning: #ffd23f;
+    --color-warning-rgb: 255, 210, 63;
+    --color-info: #69d2ff;
+    --color-info-rgb: 105, 210, 255;
+    --text-primary: #ffffff;
+    --text-secondary: #ebebeb;
+    --text-muted: #c4c4c4;
+    --bg-surface: #0a0a0a;
+    --bg-surface-hover: rgba(255, 210, 63, 0.12);
+    --bg-inset: #101010;
+    --border-subtle: rgba(255, 255, 255, 0.26);
+    --border-medium: rgba(255, 255, 255, 0.42);
+    --bg-glass: rgba(0, 0, 0, 0.95);
+    --bg-glass-strong: #000000;
+    --bg-glass-light: rgba(255, 255, 255, 0.06);
+    --border-glass: 1px solid rgba(255, 210, 63, 0.4);
+    --border-glow: 1px solid #ffd23f;
+    --shadow-glass: 0 8px 40px rgba(0, 0, 0, 0.9);
+    --shadow-glow: 0 0 30px rgba(255, 210, 63, 0.2);
+    --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.8);
+    --shadow-md: 0 6px 24px rgba(0, 0, 0, 0.8);
+}
+
+/* 1. Neon Cyberpunk — Digital grid, scan-lines, hot neon */
 
 /* 2. Midnight Forest — Deep woodland, organic warmth, bioluminescent */
 body.theme-midnight-forest {
@@ -256,108 +294,8 @@ body.theme-midnight-forest {
 }
 
 /* 3. Cosmic Purple — Nebula depths, stellar glow, pink accents */
-body.theme-cosmic-purple {
-    --bg-deep: #090514;
-    --bg-void: #04020a;
-    --bg-gradient: radial-gradient(ellipse at 25% 5%, rgba(168, 85, 247, 0.25) 0%, var(--bg-deep) 55%),
-                   radial-gradient(ellipse at 75% 95%, rgba(236, 72, 153, 0.18) 0%, var(--bg-deep) 50%),
-                   radial-gradient(circle at 40% 60%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
-                   linear-gradient(180deg, #07040f 0%, var(--bg-deep) 100%);
-    --color-primary: #a855f7;
-    --color-primary-rgb: 168, 85, 247;
-    --color-primary-dark: #7e22ce;
-    /* Dark, not white. On these themes' primary the white label measured
-       3.7:1 — the main call to action, below AA. */
-    --color-primary-text: #08060f;
-    --color-primary-dim: rgba(168, 85, 247, 0.15);
-    --color-primary-glow: rgba(168, 85, 247, 0.45);
-    --color-secondary: #ec4899;
-    --color-secondary-rgb: 236, 72, 153;
-    --color-success: #a78bfa;
-    --color-success-rgb: 167, 139, 250;
-    --color-danger: #f472b6;
-    --color-danger-rgb: 244, 114, 182;
-    /* Text on a solid --color-danger fill. Not always white: the danger colour
-       is light in several themes, where white label text measured as low as
-       2.65:1 — below AA for any text size. */
-    --color-danger-text: #0c0a08;
-    --color-warning: #fbbf24;
-    --color-warning-rgb: 251, 191, 36;
-    --color-info: #818cf8;
-    --color-info-rgb: 129, 140, 248;
-    --text-primary: #faf5ff;
-    --text-secondary: #d8b4fe;
-    --text-muted: #7e3eb8;
-    --bg-surface: rgba(9, 5, 20, 0.5);
-    --bg-surface-hover: rgba(168, 85, 247, 0.08);
-    --bg-inset: rgba(0, 0, 0, 0.25);
-    --border-subtle: rgba(168, 85, 247, 0.06);
-    --border-medium: rgba(168, 85, 247, 0.12);
-    --bg-glass: rgba(9, 5, 20, 0.85);
-    --bg-glass-strong: rgba(14, 8, 30, 0.95);
-    --bg-glass-light: rgba(168, 85, 247, 0.03);
-    --border-glass: 1px solid rgba(168, 85, 247, 0.15);
-    --border-glow: 1px solid rgba(168, 85, 247, 0.5);
-    --shadow-glow: 0 0 30px rgba(168, 85, 247, 0.2);
-    --shadow-md: 0 6px 24px rgba(0, 0, 0, 0.45);
-    --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.5);
-    /* Subtle star-field dots */
-    --theme-texture: radial-gradient(1px 1px at 20% 30%, rgba(168, 85, 247, 0.3), transparent),
-                     radial-gradient(1px 1px at 60% 70%, rgba(236, 72, 153, 0.2), transparent),
-                     radial-gradient(1px 1px at 80% 20%, rgba(255, 255, 255, 0.15), transparent),
-                     radial-gradient(1px 1px at 40% 80%, rgba(168, 85, 247, 0.2), transparent);
-    --theme-texture-opacity: 1;
-}
 
 /* 4. Arctic Ice (Light Mode) — Frosted glass, crisp blue, clean shadows */
-body.theme-arctic-ice {
-    --bg-deep: #f1f5f9;
-    --bg-void: #e2e8f0;
-    --bg-gradient: radial-gradient(ellipse at 30% 0%, rgba(37, 99, 235, 0.08) 0%, var(--bg-deep) 60%),
-                   radial-gradient(ellipse at 70% 100%, rgba(203, 213, 225, 0.3) 0%, var(--bg-deep) 50%),
-                   radial-gradient(circle at 50% 0%, rgba(147, 197, 253, 0.12) 0%, transparent 50%),
-                   linear-gradient(180deg, #f8fafc 0%, var(--bg-deep) 100%);
-    --color-primary: #2563eb;
-    --color-primary-rgb: 37, 99, 235;
-    --color-primary-dark: #1d4ed8;
-    --color-primary-text: #ffffff;
-    --color-primary-dim: rgba(37, 99, 235, 0.08);
-    --color-primary-glow: rgba(37, 99, 235, 0.25);
-    --color-secondary: #64748b;
-    --color-secondary-rgb: 100, 116, 139;
-    --color-success: #16a34a;
-    --color-success-rgb: 22, 163, 74;
-    --color-danger: #dc2626;
-    --color-danger-rgb: 220, 38, 38;
-    /* Text on a solid --color-danger fill. Not always white: the danger colour
-       is light in several themes, where white label text measured as low as
-       2.65:1 — below AA for any text size. */
-    --color-danger-text: #ffffff;
-    /* amber-700, not amber-600: on this theme's near-white background the
-       lighter amber measured 2.91:1, under the 3:1 needed for status text. */
-    --color-warning: #b45309;
-    --color-warning-rgb: 180, 83, 9;
-    --color-info: #2563eb;
-    --color-info-rgb: 37, 99, 235;
-    --text-primary: #0f172a;
-    --text-secondary: #334155;
-    --text-muted: #64748b;
-    --bg-surface: rgba(255, 255, 255, 0.6);
-    --bg-surface-hover: rgba(37, 99, 235, 0.04);
-    --bg-inset: rgba(15, 23, 42, 0.04);
-    --border-subtle: rgba(15, 23, 42, 0.08);
-    --border-medium: rgba(15, 23, 42, 0.12);
-    --bg-glass: rgba(255, 255, 255, 0.8);
-    --bg-glass-strong: rgba(255, 255, 255, 0.95);
-    --bg-glass-light: rgba(15, 23, 42, 0.03);
-    --border-glass: 1px solid rgba(37, 99, 235, 0.15);
-    --border-glow: 1px solid rgba(37, 99, 235, 0.4);
-    --shadow-glass: 0 8px 30px rgba(15, 23, 42, 0.08);
-    --shadow-glow: 0 0 20px rgba(37, 99, 235, 0.08);
-    --shadow-card: 0 4px 15px rgba(15, 23, 42, 0.05);
-    --shadow-md: 0 6px 24px rgba(15, 23, 42, 0.08);
-    --theme-texture-opacity: 0;
-}
 
 /* Theme Tuner Daemon — Cyber Lime, Bronze Gear & Metallic Slate Void */
 body.theme-tuner-daemon {
@@ -388,92 +326,10 @@ body.theme-tuner-daemon {
 }
 
 /* Theme Aether — Midnight Obsidian & Cyan-Violet Glowing Glass */
-body.theme-aether {
-    --bg-deep: #05070e;
-    --bg-void: #020307;
-    --bg-gradient: radial-gradient(ellipse at 30% 0%, rgba(0, 240, 255, 0.2) 0%, var(--bg-deep) 60%),
-                   radial-gradient(ellipse at 70% 100%, rgba(139, 92, 246, 0.2) 0%, var(--bg-deep) 50%),
-                   linear-gradient(180deg, #070a14 0%, var(--bg-deep) 100%);
-    --color-primary: #00f0ff;
-    --color-primary-rgb: 0, 240, 255;
-    --color-primary-dark: #00a8c6;
-    --color-primary-text: #05070e;
-    --color-primary-dim: rgba(0, 240, 255, 0.12);
-    --color-primary-glow: rgba(0, 240, 255, 0.4);
-    --color-secondary: #8b5cf6;
-    --color-secondary-rgb: 139, 92, 246;
-    --text-primary: #f0f9ff;
-    --text-secondary: #94a3b8;
-    --text-muted: #475569;
-    --bg-surface: rgba(7, 10, 20, 0.6);
-    --bg-surface-hover: rgba(0, 240, 255, 0.08);
-    --bg-glass: rgba(7, 10, 20, 0.85);
-    --bg-glass-strong: rgba(10, 15, 30, 0.95);
-    --border-glass: 1px solid rgba(0, 240, 255, 0.15);
-    --border-glow: 1px solid rgba(0, 240, 255, 0.5);
-    --shadow-glow: 0 0 25px rgba(0, 240, 255, 0.2);
-    --theme-texture-opacity: 0;
-}
 
 /* Theme Pulse — High-Energy Retro Broadcast Magenta & Cyan */
-body.theme-pulse {
-    --bg-deep: #0c0614;
-    --bg-void: #05020a;
-    --bg-gradient: radial-gradient(ellipse at 20% 0%, rgba(255, 0, 127, 0.25) 0%, var(--bg-deep) 55%),
-                   radial-gradient(ellipse at 80% 100%, rgba(0, 240, 255, 0.22) 0%, var(--bg-deep) 45%),
-                   linear-gradient(180deg, #0d0615 0%, var(--bg-deep) 100%);
-    --color-primary: #ff007f;
-    --color-primary-rgb: 255, 0, 127;
-    --color-primary-dark: #c60062;
-    /* Dark, not white. On these themes' primary the white label measured
-       3.7:1 — the main call to action, below AA. */
-    --color-primary-text: #08060f;
-    --color-primary-dim: rgba(255, 0, 127, 0.15);
-    --color-primary-glow: rgba(255, 0, 127, 0.5);
-    --color-secondary: #00f0ff;
-    --color-secondary-rgb: 0, 240, 255;
-    --text-primary: #fff0f6;
-    --text-secondary: #f472b6;
-    --text-muted: #9d174d;
-    --bg-surface: rgba(13, 6, 21, 0.6);
-    --bg-surface-hover: rgba(255, 0, 127, 0.08);
-    --bg-glass: rgba(13, 6, 21, 0.85);
-    --bg-glass-strong: rgba(18, 9, 29, 0.95);
-    --border-glass: 1px solid rgba(255, 0, 127, 0.2);
-    --border-glow: 1px solid rgba(255, 0, 127, 0.5);
-    --shadow-glow: 0 0 25px rgba(255, 0, 127, 0.3);
-    --theme-texture-opacity: 0;
-}
 
 /* Theme Omni — Ultra-Clean Electric Blue & Amber Slate */
-body.theme-omni {
-    --bg-deep: #0b1120;
-    --bg-void: #060913;
-    --bg-gradient: radial-gradient(ellipse at 25% 0%, rgba(59, 130, 246, 0.2) 0%, var(--bg-deep) 60%),
-                   radial-gradient(ellipse at 75% 100%, rgba(245, 158, 11, 0.15) 0%, var(--bg-deep) 50%),
-                   linear-gradient(180deg, #0e172a 0%, var(--bg-deep) 100%);
-    --color-primary: #3b82f6;
-    --color-primary-rgb: 59, 130, 246;
-    --color-primary-dark: #2563eb;
-    /* Dark, not white. On these themes' primary the white label measured
-       3.7:1 — the main call to action, below AA. */
-    --color-primary-text: #08060f;
-    --color-primary-dim: rgba(59, 130, 246, 0.12);
-    --color-primary-glow: rgba(59, 130, 246, 0.4);
-    --color-secondary: #f59e0b;
-    --color-secondary-rgb: 245, 158, 11;
-    --text-primary: #f8fafc;
-    --text-secondary: #94a3b8;
-    --text-muted: #475569;
-    --bg-surface: rgba(14, 23, 42, 0.6);
-    --bg-surface-hover: rgba(59, 130, 246, 0.08);
-    --bg-glass: rgba(14, 23, 42, 0.85);
-    --bg-glass-strong: rgba(15, 23, 42, 0.95);
-    --border-glass: 1px solid rgba(59, 130, 246, 0.18);
-    --border-glow: 1px solid rgba(59, 130, 246, 0.5);
-    --shadow-glow: 0 0 25px rgba(59, 130, 246, 0.25);
-    --theme-texture-opacity: 0;
-}
 
 * {
     margin: 0;
@@ -562,18 +418,22 @@ code, pre, .mono {
 }
 
 .glass-card {
-    background: linear-gradient(145deg, rgba(var(--color-primary-rgb), 0.04) 0%, rgba(10, 8, 6, 0.6) 100%);
+    background: var(--bg-card);
     backdrop-filter: blur(16px);
     border: 1px solid rgba(var(--color-primary-rgb), 0.08);
     box-shadow: var(--shadow-card);
     border-radius: var(--radius-md);
     padding: var(--space-3xl);
-    transition: transform 0.4s var(--ease-smooth), box-shadow 0.4s var(--ease-smooth), border-color 0.4s;
+    transition: transform 0.2s var(--ease-smooth), box-shadow 0.2s var(--ease-smooth), border-color 0.2s;
     will-change: transform;
 }
 
-.glass-card:hover {
-    transform: translateY(-4px);
+/* Only controls lift. Tables, stat cards and panels are not clickable, and a
+   hover lift on them promised an interaction that did not exist. */
+button.glass-card:hover,
+a.glass-card:hover,
+.action-card:hover {
+    transform: translateY(-2px);
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 40px rgba(var(--color-primary-rgb), 0.08);
     border-color: rgba(var(--color-primary-rgb), 0.2);
 }
@@ -643,7 +503,7 @@ code, pre, .mono {
 }
 
 .stat__value {
-    font-family: var(--font-display, var(--font-heading));
+    font-family: var(--font-heading);
     font-size: var(--font-4xl);
     font-weight: 700;
     line-height: 1.05;
@@ -857,7 +717,34 @@ textarea:focus-visible,
 .btn-secondary:hover {
     background: rgba(var(--color-primary-rgb), 0.15);
     border-color: rgba(var(--color-primary-rgb), 0.4);
-    color: #fff;
+    color: var(--text-primary);
+}
+
+.btn-danger {
+    background: var(--color-danger);
+    border: 1px solid var(--color-danger);
+    color: var(--color-danger-text);
+    font-weight: 600;
+}
+
+.btn-danger:hover:not(:disabled) {
+    filter: brightness(1.1);
+}
+
+.btn-danger:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Watch sits on a black video stage in every theme. The info bar fades into
+   that stage; in Daylight its text is dark, so the fade has to become a warm
+   paper surface instead of the dark-to-transparent gradient. */
+body.theme-daylight .channel-info-block {
+    background: var(--bg-glass-strong);
+}
+
+body.theme-daylight .player-loading span {
+    color: #efe7da;
 }
 
 .btn.small-btn {
@@ -865,9 +752,15 @@ textarea:focus-visible,
     font-size: var(--font-sm);
 }
 
+/* Links styled as buttons must not inherit the document link underline. */
+a.btn,
+a.btn:hover {
+    text-decoration: none;
+}
+
 /* ─── Inputs ───────────────────────────────── */
 input, select, textarea {
-    background: rgba(8, 6, 4, 0.6);
+    background: var(--bg-input);
     border: 1px solid rgba(var(--color-primary-rgb), 0.15);
     color: var(--text-primary);
     padding: var(--space-lg) var(--space-xl);
@@ -881,15 +774,24 @@ input:focus, select:focus, textarea:focus {
     outline: none;
     border-color: var(--color-primary);
     box-shadow: 0 0 0 2px rgba(var(--color-primary-rgb), 0.15), 0 0 25px rgba(var(--color-primary-rgb), 0.1);
-    background: rgba(10, 8, 6, 0.8);
+    background: var(--bg-input-focus);
 }
 
 input::placeholder {
     color: var(--text-muted);
 }
 
+input[type="checkbox"],
+input[type="radio"] {
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+    flex: none;
+    accent-color: var(--color-primary);
+}
+
 .themed-select, .themed-input {
-    background: rgba(8, 6, 4, 0.6);
+    background: var(--bg-input);
     border: 1px solid rgba(var(--color-primary-rgb), 0.15);
     color: var(--text-primary);
     padding: var(--space-md) var(--space-lg);
@@ -911,7 +813,7 @@ input::placeholder {
 }
 
 .themed-select option {
-    background: #0c0a08;
+    background: var(--bg-input);
     color: var(--text-primary);
 }
 
@@ -931,7 +833,7 @@ input::placeholder {
     gap: var(--space-xs);
     padding: var(--space-2xs) var(--space-lg);
     border-radius: var(--radius-lg);
-    font-size: 0.7em;
+    font-size: var(--font-xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -977,61 +879,6 @@ input::placeholder {
 .hidden { display: none !important; }
 .w-full { width: 100%; }
 
-/* ─── Stats Grid ───────────────────────────── */
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: var(--space-2xl);
-}
-
-.stat-item {
-    background: linear-gradient(135deg, rgba(var(--color-primary-rgb), 0.03) 0%, rgba(10, 8, 6, 0.4) 100%);
-    padding: var(--space-3xl);
-    border-radius: var(--radius-md);
-    border: 1px solid rgba(var(--color-primary-rgb), 0.06);
-    transition: all 0.3s var(--ease-smooth);
-    position: relative;
-    overflow: hidden;
-}
-
-.stat-item::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, var(--color-primary), transparent);
-    opacity: 0;
-    transition: opacity 0.3s;
-}
-
-.stat-item:hover {
-    background: linear-gradient(135deg, rgba(var(--color-primary-rgb), 0.06) 0%, rgba(10, 8, 6, 0.5) 100%);
-    transform: translateY(-3px);
-    border-color: rgba(var(--color-primary-rgb), 0.15);
-    box-shadow: var(--shadow-glow);
-}
-
-.stat-item:hover::before {
-    opacity: 1;
-}
-
-.stat-val {
-    font-family: var(--font-display);
-    font-size: var(--font-4xl);
-    font-weight: 600;
-    color: var(--text-primary);
-    letter-spacing: -0.02em;
-}
-
-.stat-label {
-    font-size: 0.75em;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-top: var(--space-2xs);
-}
 
 /* ─── Progress Bars ────────────────────────── */
 .progress-container {
@@ -1063,6 +910,24 @@ input::placeholder {
     100% { transform: translateX(100%); }
 }
 
+/* Shared form and recording primitives. Component-scoped copies of these
+   two blocks used to exist in DVR, Settings and Watch; one global definition
+   keeps the duplicate-rule audit at zero. */
+.form-group label {
+    display: block;
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+    margin-bottom: var(--space-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.recording-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
 /* ─── Tables ───────────────────────────────── */
 table {
     width: 100%;
@@ -1084,7 +949,7 @@ th {
     font-size: var(--font-xs);
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    background: rgba(8, 6, 4, 0.5);
+    background: var(--bg-table-head);
     backdrop-filter: blur(10px);
     position: sticky;
     top: 0;
@@ -1113,7 +978,7 @@ tbody tr:hover {
 }
 
 .modal-content {
-    background: linear-gradient(145deg, rgba(20, 16, 12, 0.98) 0%, rgba(8, 6, 4, 0.99) 100%);
+    background: var(--bg-modal);
     border: 1px solid rgba(var(--color-primary-rgb), 0.15);
     border-radius: var(--radius-lg);
     box-shadow: 0 32px 80px rgba(0, 0, 0, 0.7), 0 0 60px rgba(var(--color-primary-rgb), 0.05);
@@ -1123,6 +988,32 @@ tbody tr:hover {
     max-height: 85vh;
     overflow-y: auto;
     color: var(--text-primary);
+}
+
+/* Shared modal panels. These used to live in the dashboard/sources/watch
+   component styles, which could not reach projected content once the modal
+   shell became a component. */
+.modal-content.reset-modal,
+.modal-content.source-modal {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xl);
+}
+
+.modal-content.reset-modal { max-width: 620px; }
+.modal-content.source-modal { max-width: 640px; }
+.modal-content.schedule-modal { max-width: 640px; }
+
+.modal-content.reset-modal > *,
+.modal-content.source-modal > * {
+    flex-shrink: 0;
+}
+
+.modal-content.reset-modal .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-lg);
+    padding-top: var(--space-2xs);
 }
 
 @keyframes fadeIn {
@@ -1210,8 +1101,12 @@ tbody tr:hover {
 }
 
 .icon-btn svg {
+    /* An explicit margin here used to push every icon 1em right and down,
+       so a centred 44px button rendered its icon in the bottom-right corner. */
+    margin: 0;
     width: 18px;
     height: 18px;
+    flex: none;
 }
 
 /* ─── Mobile Responsive ────────────────────── */
@@ -1226,8 +1121,15 @@ tbody tr:hover {
     h2 { font-size: var(--font-2xl); }
     
     .glass-card { padding: var(--space-2xl); }
-    .stats-grid { grid-template-columns: repeat(2, 1fr); gap: var(--space-lg); }
-    .stat-val { font-size: var(--font-3xl); }
+    .stat-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--space-md);
+    }
+    .stat-grid .stat:last-child:nth-child(odd) {
+        grid-column: span 2;
+    }
+    .stat { padding: var(--space-xl); }
+    .stat__value { font-size: var(--font-3xl); }
     th, td { padding: var(--space-lg) var(--space-lg); font-size: 0.9em; }
     .btn { padding: var(--space-md) var(--space-xl); font-size: var(--font-md); }
     .modal-content { padding: var(--space-3xl); width: 95%; }
@@ -1235,7 +1137,6 @@ tbody tr:hover {
 
 @media (min-width: 769px) and (max-width: 1024px) {
     :root { --sidebar-width: 240px; }
-    .stats-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
 /* ─── Utility Animations ───────────────────── */
@@ -1244,15 +1145,7 @@ tbody tr:hover {
     to { opacity: 1; transform: translateY(0); }
 }
 
-.animate-fade-up {
-    animation: fadeUp 0.5s var(--ease-smooth) forwards;
-}
 
-.stagger-fade-in {
-    animation: fadeUp 0.5s var(--ease-smooth);
-    animation-fill-mode: both;
-    animation-delay: var(--delay, 0s);
-}
 
 /* ─── Screen Reader Only ───────────────────── */
 .sr-only {

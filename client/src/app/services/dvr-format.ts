@@ -90,17 +90,22 @@ export function statusLabel(status: string): string {
 
 /**
  * Mapped onto the badge classes that already exist globally, so nothing is
- * orphaned by the consolidation. `missed` and `cancelled` are informational:
- * neither is a fault, and neither should be red.
+ * orphaned by the consolidation.
+ *
+ * Colour is a promise: green means the recording is fine (in progress or
+ * finished), amber means it needs attention, red means it failed, and blue is
+ * reserved for information. `completed` used to be amber and `missed` blue,
+ * which made a finished recording look like a warning and a lost one look like
+ * a note.
  */
 export function statusClass(status: string): string {
     switch (status) {
-        case 'recording': return 'badge-success';
+        case 'recording':
+        case 'completed': return 'badge-success';
         case 'scheduled':
         case 'queued': return 'badge-primary';
-        case 'completed': return 'badge-warning';
         case 'failed': return 'badge-danger';
-        case 'missed':
+        case 'missed': return 'badge-warning';
         case 'cancelled': return 'badge-info';
         default: return 'badge-primary';
     }

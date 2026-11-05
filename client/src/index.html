@@ -11,6 +11,13 @@
   <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16x16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
+  <!-- Fonts are a separate, cacheable asset. Importing them into styles.css
+       made Angular inline 7 kB of @font-face rules into every prerendered page. -->
+  <link rel="stylesheet" href="assets/fonts.css">
+  <link rel="preload" as="font" type="font/woff2"
+    href="assets/fonts/libre-franklin-variable-latin.woff2" crossorigin>
+  <link rel="preload" as="font" type="font/woff2"
+    href="assets/fonts/syne-variable-latin.woff2" crossorigin>
   <!-- Fonts are self-hosted from /assets/fonts; see client/src/assets/fonts.css.
        The UI must render with no external network access. -->
   <!-- Cast support is optional and loaded lazily: if gstatic is unreachable the

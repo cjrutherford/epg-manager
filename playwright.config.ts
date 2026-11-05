@@ -38,6 +38,7 @@ export default defineConfig({
       name: 'e2e',
       testIgnore: [
         /docs\//,
+        /visual\//,
         // Anything that mutates state other specs assert on runs in the
         // destructive project, serially, after these.
         /reset-scopes\.spec\.ts/,
@@ -60,6 +61,13 @@ export default defineConfig({
       name: 'e2e-reset',
       testMatch: /reset-scopes\.spec\.ts/,
       dependencies: ['e2e-destructive'],
+      fullyParallel: false,
+    },
+    {
+      // Screenshot baselines are opt-in: antialiasing differs between machines,
+      // so they run as their own project after the functional suite.
+      name: 'visual',
+      testMatch: /visual\/.*\.spec\.ts/,
       fullyParallel: false,
     },
     {

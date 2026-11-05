@@ -1,56 +1,33 @@
 <div class="diagnostics-page">
-    <header class="page-header">
-        <div class="page-header__text">
-            <h1>EPG &amp; Matches</h1>
-            <p class="page-sub">How well your channels line up with the guide data.</p>
-        </div>
-        <div class="page-header__actions">
-            <button class="btn btn-primary" (click)="loadAll()">
-                <lucide-icon name="refresh-cw" class="icon"></lucide-icon> Refresh
-            </button>
-        </div>
-    </header>
+    <app-page-header title="Guide &amp; matching" subtitle="How well your channels line up with the guide, and where matches need help.">
+        <button class="btn btn-primary" (click)="loadAll()">
+            <lucide-icon name="refresh-cw" class="icon"></lucide-icon> Refresh
+        </button>
+    </app-page-header>
 
     @if (loading) {
-    <div class="loading-container">
-        <div class="spinner"></div>
-    </div>
+    <app-skeleton [rows]="6" label="Loading guide diagnostics"></app-skeleton>
     } @else if (loadError) {
-<div class="glass-card state state--error">
-        <lucide-icon name="circle-alert" class="icon icon--xl state__icon"></lucide-icon>
-        <h2 class="state__title">Could not load the diagnostics</h2>
-        <p class="state__message">{{ loadError }}</p>
+<app-state tone="error" title="Could not load the diagnostics" [message]="loadError">
         <button class="btn btn-secondary" (click)="loadAll()">Try again</button>
-    </div>
+    </app-state>
     } @else {
 
     <!-- Summary Metrics -->
     <div class="stat-grid">
-        <div class="stat stat--primary">
-            <span class="stat__value">{{ analysis?.metrics?.total || 0 }}</span>
-            <span class="stat__label">Playlist channels</span>
-        </div>
-        <div class="stat stat--success">
-            <span class="stat__value">{{ analysis?.metrics?.matched || 0 }}</span>
-            <span class="stat__label">Matched to guide</span>
-        </div>
-        <div class="stat stat--warning">
-            <span class="stat__value">{{ analysis?.metrics?.match_rate || 0 }}%</span>
-            <span class="stat__label">Match rate</span>
-        </div>
-        <div class="stat stat--danger">
-            <span class="stat__value">{{ analysis?.metrics?.unmatched || 0 }}</span>
-            <span class="stat__label">Unmatched streams</span>
-        </div>
+        <app-stat tone="primary" [value]="analysis?.metrics?.total || 0" label="Playlist channels"></app-stat>
+        <app-stat tone="success" [value]="analysis?.metrics?.matched || 0" label="Matched to guide"></app-stat>
+        <app-stat tone="warning" [value]="(analysis?.metrics?.match_rate || 0) + '%'" label="Match rate"></app-stat>
+        <app-stat tone="danger" [value]="analysis?.metrics?.unmatched || 0" label="Unmatched streams"></app-stat>
     </div>
 
     <!-- Tab Navigation -->
     <div class="tab-nav">
         <button class="tab-btn" [class.active]="activeTab === 'matches'" (click)="activeTab = 'matches'">
-            <lucide-icon name="link-2" class="icon"></lucide-icon> Match analyser
+            <lucide-icon name="link-2" class="icon"></lucide-icon> Channel matching
         </button>
         <button class="tab-btn" [class.active]="activeTab === 'sources'" (click)="activeTab = 'sources'">
-            <lucide-icon name="satellite" class="icon"></lucide-icon> EPG source reliability
+            <lucide-icon name="satellite" class="icon"></lucide-icon> Source reliability
         </button>
     </div>
 
@@ -60,7 +37,7 @@
         <div class="filter-bar">
             <div class="search-box">
                 <lucide-icon name="search" class="search-icon"></lucide-icon>
-                <input type="text" [(ngModel)]="searchQuery" placeholder="Search channels, matched IDs, score tags...">
+                <input type="text" [(ngModel)]="searchQuery" aria-label="Search channels, guide IDs or match type" placeholder="Search channels, guide IDs or match type…">
             </div>
             
             <div class="status-filters">
@@ -77,32 +54,32 @@
         </div>
 
         <div class="table-container">
-            <table>
+            <table class="data-table">
                 <thead>
                     <tr>
                         <th>Channel Stream Name</th>
-                        <th>Matched EPG ID</th>
-                        <th>Match Type / Confidence Score</th>
+                        <th>Guide ID</th>
+                        <th>Match type</th>
                         <th class="actions-col">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     @for (ch of filteredChannels; track ch.id) {
                     <tr>
-                        <td>
+                        <td data-label="Channel">
                             <div class="channel-info-cell">
                                 <strong class="channel-name">{{ ch.name }}</strong>
                                 <span class="channel-group">{{ ch.group || 'Uncategorized' }}</span>
                             </div>
                         </td>
-                        <td>
+                        <td data-label="Guide ID">
                             @if (ch.matched_epg_id) {
                             <code class="epg-id-badge">{{ ch.matched_epg_id }}</code>
                             } @else {
                             <span class="unmatched-label"><lucide-icon name="alert-triangle" class="icon"></lucide-icon> No match</span>
                             }
                         </td>
-                        <td>
+                        <td data-label="Match type">
                             @if (ch.matched_epg_id) {
                             <span class="match-type-tag" [class.manual]="ch.match_type?.includes('Manual')" [class.fuzzy]="ch.match_type?.includes('Fuzzy')">
                                 {{ ch.match_type || 'Auto Matched' }}
@@ -111,7 +88,7 @@
                             <span class="text-muted">—</span>
                             }
                         </td>
-                        <td>
+                        <td data-label="Actions">
                             <div class="actions-cell">
                                 <button class="btn btn-secondary small-btn" (click)="openRematchModal(ch)">Rematch</button>
                                 @if (ch.matched_epg_id) {
@@ -137,15 +114,15 @@
     <div class="glass-card table-wrapper">
         <div class="table-section-header">
             <div>
-                <h2>Grab-capable match sources</h2>
-                <p>Enabled sources are used for both matching candidates and EPG grabbing.</p>
+                <h2>Guide sources used for matching</h2>
+                <p>Enabled sources supply both matching candidates and guide data.</p>
             </div>
             <button class="btn btn-secondary" (click)="syncEpgSources()" [disabled]="syncingSources">
                 {{ syncingSources ? 'Sync Starting...' : 'Sync Sources' }}
             </button>
         </div>
         <div class="table-container">
-            <table>
+            <table class="data-table">
                 <thead>
                     <tr>
                         <th>Source</th>
@@ -159,7 +136,7 @@
                 <tbody>
                     @for (source of epgSources; track source.key) {
                     <tr>
-                        <td>
+                        <td data-label="Source">
                             <div class="site-info-cell">
                                 <strong>{{ source.label || source.site }}</strong>
                                 @if (source.priority > 0) {
@@ -168,14 +145,14 @@
                                 <span class="text-muted">{{ source.key }}</span>
                             </div>
                         </td>
-                        <td>{{ source.importedRows || 0 }}</td>
-                        <td>{{ source.channelCountEstimate || '—' }}</td>
-                        <td>
+                        <td data-label="Imported rows">{{ source.importedRows || 0 }}</td>
+                        <td data-label="Upstream channels">{{ source.channelCountEstimate || '—' }}</td>
+                        <td data-label="Grab success">
                             <span class="success-rate-badge" [class]="getSuccessRateClass(getSuccessRate(source))">
                                 {{ getSuccessRate(source) }}%
                             </span>
                         </td>
-                        <td>
+                        <td data-label="Status">
                             <div class="attempt-time-cell">
                                 <span>{{ source.last_sync_status || 'unknown' }}</span>
                                 @if (source.last_error) {
@@ -183,7 +160,7 @@
                                 }
                             </div>
                         </td>
-                        <td>
+                        <td data-label="Enabled">
                             <button class="btn btn-secondary small-btn" (click)="toggleEpgSource(source)">
                                 {{ source.enabled ? 'Disable' : 'Enable' }}
                             </button>
@@ -192,7 +169,7 @@
                     }
                     @if (epgSources.length === 0) {
                     <tr>
-                        <td colspan="6" class="empty-table-row">No grab-capable EPG match sources are registered yet. Sync sources to populate the registry.</td>
+                        <td colspan="6" class="empty-table-row">No guide sources are registered for matching yet. Sync sources to populate the catalogue.</td>
                     </tr>
                     }
                 </tbody>
@@ -208,10 +185,10 @@
             </div>
         </div>
         <div class="table-container">
-            <table>
+            <table class="data-table">
                 <thead>
                     <tr>
-                        <th>EPG Scraper Site</th>
+                        <th>Guide scraper site</th>
                         <th>Channel Hits (Ok)</th>
                         <th>Channel Misses (Failed)</th>
                         <th>Site Success Rate</th>
@@ -222,20 +199,20 @@
                 <tbody>
                     @for (source of sources; track source.site) {
                     <tr>
-                        <td>
+                        <td data-label="Scraper site">
                             <div class="site-info-cell">
                                 <strong>{{ source.site }}</strong>
                             </div>
                         </td>
-                        <td class="text-success font-semibold">{{ source.channels_success }}</td>
-                        <td class="text-danger font-semibold">{{ source.channels_failure }}</td>
-                        <td>
+                        <td class="text-success font-semibold" data-label="Hits">{{ source.channels_success }}</td>
+                        <td class="text-danger font-semibold" data-label="Misses">{{ source.channels_failure }}</td>
+                        <td data-label="Success rate">
                             <span class="success-rate-badge" [class]="getSuccessRateClass(getSuccessRate(source))">
                                 {{ getSuccessRate(source) }}%
                             </span>
                         </td>
-                        <td>{{ source.avg_programs }} progs</td>
-                        <td>
+                        <td data-label="Avg programs">{{ source.avg_programs }} progs</td>
+                        <td data-label="Last attempt">
                             @if (source.last_attempt) {
                             <div class="attempt-time-cell">
                                 <span>{{ source.last_attempt | date:'medium' }}</span>
@@ -251,7 +228,7 @@
                     }
                     @if (sources.length === 0) {
                     <tr>
-                        <td colspan="6" class="empty-table-row">No EPG sources are currently registered or cached. Run a sync to populate source reliability data.</td>
+                        <td colspan="6" class="empty-table-row">No guide sources are registered or cached yet. Run a sync to populate reliability data.</td>
                     </tr>
                     }
                 </tbody>
@@ -264,19 +241,13 @@
 
     <!-- Rematch Override Modal -->
     @if (showRematchModal) {
-    <div class="modal-backdrop" (click)="showRematchModal = false">
-        <div class="modal-content" appModalFocus (dismiss)="showRematchModal = false" aria-labelledby="diagnostics-modal-title" (click)="$event.stopPropagation()">
-            <div class="modal-header">
-                <h2 id="diagnostics-modal-title">Rematch this channel</h2>
-                <button class="close-modal-btn" (click)="showRematchModal = false"><lucide-icon name="x" class="icon"></lucide-icon></button>
-            </div>
-            
+    <app-modal title="Rematch this channel" titleId="diagnostics-modal-title" (closed)="showRematchModal = false">
             <p class="modal-intro">
-                Rematching EPG source for stream: <strong>{{ selectedChannel?.name }}</strong>
+                Rematching the guide source for: <strong>{{ selectedChannel?.name }}</strong>
             </p>
 
             <div class="search-box-row">
-                <input type="text" class="themed-input" [(ngModel)]="rematchQuery" (keyup.enter)="searchRematchEpg()" placeholder="Search EPG channels by name or ID...">
+                <input type="text" class="themed-input" [(ngModel)]="rematchQuery" (keyup.enter)="searchRematchEpg()" placeholder="Search guide channels by name or ID…">
                 <button class="btn btn-primary" (click)="searchRematchEpg()" [disabled]="rematchLoading">
                     @if (rematchLoading) {
                     <span class="spinner-sm"></span>
@@ -290,7 +261,7 @@
                 @if (rematchLoading) {
                 <div class="results-loader">
                     <div class="spinner-sm"></div>
-                    <span>Loading EPG candidates...</span>
+                    <span>Loading guide candidates…</span>
                 </div>
                 } @else {
                 @for (res of rematchResults; track res.id) {
@@ -303,7 +274,7 @@
                 </div>
                 }
                 @if (rematchResults.length === 0 && rematchQuery) {
-                <div class="no-results-msg">No matching EPG channels found. Try adjusting your search query.</div>
+                <div class="no-results-msg">No matching guide channels found. Try adjusting your search.</div>
                 }
                 }
             </div>
@@ -311,7 +282,6 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" (click)="showRematchModal = false">Cancel</button>
             </div>
-        </div>
-    </div>
+    </app-modal>
     }
 </div>

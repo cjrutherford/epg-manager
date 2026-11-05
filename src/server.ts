@@ -42,7 +42,7 @@ import { rankEpgSources } from './services/epg-sources';
 import { redactUrl } from './services/sources/descriptor';
 import { getBuiltInCatalog, getFastSources } from './services/sources/catalog';
 import { createAdapterContext, createProbeContext, getAdapter, registerBuiltInAdapters } from './services/sources';
-import { addSource, exportSources, importSources, listSources, removeSource, setSourceEnabled, setSourcePriority } from './services/sources/registry';
+import { addSource, exportSources, importSources, listSources, recordSourceSync, removeSource, setSourceEnabled, setSourcePriority, syncPlaylistSources } from './services/sources/registry';
 import { normalizeDescriptor, validateDescriptor } from './services/sources/descriptor';
 import { checkScopeCoverage, isResetScope, planReset } from './services/reset-scopes';
 import {
@@ -1157,6 +1157,12 @@ async function verifyResetScopeCoverage() {
 async function startServer() {
     emitLog("Initializing database...", "info");
     await initDb();
+
+    // Older databases register playlists during the schema backfill. Reconcile
+    // labels and add/remove entries from the live configuration on every boot,
+    // so the registry always matches settings.
+    await syncPlaylistSources(await getConfiguredPlaylistUrls());
+
     await loadLastJobStateOnBoot();
 
     // One registration point for everything the queue can run.
@@ -1407,6 +1413,11 @@ const saveConfiguration = async (req: any, res: any) => {
                 args: [key, serializeSetting(definition, value)]
             });
         }
+
+        // Playlists are configuration, but they are also sources. Reconcile the
+        // registry in the same save so a selected playlist appears on Sources
+        // without waiting for a restart.
+        await syncPlaylistSources(await getConfiguredPlaylistUrls());
 
         // The cadence takes effect immediately; nothing here needs a restart.
         if (result.values.sync_cron !== undefined) {
@@ -2624,6 +2635,7 @@ async function getConfiguredPlaylistUrls(): Promise<string[]> {
 }
 
 async function updatePlaylist(url: string) {
+    const sourceKey = `playlist:${url}`;
     try {
         emitLog(formatMemorySnapshot('playlist import start', process.memoryUsage(), { source: url }), 'info');
 
@@ -2636,7 +2648,6 @@ async function updatePlaylist(url: string) {
             throw new Error('No m3u adapter registered');
         }
 
-        const sourceKey = `playlist:${url}`;
         const ctx = createAdapterContext(sourceKey);
 
         // Cache existing channel state so user settings (enabled, EPG matches,
@@ -2694,22 +2705,30 @@ async function updatePlaylist(url: string) {
                 args: [url]
             });
             const kept = Number(existing.rows[0]?.c || 0);
+            await recordSourceSync(sourceKey, { rows: kept, status: 'success' });
             emitLog(`Playlist unchanged since last fetch; keeping ${kept} channel(s).`, 'info');
             return kept;
         }
 
         const swap = await commitChannelStaging(url);
         if (!swap.swapped) {
+            await recordSourceSync(sourceKey, {
+                rows: swap.previousRows,
+                status: swap.previousRows > 0 ? 'success' : 'empty',
+                error: swap.reason
+            });
             emitLog(`Playlist import kept previous channels: ${swap.reason}`, 'warning');
             return swap.previousRows;
         }
 
+        await recordSourceSync(sourceKey, { rows: count, status: count > 0 ? 'success' : 'empty' });
         emitLog(formatMemorySnapshot('playlist import complete', process.memoryUsage(), { source: url, imported: count }), 'info');
         emitLog(`Updated playlist. Total channels: ${count}`, "success");
         return count;
     } catch (e: any) {
         // The live channel set is untouched — staging is discarded instead.
         await discardChannelStaging(url).catch(() => { /* best effort */ });
+        await recordSourceSync(sourceKey, { status: 'failed', error: e.message }).catch(() => { /* best effort */ });
         console.error("Playlist update failed:", e);
         emitLog(`Playlist update failed: ${e.message}`, "error");
         throw e;
@@ -2896,15 +2915,15 @@ app.get('/api/stats', async (req, res) => {
 // No auth required so the dashboard can show the empty-state prompt before login.
 app.get('/api/has-data', async (req, res) => {
     try {
-        const [ch, prog, pl] = await Promise.all([
+        const [ch, prog, playlistUrls] = await Promise.all([
             db.execute("SELECT COUNT(*) as c FROM channels"),
             db.execute("SELECT COUNT(*) as c FROM epg_programs"),
-            db.execute("SELECT value FROM settings WHERE key = 'playlist_url'")
+            getConfiguredPlaylistUrls()
         ]);
         res.json({
             hasChannels: Number(ch.rows[0].c) > 0,
             hasPrograms: Number(prog.rows[0].c) > 0,
-            hasPlaylist: pl.rows.length > 0 && String(pl.rows[0].value).trim() !== '',
+            hasPlaylist: playlistUrls.length > 0,
             isEmpty: Number(ch.rows[0].c) === 0 && Number(prog.rows[0].c) === 0
         });
     } catch (e: any) {
