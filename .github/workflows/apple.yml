@@ -1,0 +1,156 @@
+name: Apple platforms
+
+# iOS and tvOS need macOS and Xcode. This workflow keeps the two Apple shells
+# compiling on every change, without requiring an Apple Developer account:
+# simulator builds are unsigned and still prove the bundle, the native shell and
+# the Swift sources agree. Signing and App Store upload are documented in
+# docs/apple-platforms.md and stay a manual, credentialed step.
+
+on:
+  push:
+    branches: [main, feat/ios-apple-tv]
+    paths:
+      - "client/ios/**"
+      - "client/tvos/**"
+      - "client/capacitor.config.ts"
+      - "client/src/**"
+      - "client/package.json"
+      - "client/package-lock.json"
+      - "scripts/build-mobile-web.sh"
+      - "scripts/build-ios.sh"
+      - "scripts/build-tvos.sh"
+      - ".github/workflows/apple.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "client/ios/**"
+      - "client/tvos/**"
+      - "client/capacitor.config.ts"
+      - "client/src/**"
+      - "client/package.json"
+      - "client/package-lock.json"
+      - "scripts/build-mobile-web.sh"
+      - "scripts/build-ios.sh"
+      - "scripts/build-tvos.sh"
+      - ".github/workflows/apple.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apple-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    name: Build the iOS simulator app
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
+
+      - name: Show the toolchain
+        run: xcodebuild -version
+
+      - run: npm ci
+
+      - name: Install client dependencies
+        run: npm ci
+        working-directory: client
+
+      - name: Build the mobile web bundle
+        run: sh scripts/build-mobile-web.sh
+
+      - name: Sync Capacitor into the iOS project
+        run: npx cap sync ios
+        working-directory: client
+
+      - name: Build for the iOS simulator
+        run: |
+          set -euo pipefail
+          cd client/ios/App
+          xcodebuild \
+            -project App.xcodeproj \
+            -scheme App \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$GITHUB_WORKSPACE/scratch/ios-derived" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package the simulator app
+        run: |
+          set -euo pipefail
+          app="$(find scratch/ios-derived/Build/Products/Debug-iphonesimulator -maxdepth 1 -name '*.app' | head -1)"
+          if [ -z "$app" ]; then
+            echo "No .app was produced." >&2
+            find scratch/ios-derived/Build/Products -maxdepth 3 >&2 || true
+            exit 1
+          fi
+          mkdir -p dist-apple/ios
+          ditto -c -k --sequesterRsrc --keepParent "$app" dist-apple/ios/tuner-daemon-ios-simulator.zip
+          ls -lh dist-apple/ios
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator
+          path: dist-apple/ios/*.zip
+          retention-days: 30
+
+  tvos:
+    name: Build the Apple TV simulator app
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show the toolchain
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i tvos || true
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate the Xcode project
+        run: xcodegen generate
+        working-directory: client/tvos
+
+      - name: Build for the tvOS simulator
+        run: |
+          set -euo pipefail
+          cd client/tvos
+          xcodebuild \
+            -project TunerDaemonTV.xcodeproj \
+            -scheme TunerDaemonTV \
+            -configuration Debug \
+            -destination 'generic/platform=tvOS Simulator' \
+            -derivedDataPath "$GITHUB_WORKSPACE/scratch/tvos-derived" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package the simulator app
+        run: |
+          set -euo pipefail
+          app="$(find scratch/tvos-derived/Build/Products/Debug-appletvsimulator -maxdepth 1 -name '*.app' | head -1)"
+          if [ -z "$app" ]; then
+            echo "No .app was produced." >&2
+            find scratch/tvos-derived/Build/Products -maxdepth 3 >&2 || true
+            exit 1
+          fi
+          mkdir -p dist-apple/tvos
+          ditto -c -k --sequesterRsrc --keepParent "$app" dist-apple/tvos/tuner-daemon-tvos-simulator.zip
+          ls -lh dist-apple/tvos
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tvos-simulator
+          path: dist-apple/tvos/*.zip
+          retention-days: 30

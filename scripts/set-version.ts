@@ -1,5 +1,6 @@
 /**
- * Write one version into every place that carries one.
+ * Write one version into every place that carries one: npm packages, Android,
+ * the iOS Xcode project and the XcodeGen tvOS project.
  *
  *   npx ts-node scripts/set-version.ts 1.2.3     set an exact version
  *   npx ts-node scripts/set-version.ts minor     bump from the current one
@@ -14,6 +15,7 @@ import path from 'path';
 import {
     bumpVersion, checkVersionsAgree, formatVersion, parseVersion,
     readPackageVersion, setGradleVersion, setPackageVersion,
+    setXcodeGenVersion, setXcodeProjectVersion,
     type ReleaseKind
 } from '../src/services/version';
 
@@ -23,6 +25,8 @@ const PACKAGES = [
     path.join(root, 'client/package.json')
 ];
 const GRADLE = path.join(root, 'client/android/app/build.gradle');
+const IOS_PROJECT = path.join(root, 'client/ios/App/App.xcodeproj/project.pbxproj');
+const TVOS_PROJECT = path.join(root, 'client/tvos/project.yml');
 const COMPOSE = path.join(root, 'docker-compose.yml');
 const ENV_EXAMPLE = path.join(root, '.env.example');
 
@@ -46,6 +50,19 @@ if (checking) {
     const gradle = fs.readFileSync(GRADLE, 'utf8');
     const gradleName = /versionName\s+"([^"]*)"/.exec(gradle);
     files.push({ name: relative(GRADLE), version: gradleName ? gradleName[1] : null });
+
+    // The Apple projects carry CFBundleShortVersionString. If they are absent
+    // (a tree without the platform scaffolded), skip them rather than failing.
+    if (fs.existsSync(IOS_PROJECT)) {
+        const ios = fs.readFileSync(IOS_PROJECT, 'utf8');
+        const match = /MARKETING_VERSION = ([^;]+);/.exec(ios);
+        files.push({ name: relative(IOS_PROJECT), version: match ? match[1].trim() : null });
+    }
+    if (fs.existsSync(TVOS_PROJECT)) {
+        const tvos = fs.readFileSync(TVOS_PROJECT, 'utf8');
+        const match = /MARKETING_VERSION:\s*"([^"]*)"/.exec(tvos);
+        files.push({ name: relative(TVOS_PROJECT), version: match ? match[1] : null });
+    }
 
     // Also check pinned compose TAG
     try {
@@ -93,6 +110,15 @@ for (const file of PACKAGES) {
 
 fs.writeFileSync(GRADLE, setGradleVersion(fs.readFileSync(GRADLE, 'utf8'), target));
 console.log(`  ${relative(GRADLE)} -> ${version}`);
+
+if (fs.existsSync(IOS_PROJECT)) {
+    fs.writeFileSync(IOS_PROJECT, setXcodeProjectVersion(fs.readFileSync(IOS_PROJECT, 'utf8'), target));
+    console.log(`  ${relative(IOS_PROJECT)} -> ${version}`);
+}
+if (fs.existsSync(TVOS_PROJECT)) {
+    fs.writeFileSync(TVOS_PROJECT, setXcodeGenVersion(fs.readFileSync(TVOS_PROJECT, 'utf8'), target));
+    console.log(`  ${relative(TVOS_PROJECT)} -> ${version}`);
+}
 
 if (fs.existsSync(COMPOSE)) {
     let compose = fs.readFileSync(COMPOSE, 'utf8');

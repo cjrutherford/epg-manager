@@ -1,0 +1,43 @@
+name: TunerDaemonTV
+options:
+  bundleIdPrefix: net.christopherrutherford
+  deploymentTarget:
+    tvOS: "15.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.5.1"
+    CURRENT_PROJECT_VERSION: "501"
+targets:
+  TunerDaemonTV:
+    type: application
+    platform: tvOS
+    sources:
+      - path: TunerDaemonTV
+        excludes:
+          - "Info.plist"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: net.christopherrutherford.tunerdaemon.tv
+        PRODUCT_NAME: Tuner Daemon TV
+        INFOPLIST_FILE: TunerDaemonTV/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "3"
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+schemes:
+  TunerDaemonTV:
+    build:
+      targets:
+        TunerDaemonTV: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
