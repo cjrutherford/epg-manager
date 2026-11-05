@@ -285,8 +285,15 @@ export class WatchComponent implements OnInit, OnDestroy {
 
         // Idle detection: hide UI controls after inactivity
         this.boundOnUserActivity = this.onUserActivity.bind(this);
+        // Remote and keyboard users never generate a mousemove. Without these
+        // listeners the lower third stayed hidden after the idle timeout, so
+        // the guide button was unreachable except by the `g` shortcut.
         document.addEventListener('mousemove', this.boundOnUserActivity);
         document.addEventListener('click', this.boundOnUserActivity);
+        document.addEventListener('pointerdown', this.boundOnUserActivity);
+        document.addEventListener('touchstart', this.boundOnUserActivity, { passive: true });
+        document.addEventListener('keydown', this.boundOnUserActivity);
+        document.addEventListener('focusin', this.boundOnUserActivity);
         this.resetIdleTimer();
 
         this.isMobile = window.innerWidth < 768;
@@ -407,6 +414,12 @@ export class WatchComponent implements OnInit, OnDestroy {
         if (this.isBrowser) {
             window.removeEventListener('online', this.onlineHandler);
             window.removeEventListener('offline', this.offlineHandler);
+            document.removeEventListener('mousemove', this.boundOnUserActivity);
+            document.removeEventListener('click', this.boundOnUserActivity);
+            document.removeEventListener('pointerdown', this.boundOnUserActivity);
+            document.removeEventListener('touchstart', this.boundOnUserActivity);
+            document.removeEventListener('keydown', this.boundOnUserActivity);
+            document.removeEventListener('focusin', this.boundOnUserActivity);
         }
         clearTimeout(this.idleTimer);
         clearInterval(this.currentTimeInterval);

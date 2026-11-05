@@ -1544,7 +1544,7 @@ c.*,
         const programsRes = await db.execute({
             sql: `
                 SELECT channel_id, title 
-                FROM epg_programs 
+                FROM epg_programs
                 WHERE start <= ? AND stop > ?
     `,
             args: [nowStr, nowStr]
@@ -3116,26 +3116,32 @@ c.id, c.name, c.group_title, c.url, c.tvg_id, c.tvg_logo, c.channel_number,
             .filter(Boolean) as string[];
 
         // Get programs in the time window for all channels
-        let programsMap = new Map<string, any[]>();
+        const programsMap = new Map<string, any[]>();
         if (epgIds.length > 0) {
-            // Batch query - get all programs that overlap with our window
-            const placeholders = epgIds.map(() => '?').join(',');
-            const programsRes = await db.execute({
-                sql: `
-                    SELECT channel_id, title, desc, sub_title, episode_num,
+            // SQLite has a bound-variable limit (often 999). A library with
+            // 1,000+ matched channels produced a 500 here because the single
+            // IN(...) list exceeded it. Query in bounded chunks and merge.
+            const CHUNK = 400;
+            for (let offset = 0; offset < epgIds.length; offset += CHUNK) {
+                const chunk = epgIds.slice(offset, offset + CHUNK);
+                const placeholders = chunk.map(() => '?').join(',');
+                const programsRes = await db.execute({
+                    sql: `
+                        SELECT channel_id, title, desc, sub_title, episode_num,
     category, rating, icon, start, stop, tmdb_poster
-                    FROM epg_programs 
-                    WHERE channel_id IN(${placeholders})
-                    AND stop > ? AND start < ?
+                        FROM epg_programs
+                        WHERE channel_id IN(${placeholders})
+                        AND stop > ? AND start < ?
     ORDER BY start ASC
-        `,
-                args: [...epgIds, startStr, endStr]
-            });
+            `,
+                    args: [...chunk, startStr, endStr]
+                });
 
-            for (const prog of programsRes.rows) {
-                const chId = String(prog.channel_id);
-                if (!programsMap.has(chId)) programsMap.set(chId, []);
-                programsMap.get(chId)!.push(prog);
+                for (const prog of programsRes.rows) {
+                    const chId = String(prog.channel_id);
+                    if (!programsMap.has(chId)) programsMap.set(chId, []);
+                    programsMap.get(chId)!.push(prog);
+                }
             }
         }
 
@@ -3230,7 +3236,7 @@ app.get('/api/channel/:id/programs', async (req, res) => {
             sql: `
                 SELECT title, desc, sub_title, episode_num, category,
     rating, icon, start, stop, tmdb_poster
-                FROM epg_programs 
+                FROM epg_programs
                 WHERE channel_id = ? AND stop > ? AND start < ?
     ORDER BY start ASC
             `,

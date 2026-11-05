@@ -73,3 +73,22 @@ test.describe('Keyboard and D-pad', () => {
         expect(overflow).toBeLessThanOrEqual(1);
     });
 });
+
+test.describe('Touch wake', () => {
+    test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+    test('a tap wakes the lower-third controls after idle', async ({ page }) => {
+        await page.goto('/watch');
+        await page.waitForTimeout(2200);
+        await page.touchscreen.tap(200, 300);
+        const lowerThird = page.locator('.channel-info-block');
+        await expect(lowerThird).not.toHaveClass(/ui-hidden/);
+
+        await page.waitForTimeout(3600);
+        await expect(lowerThird).toHaveClass(/ui-hidden/);
+
+        await page.touchscreen.tap(200, 300);
+        await expect(lowerThird).not.toHaveClass(/ui-hidden/);
+        await expect(page.locator('button[title="Toggle Guide"]')).toBeVisible();
+    });
+});

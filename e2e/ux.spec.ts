@@ -84,6 +84,22 @@ test.describe('UX guardrails — desktop', () => {
         }
     });
 
+    test('a remote key wakes the hidden lower-third controls', async ({ page }) => {
+        await page.goto('/watch');
+        await page.waitForTimeout(2200);
+        await page.mouse.move(700, 300);
+        const lowerThird = page.locator('.channel-info-block');
+        await expect(lowerThird).toBeVisible();
+        await expect(lowerThird).not.toHaveClass(/ui-hidden/);
+
+        // The idle timer hides the chrome; a remote key must bring it back so
+        // the guide button is reachable without knowing the `g` shortcut.
+        await page.waitForTimeout(3600);
+        await expect(lowerThird).toHaveClass(/ui-hidden/);
+        await page.keyboard.press('ArrowDown');
+        await expect(lowerThird).not.toHaveClass(/ui-hidden/);
+    });
+
     test('icon buttons are centred and named', async ({ page }) => {
         await page.goto('/watch');
         await page.waitForTimeout(2000);
