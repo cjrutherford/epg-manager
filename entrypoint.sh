@@ -22,15 +22,26 @@ if [ ! -d "${DB_DIR}/iptv-org-epg" ]; then
     echo "Channel matching will not work. Rebuild the image."
 fi
 
-# Ensure recordings directory exists
-mkdir -p "${DB_DIR}/recordings"
+# Ensure runtime directories exist.
+#
+# `streams` matters as much as `recordings`: an older image ran the app as
+# root, so an existing volume can contain a root-owned streams/ directory.
+# The epg user can then read the guide but cannot create the per-channel
+# directory under it, and every /api/channel/:id/stream request fails with
+# EACCES -> 500. The same applies to the caches and the playlist collection,
+# which are written after startup.
+mkdir -p "${DB_DIR}/recordings" "${DB_DIR}/streams" "${DB_DIR}/http-cache" "${DB_DIR}/iptv-org-playlists"
 
 # Ensure writable runtime paths without recursively chowning the full bundled data tree.
 # A full chown of /app/data is extremely expensive because the image includes
 # a large iptv-org dataset there, and it delays the UI becoming available.
 echo "Ensuring runtime paths are writable for epg user..."
 chown epg:epg "${DB_DIR}" || true
-chown -R epg:epg "${DB_DIR}/recordings" || true
+chown -R epg:epg \
+    "${DB_DIR}/recordings" \
+    "${DB_DIR}/streams" \
+    "${DB_DIR}/http-cache" \
+    "${DB_DIR}/iptv-org-playlists" || true
 if [ -e "/app/node_modules/axios/index.js" ]; then
     chown epg:epg "/app/node_modules/axios/index.js" || true
 fi
@@ -39,6 +50,15 @@ fi
 for path in local.db local.db-wal local.db-shm playlist.m3u epg.xml; do
     if [ -e "${DB_DIR}/${path}" ]; then
         chown epg:epg "${DB_DIR}/${path}" || true
+    fi
+done
+
+# Make the failure visible at startup. Without this, an unwritable volume looks
+# healthy until the first stream request turns it into a 500.
+for dir in recordings streams http-cache iptv-org-playlists; do
+    if ! su-exec epg test -w "${DB_DIR}/${dir}"; then
+        echo "ERROR: ${DB_DIR}/${dir} is not writable by the epg user." >&2
+        echo "       Streams and other runtime writes will fail; check volume ownership." >&2
     fi
 done
 
