@@ -84,6 +84,14 @@ app.use((req: any, res: any, next: any) => {
     }
     next();
 });
+// Bounded server-side job log. The dashboard used to lose every line before
+// the reload, even though the job was still running.
+const recentJobLogs: Array<{ type?: string; message: string; timestamp: number }> = [];
+eventBus.on('log', (entry: any) => {
+    recentJobLogs.push({ type: entry.type, message: entry.message, timestamp: entry.timestamp || Date.now() });
+    if (recentJobLogs.length > 500) recentJobLogs.splice(0, recentJobLogs.length - 500);
+});
+
 app.use(express.json());
 
 // Backend runs purely as an API server
@@ -411,6 +419,7 @@ async function syncGuideSources(days: number): Promise<{ sources: number; progra
 }
 
 export async function runFullSync() {
+    recentJobLogs.length = 0;
     await startJob('full_sync');
     try {
         if (getJobStatus().cancelRequested) throw new Error("Sync cancelled by user");
@@ -627,7 +636,8 @@ app.get('/api/job-status', (req, res) => {
             nextRunAt: next ? next.toISOString() : null
         },
         // Kept for the existing dashboard card, but derived rather than hardcoded.
-        daily: describeCron(expression)
+        daily: describeCron(expression),
+        logs: recentJobLogs.slice(-500)
     });
 });
 

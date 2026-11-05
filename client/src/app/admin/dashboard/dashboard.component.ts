@@ -112,12 +112,14 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
     ];
 
     logs: { message: string; level: string; time: Date }[] = [];
+    clockNow = Date.now();
+    private clockTimer: any = null;
     progressBars: Record<string, { current: number; total: number; message: string; completed: boolean }> = {};
     shouldScrollLogs = false;
 
     stages: SyncStage[] = [
         { id: 'playlist', label: 'Playlist', icon: 'list', status: 'idle' },
-        { id: 'metadata', label: 'Artwork', icon: 'search', status: 'idle' },
+        { id: 'metadata', label: 'Metadata', icon: 'search', status: 'idle' },
         { id: 'match', label: 'Match', icon: 'link-2', status: 'idle' },
         { id: 'grab', label: 'Guide fetch', icon: 'satellite', status: 'idle' },
         { id: 'enrich', label: 'Enrich', icon: 'clapperboard', status: 'idle' },
@@ -140,6 +142,10 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
     ngOnInit(): void {
         this.hasWatched = typeof localStorage !== 'undefined'
             && localStorage.getItem('tuner_daemon_has_watched') === '1';
+        this.clockTimer = setInterval(() => {
+            this.clockNow = Date.now();
+            if (this.jobRunning) this.cdr.markForCheck();
+        }, 1000);
         this.loadData();
         this.setupSseListeners();
         this.loadVersionInfo();
@@ -149,6 +155,13 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
             if (status && status.running) {
                 this.syncStarted = true;
                 this.progressCollapsed = false;
+                if (Array.isArray(status.logs) && status.logs.length > 0) {
+                    this.logs = status.logs.map((entry: any) => ({
+                        message: entry.message,
+                        level: entry.level || entry.type || 'info',
+                        time: new Date(entry.timestamp)
+                    }));
+                }
                 if (status.progress) {
                     for (const [phase, data] of Object.entries(status.progress)) {
                         const progData = data as any;
@@ -168,6 +181,7 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
 
     ngOnDestroy(): void {
         this.subs.forEach(s => s.unsubscribe());
+        if (this.clockTimer) clearInterval(this.clockTimer);
     }
 
     ngAfterViewChecked(): void {
@@ -219,6 +233,36 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
 
     get guideIsMissing(): boolean {
         return !!this.dataState?.hasChannels && !this.dataState?.hasPrograms;
+    }
+
+    get syncElapsed(): string {
+        const start = Number(this.jobStatus?.startTime);
+        if (!start) return '0:00';
+        const end = this.jobRunning ? this.clockNow : Number(this.jobStatus?.endTime || this.clockNow);
+        const seconds = Math.max(0, Math.floor((end - start) / 1000));
+        return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+    }
+
+    get overallProgress(): number {
+        if (!this.jobRunning) return 100;
+        // Per-phase totals are not comparable (7 playlists vs 1,495 channels),
+        // so count completed stages and add the active stage's own percentage.
+        const completed = this.stages.filter(stage => stage.status === 'done').length;
+        const active = this.stages.find(stage => stage.status === 'active');
+        const activePhase = active ? this.progressBars[active.id] : null;
+        const activeFraction = activePhase && activePhase.total > 0
+            ? Math.min(1, activePhase.current / activePhase.total)
+            : 0;
+        return Math.round(((completed + activeFraction) / this.stages.length) * 100);
+    }
+
+    get currentStageLabel(): string {
+        const active = this.stages.find(stage => stage.status === 'active');
+        return active?.label || (this.jobRunning ? 'Starting' : 'Idle');
+    }
+
+    get lastJobError(): string | null {
+        return !this.jobRunning && this.jobStatus?.error ? String(this.jobStatus.error) : null;
     }
 
     get hasReliabilityNotice(): boolean {
@@ -359,6 +403,10 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
         this.syncStarted = true;
         this.progressCollapsed = false;
         this.resetStages();
+        // Drop the previous run's start/error before the first SSE event, or
+        // the elapsed timer keeps counting from the last job.
+        this.jobStatus = { ...(this.jobStatus || {}), running: true, startTime: Date.now(), endTime: null, error: null };
+        this.clockNow = Date.now();
         this.sse.connect();
         this.api.runFullSync().subscribe({
             next: (res) => { if (!res.success) this.toast.show(res.message || 'Sync failed', 'error'); },
@@ -380,6 +428,7 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
             next: (res) => {
                 if (res.success) {
                     this.toast.show('Cancellation request sent.', 'success');
+                    setTimeout(() => this.loadData(), 1500);
                 } else {
                     this.toast.show('Cancellation failed: ' + res.message, 'error');
                 }
@@ -392,6 +441,8 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
         this.syncStarted = true;
         this.progressCollapsed = false;
         this.resetStages();
+        this.jobStatus = { ...(this.jobStatus || {}), running: true, startTime: Date.now(), endTime: null, error: null };
+        this.clockNow = Date.now();
         this.sse.connect();
         this.api.grabMissing().subscribe({
             next: (res) => { },
@@ -423,13 +474,15 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewChecked {
         const stage = this.stages.find(s => s.id === phase);
         if (!stage) return;
 
-        if (/cancelled|failed|error/i.test(message)) {
-            this.setStageError(phase);
-        } else if (completed) {
+        // Per-phase messages include counts such as "24 failed" during normal
+        // partial success. A stage is only red when the whole job fails, which
+        // is surfaced by the persistent last-job banner, not by this parser.
+        if (completed) {
             this.setStageDone(phase);
         } else {
             this.setStageActive(phase);
         }
+        void message;
     }
 
     getStageClass(stage: SyncStage): string {

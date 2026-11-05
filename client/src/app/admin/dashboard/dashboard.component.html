@@ -21,6 +21,16 @@
     </div>
     }
 
+    @if (lastJobError) {
+    <div class="reliability-notice reliability-notice--danger" role="status">
+        <lucide-icon name="triangle-alert" class="icon"></lucide-icon>
+        <div class="reliability-notice__body">
+            <strong>Last sync: {{ lastJobError }}</strong>
+            <button type="button" class="btn btn-secondary small-btn" (click)="runFullSync()">Try again</button>
+        </div>
+    </div>
+    }
+
     @if (loading) {
     <app-skeleton variant="cards" [rows]="3" label="Loading dashboard"></app-skeleton>
     } @else {
@@ -75,7 +85,7 @@
                  being refused, so they say so instead of looking broken. Reset
                  is genuinely refused mid-sync, so it is disabled and explains
                  itself rather than failing with a 409 after the fact. -->
-            <button type="button" class="glass-card action-card" (click)="runFullSync()"
+            <button type="button" class="glass-card action-card" (click)="runFullSync()" [disabled]="jobRunning"
                 [disabled]="!hasSourceConfigured">
                 <lucide-icon name="refresh-cw" class="icon icon--lg action-icon" aria-hidden="true"></lucide-icon>
                 <div class="action-title">Run full sync</div>
@@ -85,7 +95,7 @@
                     @else { Playlist → Match → Fetch guide → Enrich → Publish }
                 </div>
             </button>
-            <button type="button" class="glass-card action-card" (click)="grabMissing()"
+            <button type="button" class="glass-card action-card" (click)="grabMissing()" [disabled]="jobRunning"
                 [disabled]="!hasChannels">
                 <lucide-icon name="satellite" class="icon icon--lg action-icon" aria-hidden="true"></lucide-icon>
                 <div class="action-title">Fetch guide data</div>
@@ -95,7 +105,7 @@
                     @else { Fetch guide data for matched channels }
                 </div>
             </button>
-            <button type="button" class="glass-card action-card" (click)="rebuildFiles()"
+            <button type="button" class="glass-card action-card" (click)="rebuildFiles()" [disabled]="jobRunning"
                 [disabled]="!hasChannels">
                 <lucide-icon name="package" class="icon icon--lg action-icon" aria-hidden="true"></lucide-icon>
                 <div class="action-title">Rebuild output files</div>
@@ -152,6 +162,11 @@
             
             <div class="collapsible-content" [class.collapsed]="progressCollapsed">
                 @if (syncStarted) {
+                <div class="sync-summary">
+                    <span>Running for <strong>{{ syncElapsed }}</strong></span>
+                    <span><strong>{{ overallProgress }}%</strong> overall</span>
+                    <span>{{ currentStageLabel }}</span>
+                </div>
                 <div class="pipeline-flow">
                     @for (stage of stages; track stage.id) {
                     <div class="pipeline-stage" [class]="getStageClass(stage)">

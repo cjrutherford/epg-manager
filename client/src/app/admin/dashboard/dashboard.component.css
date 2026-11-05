@@ -530,3 +530,21 @@ button.action-card[disabled]:hover {
     gap: var(--space-sm) var(--space-lg);
     font-size: var(--font-md);
 }
+
+.sync-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm) var(--space-xl);
+    margin-bottom: var(--space-lg);
+    color: var(--text-secondary);
+    font-size: var(--font-sm);
+}
+
+.sync-summary strong {
+    color: var(--text-primary);
+}
+
+.action-card:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
