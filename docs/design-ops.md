@@ -125,6 +125,26 @@ by silence.
 
 The weekly agenda is fixed: 5 min context, 15 min artifact review, 5 min decision,
 5 min owner/date. One screen, one state, one decision; no decision means no merge.
+
+
+## Release on merge
+
+Merging to `main` is the release trigger. `.github/workflows/release-on-merge.yml`
+waits for the CI workflow to succeed, then:
+
+1. derives the bump from conventional commits since the last tag
+   (`BREAKING CHANGE` → major, `feat:` → minor, otherwise patch);
+2. writes the version with `scripts/set-version.ts` and verifies every version
+   file agrees;
+3. commits `chore(release): vX.Y.Z [skip ci]`, pushes the commit and the tag;
+4. dispatches `release.yml` on that tag.
+
+There is no release PR and no approval step. `release.yml` still runs the full
+verification, publishes the Docker image, builds the APKs and creates the GitHub
+release. The bot needs permission to push the release commit to `main`; if branch
+protection forbids that, the workflow fails loudly rather than silently skipping
+the release.
+
 ## 5. Release discipline
 Every release, including patches, runs the UX gate before the tag:
 ```bash

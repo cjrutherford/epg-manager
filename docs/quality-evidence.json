@@ -85,6 +85,24 @@
       "severity": "P2",
       "status": "open",
       "title": "SUS and task success need 5-8 first-time participants"
+    },
+    {
+      "id": "P1-sync-progress",
+      "severity": "P1",
+      "status": "open",
+      "title": "Guide phase shows an error state while it is still progressing"
+    },
+    {
+      "id": "P1-sync-duration",
+      "severity": "P1",
+      "status": "open",
+      "title": "Full sync on a 1,495-channel library exceeded 11 minutes"
+    },
+    {
+      "id": "P2-sync-history",
+      "severity": "P2",
+      "status": "open",
+      "title": "Reloading mid-sync loses console history and last-run status"
     }
   ]
 }
