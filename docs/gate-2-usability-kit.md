@@ -88,6 +88,28 @@ The automated floor is `npx playwright test e2e/a11y.spec.ts e2e/keyboard.spec.t
 | 320 / 390 / 768 / 1024 / 1440 | Viewport matrix in `e2e/ux.spec.ts` | Passing |
 | TV / 10-foot | Remote-only run on a TV or TV emulator | Needs hardware |
 
+## Android and Google TV checklist
+
+Android phone:
+
+- [ ] Build and install the APK (`npm run build:mobile`).
+- [ ] First run reaches the login screen; no clipped controls in portrait or landscape.
+- [ ] Add a source, sync, open Watch and tune a channel.
+- [ ] Open the guide, scroll, schedule a recording, open Recordings.
+- [ ] Back gesture leaves the guide/menu before leaving the screen.
+- [ ] Safe areas respected on a notched device.
+
+Google TV / TV emulator (remote only):
+
+- [ ] Install and launch; the app is usable at 10-foot distance.
+- [ ] D-pad reaches every primary action; focus is always visible.
+- [ ] Open the guide, move between channels and programmes, open a programme menu, close it with Back/Escape.
+- [ ] Tune and change volume with the remote.
+- [ ] Playback fills the safe area without clipping.
+- [ ] No pointer-only action is required.
+
+Capture the device, build hash, pass/fail and a screenshot per failed item.
+
 ## First-sync benchmark
 
 On a clean database:
@@ -100,6 +122,30 @@ On a clean database:
 Target: under 120 seconds. Record source size and network conditions alongside
 the number, or the result is not comparable.
 
+## Decisions for this pass (5 Nov 2026)
+
+- **User testing:** deferred. Gate 2 remains open on SUS and task success until
+  five to eight sessions are run.
+- **Screen reader:** automated ARIA checks are the accepted interim evidence;
+  a manual NVDA/VoiceOver pass is recorded as a Gate 2 exception, not a pass.
+- **Cross-browser:** the Firefox/WebKit smoke path runs in the GitHub Actions
+  `cross-browser` job. This host cannot install those engines.
+- **First sync:** all three modes are required. The synthetic mode is wired and
+  measured; built-in and user-source modes use the same harness.
+- **Devices:** Android and Google TV are available. The device checklist below
+  is the evidence capture format.
+- **Sign-off:** the product owner signs the scorecard; the agent triages P1/P2
+  and presents the evidence.
+
+## P1 finding before the first-sync line can pass
+
+The source registry stores guide descriptors and the `xmltv` / `scraper-repo`
+adapters expose `fetchGuide`, but `runFullSync` never calls it. A clean install
+with a guide source therefore imports channels and leaves `epg_programs` empty.
+The synthetic benchmark (60 channels) completed in 25.2 s with 0 programmes.
+This needs a P1 triage decision before "first sync under two minutes" is treated
+as a meaningful Gate 2 line; measuring a channel-only sync would hide the gap.
+
 ## Current evidence
 
 | Item | Status |
@@ -110,10 +156,13 @@ the number, or the result is not comparable.
 | Theme contrast | **5/5 themes pass WCAG AA** |
 | Keyboard guide path | **Passing** — open, arrow, Enter, programme menu, Escape |
 | D-pad focus containment | **Passing** — arrows stay in the guide while it is open |
-| Screen reader manual pass | **Not run** — needs NVDA/VoiceOver |
-| Cross-browser Firefox/WebKit | **Blocked on host** — browser installation unsupported |
-| SUS / task success | **Not run** — needs participants |
-| First sync timing | **Not measured** on clean install |
+| Automated ARIA contract | **Passing** — `e2e/aria.spec.ts` |
+| Screen reader manual pass | **Deferred** — automated ARIA accepted as interim |
+| Cross-browser Firefox/WebKit | **CI job added** — GitHub Actions `cross-browser`; not yet run |
+| SUS / task success | **Deferred** — needs participants |
+| First sync, synthetic | **25.2 s** — 60 channels, 0 programmes (guide-source gap above) |
+| First sync, built-in | **Not run** — network sources |
+| First sync, user sources | **Not run** — needs the shipping URL pair |
 
 ## Exit rule
 
