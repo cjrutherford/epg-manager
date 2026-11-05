@@ -1,36 +1,27 @@
 import SwiftUI
 
-/// Scaffold for the native Apple TV client.
-///
-/// tvOS ships no public WebView: `UIWebView` is prohibited and WebKit is not
-/// part of the tvOS SDK. The Apple TV client therefore has to be native. This
-/// view is the placeholder that keeps the target and CI green while the guide,
-/// player and DVR screens are built against the same REST API the web and
-/// Android clients use.
+/// The TV client is native because tvOS has no public WebView. This is the
+/// smallest useful slice of parity: connect to a server, list its live
+/// channels, and play one with AVPlayer.
 struct ContentView: View {
+    @EnvironmentObject private var store: GuideStore
+    @State private var selected: Channel?
+
     var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-
-            VStack(spacing: 28) {
-                Image(systemName: "tv")
-                    .font(.system(size: 88, weight: .thin))
-                    .foregroundStyle(.secondary)
-
-                Text("Tuner Daemon")
-                    .font(.system(size: 64, weight: .bold))
-
-                Text("The native Apple TV client is being built on this branch.")
-                    .font(.system(size: 28))
-                    .foregroundStyle(.secondary)
-
-                Text("tvOS has no WebView, so this target uses SwiftUI and AVPlayer against the same Tuner Daemon API as the phone, web and Android TV apps.")
-                    .font(.system(size: 22))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 1100)
+        NavigationView {
+            Group {
+                if store.channels.isEmpty {
+                    ServerSetupView()
+                } else {
+                    ChannelGridView(selected: $selected)
+                }
             }
-            .padding(80)
+        }
+        .fullScreenCover(item: $selected) { channel in
+            PlayerView(channel: channel, serverURL: store.serverURL)
+        }
+        .task {
+            await store.loadIfNeeded()
         }
     }
 }

@@ -251,8 +251,9 @@ npm run build:apk    # uses JAVA_HOME, or the JDK vendored under client/
 
 iOS runs the same mobile bundle as the Android apps through Capacitor. Apple TV
 cannot: tvOS has no public WebView, so `client/tvos` is a native SwiftUI client
-against the same REST API. Both need macOS with Xcode 16+; tvOS also needs
-`brew install xcodegen`.
+against the same REST API. It already has a server picker, channel grid and
+`AVPlayer` HLS playback; the full guide and DVR are the remaining work. Both
+need macOS with Xcode 16+; tvOS also needs `brew install xcodegen`.
 
 ```bash
 npm run build:ios     # iOS simulator app
