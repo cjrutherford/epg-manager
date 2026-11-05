@@ -1,0 +1,90 @@
+{
+  "updated": "2026-11-05",
+  "release": "0.4.1",
+  "metrics": {
+    "initialCssReduction": 0.204,
+    "duplicateCssRules": 0,
+    "unitTests": 598,
+    "e2ePassed": 79,
+    "e2eSkipped": 1,
+    "axeSeriousCritical": 0,
+    "lighthouseAccessibility": 100,
+    "guideP95FrameMs": 16.8,
+    "themeSwitchMs": 17,
+    "firstSyncSeconds": 32.5,
+    "sus": null,
+    "taskSuccess": null
+  },
+  "gates": [
+    {
+      "name": "Gate 1",
+      "status": "pass",
+      "detail": "Initial CSS 20.4% down; axe 0; Lighthouse 100; overflow and themes pass."
+    },
+    {
+      "name": "Gate 2",
+      "status": "open",
+      "detail": "Engineering floor passes. SUS/task success and manual screen reader are deferred; built-in/user first sync and Android/TV capture pending."
+    },
+    {
+      "name": "Gate 3",
+      "status": "open",
+      "detail": "TV remote, motion, reliability and an EN/AR shell slice are done. Full localization/RTL, reference-hardware 60 fps and two clean releases remain."
+    },
+    {
+      "name": "Gate 4",
+      "status": "open",
+      "detail": "Design ops, quality dashboard and CI UX gate are published. Android emulator pass done. Standing research panel, two clean releases, manual SR and full localization/RTL remain."
+    }
+  ],
+  "findings": [
+    {
+      "id": "P1-guide-sync",
+      "severity": "P1",
+      "status": "resolved",
+      "title": "Guide sources never reached fetchGuide"
+    },
+    {
+      "id": "P1-playlist-label",
+      "severity": "P1",
+      "status": "resolved",
+      "title": "Quick presets showed the URL filename (all) instead of the playlist name"
+    },
+    {
+      "id": "P1-guide-in-list",
+      "severity": "P1",
+      "status": "resolved",
+      "title": "Guide API exceeded SQLite bound variables for 1,000+ matched channels"
+    },
+    {
+      "id": "P1-android-entry",
+      "severity": "P1",
+      "status": "resolved",
+      "title": "Android WebView loaded the static redirect document instead of the app shell"
+    },
+    {
+      "id": "P2-lower-third-wake",
+      "severity": "P2",
+      "status": "resolved",
+      "title": "Remote/touch input did not wake the lower-third guide control after idle"
+    },
+    {
+      "id": "P2-localization",
+      "severity": "P2",
+      "status": "open",
+      "title": "Sources, Settings and Watch body copy are not localized; RTL sweep incomplete"
+    },
+    {
+      "id": "P2-manual-sr",
+      "severity": "P2",
+      "status": "open",
+      "title": "Manual NVDA/VoiceOver audit not run"
+    },
+    {
+      "id": "P2-user-research",
+      "severity": "P2",
+      "status": "open",
+      "title": "SUS and task success need 5-8 first-time participants"
+    }
+  ]
+}

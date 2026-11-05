@@ -52,6 +52,16 @@ jobs:
       - name: Check CSS budgets
         run: npm run css:check
 
+      - name: Generate UX quality dashboard
+        run: npm run quality:dashboard
+
+      - name: Upload UX quality dashboard
+        uses: actions/upload-artifact@v4
+        with:
+          name: ux-quality-dashboard
+          path: docs/quality-dashboard.html
+          retention-days: 30
+
       - name: Upload client bundle
         uses: actions/upload-artifact@v4
         with:
@@ -126,7 +136,11 @@ jobs:
         run: npx playwright install chromium --with-deps
 
       # The suite seeds its own database and starts its own servers, so there
-      # is nothing to provision here.
+      # is nothing to provision here. Run the TV gate before the destructive
+      # reset project wipes the shared fixture.
+      - name: Run TV remote gate
+        run: npx playwright test --project=tv
+
       - name: Run end-to-end tests
         run: npm run test:e2e
 
@@ -139,6 +153,7 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 7
+
 
   cross-browser:
     name: Cross-browser smoke

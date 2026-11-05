@@ -363,6 +363,13 @@
               <li><b>Category leadership:</b> publish the design system and accessibility notes; test against two comparable self-hosted tools; close any credible gap they expose.</li>
             </ul>
             <div class="gate"><b>Gate 4 · 10</b>All 9.5 criteria hold for two clean releases. SUS ≥85 and task success ≥95%. Zero serious/critical axe issues and a completed manual SR audit. Localized and RTL core flows. Design system adoption enforced in CI. Quality dashboard live. No regression across two consecutive releases.</div>
+            <div class="callout accent" style="margin-top:14px">
+              <h4>Phase 4 status · 5 Nov 2026</h4>
+              <p><b>Institutionalised:</b> <code>docs/design-ops.md</code> defines contribution, component versioning, deprecation, review cadence and release discipline. <code>docs/quality-dashboard.html</code> is generated from <code>docs/quality-evidence.json</code> (<code>npm run quality:dashboard</code>) and uploaded by CI. The CI UX gate now includes the CSS budget, design-token/contrast unit tests, axe/UX/keyboard/RTL/reliability specs, the TV remote project and the cross-browser smoke path.</p>
+              <p style="margin-top:8px"><b>Category read:</b> <code>docs/competitive-ux-notes.md</code> compares Jellyfin Live TV and Threadfin/xTeVe. The credible gaps are one guided add-live-TV pass, programme detail without hover/right-click, a visible player deck, channel overrides/bulk edit, import filters and capacity/conflict visibility. HDHomeRun emulation, native TV apps and media-server breadth are explicitly out of scope.</p>
+              <p style="margin-top:8px"><b>Android:</b> the static build's root redirect document left the WebView on “Redirecting to /watch”. The APK build now installs the prerendered Watch shell as the SPA entry; on the API 36.1 emulator the Watch screen, lower third and guide all load after pointing the app at the host API.</p>
+              <p style="margin-top:8px"><b>Gate 4 remains open:</b> the standing five-user panel/quarterly benchmark and SUS ≥85 are not run; manual screen-reader audit, full core-flow localization/RTL, a genuinely live dashboard feed and two consecutive clean releases remain.</p>
+            </div>
           </article>
         </div>
       </section>
