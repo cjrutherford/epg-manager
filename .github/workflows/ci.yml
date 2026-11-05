@@ -157,7 +157,9 @@ jobs:
 
   cross-browser:
     name: Cross-browser smoke
-    runs-on: ubuntu-latest
+    # Playwright does not support Firefox/WebKit on Ubuntu 26.04 yet; pin the
+    # runner to the supported LTS image instead of chasing ubuntu-latest.
+    runs-on: ubuntu-24.04
     needs: build
     steps:
       - uses: actions/checkout@v4
