@@ -45,8 +45,8 @@ curl -O https://raw.githubusercontent.com/cjrutherford/epg-manager/main/docker-c
 curl -O https://raw.githubusercontent.com/cjrutherford/epg-manager/main/.env.example
 cp .env.example .env  # set TAG and ADMIN_PASSWORD
 
-# TAG is pinned in docker-compose.yml (e.g. 0.6.0). Upgrade with:
-TAG=0.6.0 docker compose pull && TAG=0.6.0 docker compose up -d
+# TAG is pinned in docker-compose.yml (e.g. 0.6.1). Upgrade with:
+TAG=0.6.1 docker compose pull && TAG=0.6.1 docker compose up -d
 
 # Or float latest within a major:
 docker pull ghcr.io/cjrutherford/epg-manager:0
